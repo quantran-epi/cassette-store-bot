@@ -53,3 +53,19 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = f"🏓 Pong!\nBot: Running\nDatabase: {db_status}"
     if update.effective_message:
         await update.effective_message.reply_text(text)
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /help command providing bot usage guidance per D-01."""
+    text = (
+        "❓ <b>HƯỚNG DẪN SỬ DỤNG BOT</b>\n\n"
+        "• <b>📦 Đơn hôm nay:</b> Xem nhanh danh sách các đơn hàng phát sinh trong ngày.\n"
+        "• <b>📋 Xem theo ngày:</b> Xem lại đơn của các ngày trước.\n"
+        "• <b>📝 Nhập đơn mới:</b> Dán tin nhắn đặt hàng của khách để tạo đơn tự động.\n"
+        "• <b>🔍 Tra cứu đơn:</b> Tìm kiếm đơn hàng hoặc hỏi thống kê bằng câu nói tự nhiên.\n"
+        "• <b>Chạm để Copy:</b> Trên thẻ chi tiết đơn, chạm vào SĐT hoặc Địa chỉ để sao chép nhanh sang app giao hàng.\n\n"
+        "Nếu gặp khó khăn, bác cứ bấm các nút to trên màn hình để thao tác nhé!"
+    )
+    if update.effective_message:
+        await update.effective_message.reply_text(text, parse_mode="HTML")
+

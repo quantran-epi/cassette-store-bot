@@ -395,4 +395,155 @@ def test_render_search_multi_card():
     assert "sch_new" in cbs
 
 
+@pytest.mark.asyncio
+async def test_handle_search_menu_click():
+    import time
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import Message, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.search import handle_search_menu_reply
+
+    message = MagicMock(spec=Message)
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.effective_message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {}
+
+    await handle_search_menu_reply(update, context)
+
+    state = context.user_data.get("search_state")
+    assert state is not None
+    assert state["expires_at"] > time.time() + 100
+    message.reply_text.assert_awaited_once()
+    assert "TRA CỨU ĐƠN HÀNG TỰ NHIÊN" in message.reply_text.call_args[1]["text"]
+    kb = message.reply_text.call_args[1]["reply_markup"]
+    assert any(btn.callback_data == "sch_cancel" for row in kb.inline_keyboard for btn in row)
+
+
+@pytest.mark.asyncio
+async def test_handle_search_cancel():
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import CallbackQuery, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.search import handle_search_cancel_callback
+
+    query = MagicMock(spec=CallbackQuery)
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {"search_state": {"expires_at": 9999999999}}
+
+    await handle_search_cancel_callback(update, context)
+
+    assert "search_state" not in context.user_data
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    assert "Đã huỷ tìm kiếm" in query.edit_message_text.call_args[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_search_routing_in_ingest(test_db):
+    import time
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from telegram import Message, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.ingest import handle_text_order
+
+    message = MagicMock(spec=Message)
+    message.text = "tìm đơn anh Tuấn"
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    context.user_data = {}
+
+    with patch("src.bot.handlers.search.process_search_query", new_callable=AsyncMock) as mock_search:
+        await handle_text_order(update, context)
+        mock_search.assert_awaited_once_with(update, context, "tìm đơn anh Tuấn")
+
+    # Routing when search_state is active
+    context.user_data = {"search_state": {"expires_at": time.time() + 100}}
+    message.text = "Tuấn Vũ"
+    with patch("src.bot.handlers.search.process_search_query", new_callable=AsyncMock) as mock_search:
+        await handle_text_order(update, context)
+        mock_search.assert_awaited_once_with(update, context, "Tuấn Vũ")
+
+
+@pytest.mark.asyncio
+async def test_help_command_registration():
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import Message, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.base import help_command
+
+    message = MagicMock(spec=Message)
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.effective_message = message
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await help_command(update, context)
+
+    message.reply_text.assert_awaited_once()
+    text = message.reply_text.call_args[0][0]
+    assert "HƯỚNG DẪN SỬ DỤNG BOT" in text
+    assert "Tra cứu đơn" in text
+
+
+@pytest.mark.asyncio
+async def test_search_callback_pagination():
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import CallbackQuery, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.search import handle_search_callback
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import SearchResult, SearchResultType
+
+    orders = [
+        Order(id=i, customer_name=f"Khách {i}", customer_phone="0901", shipping_address="HN", items_text="Băng", total_amount=100000)
+        for i in range(1, 8)
+    ]
+    search_res = SearchResult(
+        result_type=SearchResultType.ORDERS,
+        sql_executed="SELECT * FROM orders",
+        orders=orders,
+    )
+
+    query = MagicMock(spec=CallbackQuery)
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = "sch_pg:snap1:2"
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {
+        "searches": {
+            "snap1": {
+                "query": "tìm băng",
+                "result": search_res,
+                "page": 1,
+            }
+        }
+    }
+
+    await handle_search_callback(update, context)
+
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    text = query.edit_message_text.call_args[1]["text"]
+    assert "Trang 2/2" in text
+    assert "Đơn #6" in text
+    assert "Đơn #7" in text
+
+
+
+
 

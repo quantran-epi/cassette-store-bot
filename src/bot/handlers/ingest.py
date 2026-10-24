@@ -14,6 +14,7 @@ from src.db.customers import get_customer_by_phone
 from src.db.orders import get_customer_order_stats
 from src.models.extractor import ExtractedOrder
 from src.services.extractor import extract_order_from_text
+from src.services.order_search import is_search_intent
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,22 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             # Expired after 120s: clean up state and proceed to regular ingestion
             context.user_data.pop("action_state", None)
+
+    # Check for search_state or search_intent per D-01, D-02, D-03
+    search_state = context.user_data.get("search_state")
+    if search_state:
+        if time.time() <= search_state.get("expires_at", 0):
+            from src.bot.handlers.search import process_search_query
+
+            await process_search_query(update, context, text)
+            return
+        context.user_data.pop("search_state", None)
+
+    if is_search_intent(text):
+        from src.bot.handlers.search import process_search_query
+
+        await process_search_query(update, context, text)
+        return
 
     await update.message.chat.send_action(ChatAction.TYPING)
 

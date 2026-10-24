@@ -93,6 +93,12 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
+    if text == "🔍 Tra cứu đơn":
+        from src.bot.handlers.search import handle_search_menu_reply
+
+        await handle_search_menu_reply(update, context)
+        return
+
     if text == "❓ Trợ giúp":
         await update.message.reply_text(
             "❓ <b>HƯỚNG DẪN SỬ DỤNG BOT</b>\n\n"
