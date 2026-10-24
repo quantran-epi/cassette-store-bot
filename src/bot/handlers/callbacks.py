@@ -1,21 +1,23 @@
 import html
 import logging
 import re
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from src.db.customers import create_customer, get_customer_by_phone, update_customer
+from src.bot.handlers.ingest import render_preview_card
+from src.db.customers import add_address, create_customer, get_customer_by_phone
 from src.db.orders import create_order
 from src.models.customer import Customer
 from src.models.order import Order, OrderStatus
 
 logger = logging.getLogger(__name__)
 
-CALLBACK_PATTERN = re.compile(r"^ord:(cf|ca):([a-f0-9]{8})$")
+CALLBACK_PATTERN = re.compile(r"^ord:(cf|ca|ad):([a-f0-9]{8})(?::(\d+))?$")
 
 
 async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle 1-tap confirmation and cancellation callbacks for order drafts."""
+    """Handle 1-tap confirmation, cancellation, and address selection callbacks."""
     query = update.callback_query
     if not query or not query.data:
         return
@@ -31,8 +33,28 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
     pending_orders = context.user_data.get("pending_orders", {})
 
     if draft_id not in pending_orders:
+        await query.edit_message_text("Thao tác hết hạn, bác vui lòng gửi lại tin nhắn nhé!")
+        return
+
+    draft = pending_orders[draft_id]
+
+    # Handle address selection (ord:ad:<draft_id>:<index>)
+    if action == "ad":
+        idx_str = match.group(3)
+        available = draft.get("available_addresses", [])
+        if idx_str is not None:
+            addr_idx = int(idx_str)
+            # Bounds check per T-02-05
+            if 0 <= addr_idx < len(available):
+                draft["shipping_address"] = available[addr_idx]
+                draft["address_auto_filled"] = False
+
+        stats = draft.get("stats")
+        preview_text, reply_markup = render_preview_card(draft, stats)
         await query.edit_message_text(
-            "Thao tác hết hạn, bác vui lòng gửi lại tin nhắn nhé!"
+            text=preview_text,
+            reply_markup=reply_markup,
+            parse_mode="HTML",
         )
         return
 
@@ -47,10 +69,14 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Handle confirmation (persist customer & order to SQLite)
     if action == "cf":
-        draft = pending_orders.pop(draft_id)
+        pending_orders.pop(draft_id, None)
 
         app_context = context.application.bot_data.get("app_context")
-        db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
+        db = (
+            getattr(app_context, "db", None)
+            if app_context
+            else context.application.bot_data.get("db")
+        )
 
         if not db:
             logger.error("Database connection missing in bot_data")
@@ -75,10 +101,9 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
             customer = new_customer
             customer.id = cust_id
         else:
-            # If new address provided not already in customer's addresses, append it
-            if address and address not in customer.addresses:
-                customer.addresses.append(address)
-                await update_customer(db, customer)
+            # If customer provided a new address, append idempotently (D-06)
+            if address:
+                await add_address(db, customer.id, address)
 
         # Create Order
         new_order = Order(

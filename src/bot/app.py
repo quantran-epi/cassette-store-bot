@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import aiosqlite
 from openai import AsyncOpenAI
 from telegram import Update
@@ -14,7 +15,7 @@ from telegram.ext import (
 
 from src.bot.handlers.base import ping_command, start_command
 from src.bot.handlers.callbacks import handle_order_callback
-from src.bot.handlers.ingest import handle_text_order
+from src.bot.handlers.ingest import handle_photo_order, handle_text_order
 from src.bot.security import whitelist_gate
 from src.config import Settings
 
@@ -57,7 +58,17 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(CommandHandler("ping", ping_command), group=0)
 
     # Register ingestion and callback handlers at group 0
-    app.add_handler(CallbackQueryHandler(handle_order_callback, pattern=r"^ord:(cf|ca):"), group=0)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_order), group=0)
+    app.add_handler(
+        CallbackQueryHandler(handle_order_callback, pattern=r"^ord:(cf|ca|ad):"),
+        group=0,
+    )
+    app.add_handler(
+        MessageHandler(filters.PHOTO, handle_photo_order),
+        group=0,
+    )
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_order),
+        group=0,
+    )
 
     return app

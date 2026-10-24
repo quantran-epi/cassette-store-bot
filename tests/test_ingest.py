@@ -1,13 +1,16 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from telegram import Update
 from telegram.ext import CallbackContext
 
-from src.bot.handlers.ingest import render_preview_card, handle_text_order
 from src.bot.handlers.callbacks import handle_order_callback
-from src.db.orders import list_orders_by_status
-from src.models.order import OrderStatus
+from src.bot.handlers.ingest import handle_photo_order, handle_text_order, render_preview_card
+from src.db.customers import create_customer, get_customer_by_phone
+from src.db.orders import create_order, list_orders_by_status
+from src.models.customer import Customer
 from src.models.extractor import ExtractedOrder
+from src.models.order import Order, OrderStatus
 
 
 def test_render_preview_card_layout_and_buttons():
@@ -276,3 +279,328 @@ async def test_handle_text_order_missing_phone(test_db):
     message.reply_text.assert_awaited_once()
     assert "số điện thoại" in message.reply_text.call_args[0][0]
     assert len(context.user_data.get("pending_orders", {})) == 0
+
+
+@pytest.mark.asyncio
+async def test_photo_order_caption_extraction(test_db):
+    """handle_photo_order extracts caption with LLM and stores highest-res photo_file_id in draft."""
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.caption = "Khách Lan 0903334444 123 Hai Bà Trưng 1 băng Tuấn Vũ 150k"
+
+    # Telegram provides photos in ascending resolutions
+    photo_thumb = MagicMock()
+    photo_thumb.file_id = "thumb_id"
+    photo_hi_res = MagicMock()
+    photo_hi_res.file_id = "hi_res_photo_id"
+    message.photo = [photo_thumb, photo_hi_res]
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Khách Lan",
+        customer_phone="0903334444",
+        shipping_address="123 Hai Bà Trưng",
+        items_text="1 băng Tuấn Vũ",
+        total_amount=150000,
+        cod_amount=150000,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    try:
+        await handle_photo_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    assert "150.000 đ" in message.reply_text.call_args[1]["text"]
+
+    pending = context.user_data.get("pending_orders", {})
+    assert len(pending) == 1
+    draft = list(pending.values())[0]
+    assert draft["photo_file_ids"] == ["hi_res_photo_id"]
+    assert draft["customer_name"] == "Khách Lan"
+
+
+@pytest.mark.asyncio
+async def test_photo_order_missing_caption(test_db):
+    """handle_photo_order asks politely if photo has no caption."""
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.caption = None
+    message.photo = [MagicMock(file_id="photo_1")]
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+
+    await handle_photo_order(update, context)
+    message.reply_text.assert_awaited_once()
+    assert "chú thích" in message.reply_text.call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_returning_customer_stats_and_bom_warning(test_db):
+    """Returning customer displays order count, total spent, and BOM HÀNG warning in preview card."""
+    cust_id = await create_customer(
+        test_db,
+        Customer(name="Khách Bom", phones=["0909998888"], addresses=["Địa chỉ cũ"]),
+    )
+    # Add a BOM_HANG order for this customer
+    await create_order(
+        test_db,
+        Order(
+            customer_id=cust_id,
+            customer_name="Khách Bom",
+            customer_phone="0909998888",
+            shipping_address="Địa chỉ cũ",
+            items_text="Băng cũ",
+            total_amount=200000,
+            status=OrderStatus.BOM_HANG,
+        ),
+    )
+
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.text = "Khách Bom 0909998888 1 băng Chế Linh 180k"
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Khách Bom",
+        customer_phone="0909998888",
+        shipping_address=None,
+        items_text="1 băng Chế Linh",
+        total_amount=180000,
+        cod_amount=180000,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    try:
+        await handle_text_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    reply_text = message.reply_text.call_args[1]["text"]
+    assert "CẢNH BÁO: Khách từng có 1 đơn BOM HÀNG!" in reply_text
+    assert "Khách quen: 1 đơn" in reply_text
+    # Check auto-filled single address
+    assert "tự lấy từ đơn trước" in reply_text
+    assert "Địa chỉ cũ" in reply_text
+
+
+@pytest.mark.asyncio
+async def test_address_auto_fill_and_picker_buttons(test_db):
+    """Customer with 2+ addresses gets inline address picker buttons ord:ad:<id>:<idx>."""
+    await create_customer(
+        test_db,
+        Customer(
+            name="Khách Nhiều Nhà",
+            phones=["0912000111"],
+            addresses=["123 Lê Lợi, Q1, HCM", "456 Nguyễn Trãi, Q5, HCM"],
+        ),
+    )
+
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.text = "0912000111 2 băng 200k"
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Khách Nhiều Nhà",
+        customer_phone="0912000111",
+        shipping_address=None,
+        items_text="2 băng",
+        total_amount=200000,
+        cod_amount=200000,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    try:
+        await handle_text_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    reply_markup = message.reply_text.call_args[1]["reply_markup"]
+    keyboard = reply_markup.inline_keyboard
+    # Should have address button row(s) plus confirm/cancel row
+    assert len(keyboard) >= 2
+    address_callbacks = [
+        btn.callback_data for row in keyboard for btn in row if "ord:ad:" in btn.callback_data
+    ]
+    assert len(address_callbacks) == 2
+    assert address_callbacks[0].endswith(":0")
+    assert address_callbacks[1].endswith(":1")
+
+
+@pytest.mark.asyncio
+async def test_address_selection_callback(test_db):
+    """Callback ord:ad:<draft_id>:<index> updates shipping_address and re-renders preview card."""
+    draft_id = "abcd1234"
+    draft_data = {
+        "draft_id": draft_id,
+        "customer_name": "Khách Test",
+        "customer_phone": "0912000111",
+        "shipping_address": "456 Nguyễn Trãi, Q5, HCM",
+        "available_addresses": ["123 Lê Lợi, Q1, HCM", "456 Nguyễn Trãi, Q5, HCM"],
+        "items_text": "2 băng",
+        "total_amount": 200000,
+        "cod_amount": 200000,
+        "deposit_amount": 0,
+        "payment_method": "COD",
+        "notes": "",
+        "photo_file_ids": [],
+    }
+
+    update = MagicMock(spec=Update)
+    query = MagicMock()
+    # Click on first address (index 0)
+    query.data = f"ord:ad:{draft_id}:0"
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update.callback_query = query
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {"pending_orders": {draft_id: draft_data}}
+    app_context = MagicMock()
+    app_context.db = test_db
+    context.application.bot_data = {"app_context": app_context}
+
+    await handle_order_callback(update, context)
+
+    query.answer.assert_awaited_once()
+    # Draft should be updated in memory to the selected address
+    assert (
+        context.user_data["pending_orders"][draft_id]["shipping_address"] == "123 Lê Lợi, Q1, HCM"
+    )
+    query.edit_message_text.assert_awaited_once()
+    kwargs = query.edit_message_text.call_args[1]
+    edited_text = kwargs.get("text") or query.edit_message_text.call_args[0][0]
+    assert "123 Lê Lợi, Q1, HCM" in edited_text
+
+
+@pytest.mark.asyncio
+async def test_llm_gateway_error_fallback(test_db):
+    """When LLM gateway fails with network/timeout exception, bot replies politely."""
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.text = "0912345678 Đặt 2 băng"
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(side_effect=Exception("Connection timeout to 9router gateway")),
+    )
+    try:
+        await handle_text_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    reply_msg = message.reply_text.call_args[0][0]
+    assert "gián đoạn kết nối" in reply_msg
+    assert len(context.user_data.get("pending_orders", {})) == 0
+
+
+@pytest.mark.asyncio
+async def test_order_confirmation_appends_new_address_for_existing_customer(test_db):
+    """When confirming order with new address, it is idempotently added to customer's addresses."""
+    await create_customer(
+        test_db,
+        Customer(
+            name="Anh Tuấn",
+            phones=["0977112233"],
+            addresses=["Địa chỉ cũ 1"],
+        ),
+    )
+
+    draft_id = "feed1122"
+    draft_data = {
+        "draft_id": draft_id,
+        "customer_name": "Anh Tuấn",
+        "customer_phone": "0977112233",
+        "shipping_address": "Địa chỉ mới 2",
+        "items_text": "1 băng",
+        "total_amount": 100000,
+        "cod_amount": 100000,
+        "deposit_amount": 0,
+        "payment_method": "COD",
+        "notes": "",
+        "photo_file_ids": ["photo_123"],
+    }
+
+    update = MagicMock(spec=Update)
+    query = MagicMock()
+    query.data = f"ord:cf:{draft_id}"
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update.callback_query = query
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {"pending_orders": {draft_id: draft_data}}
+    app_context = MagicMock()
+    app_context.db = test_db
+    context.application.bot_data = {"app_context": app_context}
+
+    await handle_order_callback(update, context)
+
+    # Customer should now have both addresses
+    customer = await get_customer_by_phone(test_db, "0977112233")
+    assert customer is not None
+    assert len(customer.addresses) == 2
+    assert "Địa chỉ cũ 1" in customer.addresses
+    assert "Địa chỉ mới 2" in customer.addresses
