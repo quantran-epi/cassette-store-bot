@@ -155,12 +155,34 @@ async def test_llm_extractor_markdown_fence_cleaning():
 
 @pytest.mark.asyncio
 async def test_llm_extractor_both_tiers_fail_returns_none():
-    """If both Tier 1 and Tier 2 fail, extract_order_from_text returns None safely."""
+    """If both Tier 1 and Tier 2 fail and no phone in text, returns None safely."""
     mock_client = MagicMock()
     request = httpx.Request("POST", "https://api.9router.com/v1/chat/completions")
     response = httpx.Response(500, request=request)
     mock_client.beta.chat.completions.parse = AsyncMock(side_effect=Exception("Network error"))
     mock_client.chat.completions.create = AsyncMock(side_effect=Exception("Connection refused"))
 
-    res = await extract_order_from_text(mock_client, "gpt-4o-mini", "Tin nhắn lỗi")
+    res = await extract_order_from_text(mock_client, "gpt-4o-mini", "Tin nhắn lỗi không có số")
     assert res is None
+
+
+@pytest.mark.asyncio
+async def test_llm_extractor_deterministic_fallbacks():
+    """Verify regex fallback recovers phone and COD if LLM drops them."""
+    mock_client = MagicMock()
+    # LLM returns partial JSON with missing phone and cod
+    partial_json = '{"customer_name": "Nguyễn Văn A", "shipping_address": "Hà Nội", "total_amount": 250000}'
+    mock_choice = MagicMock()
+    mock_choice.message.content = partial_json
+    mock_tier2_resp = MagicMock()
+    mock_tier2_resp.choices = [mock_choice]
+    mock_client.beta.chat.completions.parse = AsyncMock(side_effect=Exception("parse error"))
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_tier2_resp)
+
+    raw_text = "Nguyễn Văn A Hà Nội ĐT 0912345678 2 băng Tuấn Vũ thu 250k"
+    res = await extract_order_from_text(mock_client, "gpt-4o-mini", raw_text)
+
+    assert res is not None
+    assert res.customer_phone == "0912345678"
+    assert res.cod_amount == 250000
+    assert res.total_amount == 250000
