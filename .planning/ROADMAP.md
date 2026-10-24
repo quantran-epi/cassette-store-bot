@@ -76,7 +76,7 @@ Plans:
   4. Người dùng chuyển trạng thái đơn (sang `Đang làm`, `Đã đóng gói`, `Đã tạo đơn`, `Shipper đã lấy`, `Đã giao`, `Bom hàng`, `Huỷ`) chỉ bằng 1 chạm nút Inline và nhận phản hồi tức thì không bị lỗi `Message is not modified`.
   5. Người dùng có thể nhập/cập nhật mã vận đơn cho đơn hàng và xem lại hoặc gửi thêm ảnh đính kèm (qua `file_id` Telegram) trực tiếp trong chat.
 
-**Plans**: 3/3 plans executed
+**Plans**: 3/3 plans complete
 **UI hint**: yes
 
 Plans:
@@ -113,5 +113,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete    | 2026-10-24 |
 | 2. LLM Ingestion & Interactive Confirmation | 2/2 | Complete    | 2026-10-24 |
-| 3. Ergonomic Order Management & Low-Tech Actions | 3/3 | In Progress|  |
+| 3. Ergonomic Order Management & Low-Tech Actions | 3/3 | Complete    | 2026-10-24 |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
