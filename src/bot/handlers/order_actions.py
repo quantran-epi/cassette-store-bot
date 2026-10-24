@@ -184,3 +184,209 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
                     raise
+
+
+async def handle_order_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle order actions: tracking code prompt, photo viewer, photo prompt, and cancel."""
+    query = update.callback_query
+    if not query or not query.data:
+        return
+
+    data = query.data
+
+    # Cancel action
+    if data == "ord_act:cancel":
+        await query.answer(text="Đã huỷ thao tác!", show_alert=False)
+        context.user_data.pop("action_state", None)
+        try:
+            await query.edit_message_text(
+                "❌ <b>ĐÃ HUỶ THAO TÁC</b>\n<i>Bác có thể tiếp tục chọn các chức năng khác từ menu nhé!</i>",
+                parse_mode="HTML",
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    match = ACTION_CALLBACK_PATTERN.match(data)
+    if not match:
+        return
+
+    action_type = match.group(1)
+    order_id_str = match.group(2)
+    if not order_id_str:
+        return
+    order_id = int(order_id_str)
+
+    # 1. Tracking code input prompt
+    if action_type == "track":
+        await query.answer()
+        context.user_data["action_state"] = {
+            "action": "await_tracking",
+            "order_id": order_id,
+            "expires_at": time.time() + 120,
+        }
+        cancel_kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("❌ Huỷ bỏ thao tác", callback_data="ord_act:cancel")]]
+        )
+        try:
+            await query.edit_message_text(
+                text=f"🚚 <b>NHẬP MÃ VẬN ĐƠN CHO ĐƠN #{order_id}</b>\n\n"
+                f"Bác gửi mã vận đơn đối tác ship (hoặc dán ảnh biên lai ship) vào ô chat cho đơn này nhé.\n\n"
+                f"<i>(Thời gian chờ là 2 phút)</i>",
+                reply_markup=cancel_kb,
+                parse_mode="HTML",
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    # 2. Add photo prompt
+    if action_type == "add_photo":
+        await query.answer()
+        context.user_data["action_state"] = {
+            "action": "await_photo",
+            "order_id": order_id,
+            "expires_at": time.time() + 120,
+        }
+        cancel_kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("❌ Huỷ bỏ thao tác", callback_data="ord_act:cancel")]]
+        )
+        try:
+            await query.edit_message_text(
+                text=f"📷 <b>GỬI THÊM ẢNH CHO ĐƠN #{order_id}</b>\n\n"
+                f"Bác gửi 1 hoặc nhiều ảnh cho đơn này nhé.\n\n"
+                f"<i>(Thời gian chờ là 2 phút)</i>",
+                reply_markup=cancel_kb,
+                parse_mode="HTML",
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    # 3. View photos album
+    if action_type == "view_photo":
+        await query.answer()
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await query.answer("Lỗi kết nối cơ sở dữ liệu!", show_alert=True)
+                return
+
+            order = await get_order_by_id(active_db, order_id)
+            if not order or not order.photo_file_ids:
+                await query.answer("Đơn này chưa có ảnh nào bác nhé!", show_alert=True)
+                return
+
+            chat_id = update.effective_chat.id if update.effective_chat else query.message.chat_id
+            photo_ids = order.photo_file_ids
+
+            if len(photo_ids) == 1:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo_ids[0],
+                    caption=f"📷 Ảnh đính kèm đơn #{order_id}",
+                )
+            else:
+                # Chunk into max 10 photos per media group per Telegram limits (T-03-06, Pitfall 4)
+                for chunk in [photo_ids[i : i + 10] for i in range(0, len(photo_ids), 10)]:
+                    media = [
+                        InputMediaPhoto(
+                            media=fid,
+                            caption=f"📷 Ảnh đính kèm đơn #{order_id}" if fid == chunk[0] else None,
+                        )
+                        for fid in chunk
+                    ]
+                    await context.bot.send_media_group(chat_id=chat_id, media=media)
+        return
+
+
+async def handle_action_state_text(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, state: dict
+) -> bool:
+    """Handle text input when action_state is active (e.g. await_tracking). Returns True if handled."""
+    action = state.get("action")
+    order_id = state.get("order_id")
+
+    if action == "await_tracking" and order_id and update.message and update.message.text:
+        tracking_code = update.message.text.strip()
+        # Security mitigation T-03-04: strip whitespace, max 100 chars, non-empty
+        if not tracking_code:
+            await update.message.reply_text("Mã vận đơn không được để trống. Bác gửi lại nhé!")
+            return True
+
+        if len(tracking_code) > 100:
+            tracking_code = tracking_code[:100]
+
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await update.message.reply_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return True
+
+            success = await update_order_tracking(active_db, order_id, tracking_code)
+            context.user_data.pop("action_state", None)
+
+            if success:
+                order = await get_order_by_id(active_db, order_id)
+                card_text = (
+                    f"✅ <b>ĐÃ CẬP NHẬT MÃ VẬN ĐƠN</b>\n\n"
+                    f"📦 <b>Đơn:</b> <code>#{order_id}</code>\n"
+                    f"🚚 <b>Mã vận đơn:</b> <code>{tracking_code}</code>"
+                )
+                back_kb = None
+                if order:
+                    today_str = order.created_at.strftime("%Y-%m-%d") if order.created_at else ""
+                    back_kb = InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
+                    )
+                await update.message.reply_text(
+                    text=card_text,
+                    reply_markup=back_kb,
+                    parse_mode="HTML",
+                )
+            else:
+                await update.message.reply_text("⚠️ Không tìm thấy đơn hàng để cập nhật mã vận đơn.")
+            return True
+
+    return False
+
+
+async def handle_action_state_photo(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, state: dict
+) -> bool:
+    """Handle photo input when action_state is active (e.g. await_photo). Returns True if handled."""
+    action = state.get("action")
+    order_id = state.get("order_id")
+
+    if action == "await_photo" and order_id and update.message and update.message.photo:
+        highest_res_photo = update.message.photo[-1]
+        file_id = highest_res_photo.file_id
+
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await update.message.reply_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return True
+
+            success = await append_order_photos(active_db, order_id, [file_id])
+            if success:
+                order = await get_order_by_id(active_db, order_id)
+                count = len(order.photo_file_ids) if order else 1
+                back_kb = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
+                )
+                await update.message.reply_text(
+                    text=f"✅ <b>ĐÃ THÊM ẢNH THÀNH CÔNG</b>\n\n"
+                    f"Đơn #{order_id} hiện có <b>{count} ảnh</b> đính kèm.\n"
+                    f"Bác có thể gửi thêm ảnh nữa hoặc bấm xem lại thẻ đơn nhé!",
+                    reply_markup=back_kb,
+                    parse_mode="HTML",
+                )
+            else:
+                await update.message.reply_text("⚠️ Không tìm thấy đơn hàng để thêm ảnh.")
+            return True
+
+    return False

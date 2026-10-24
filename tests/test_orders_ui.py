@@ -14,7 +14,12 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import start_command
-from src.bot.handlers.order_actions import handle_order_status_callback
+from src.bot.handlers.order_actions import (
+    handle_action_state_photo,
+    handle_action_state_text,
+    handle_order_action_callback,
+    handle_order_status_callback,
+)
 from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
 from src.bot.keyboards import (
     NEXT_STATUS_MAP,
@@ -565,6 +570,238 @@ async def test_order_status_bad_request_ignored(test_db):
     # Should not raise exception
     await handle_order_status_callback(update, context)
     query.answer.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_order_action_track_state_and_cancel():
+    """ord_act:track sets action_state with 120s TTL; ord_act:cancel clears it."""
+    import time
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = "ord_act:track:88"
+
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {}
+
+    await handle_order_action_callback(update, context)
+
+    # State set
+    state = context.user_data.get("action_state")
+    assert state is not None
+    assert state["action"] == "await_tracking"
+    assert state["order_id"] == 88
+    assert state["expires_at"] > time.time() + 100
+
+    query.edit_message_text.assert_awaited_once()
+    assert "NHẬP MÃ VẬN ĐƠN CHO ĐƠN #88" in query.edit_message_text.call_args[1]["text"]
+
+    # Cancel action
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = "ord_act:cancel"
+
+    await handle_order_action_callback(update, context)
+
+    assert "action_state" not in context.user_data
+    query.edit_message_text.assert_awaited_once()
+    assert "ĐÃ HUỶ THAO TÁC" in query.edit_message_text.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_handle_action_state_text_tracking_updates_db(test_db):
+    """Sending text while in await_tracking updates DB tracking_code and clears state."""
+    import time
+    from src.db.orders import create_order, get_order_by_id
+
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_name="Anh Nam",
+            customer_phone="0911223344",
+            shipping_address="Hà Nội",
+            items_text="Băng",
+            total_amount=120000,
+        ),
+    )
+
+    message = MagicMock(spec=Message)
+    message.text = "  VNP123456789VN  "
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    state = {
+        "action": "await_tracking",
+        "order_id": oid,
+        "expires_at": time.time() + 120,
+    }
+    context.user_data = {"action_state": state}
+
+    handled = await handle_action_state_text(update, context, state)
+    assert handled is True
+    assert "action_state" not in context.user_data
+
+    # DB verified
+    db_order = await get_order_by_id(test_db, oid)
+    assert db_order.tracking_code == "VNP123456789VN"
+
+    message.reply_text.assert_awaited_once()
+    assert "ĐÃ CẬP NHẬT MÃ VẬN ĐƠN" in message.reply_text.call_args[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_handle_text_order_bypasses_llm_when_action_state_active(test_db):
+    """handle_text_order intercepts text when action_state is active without calling LLM."""
+    import time
+    from src.bot.handlers.ingest import handle_text_order
+    from src.db.orders import create_order, get_order_by_id
+
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_name="Chị Mai",
+            customer_phone="0988776655",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=150000,
+        ),
+    )
+
+    message = MagicMock(spec=Message)
+    message.text = "GHN_TRACK_9988"
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    context.user_data = {
+        "action_state": {
+            "action": "await_tracking",
+            "order_id": oid,
+            "expires_at": time.time() + 120,
+        }
+    }
+
+    await handle_text_order(update, context)
+
+    # State cleared
+    assert "action_state" not in context.user_data
+    # Tracking updated
+    db_order = await get_order_by_id(test_db, oid)
+    assert db_order.tracking_code == "GHN_TRACK_9988"
+
+
+@pytest.mark.asyncio
+async def test_handle_order_action_view_photos(test_db):
+    """view_photo calls send_photo for 1 image and send_media_group for >= 2 images."""
+    from src.db.orders import create_order
+
+    # Order 1: 1 photo
+    oid1 = await create_order(
+        test_db,
+        Order(
+            customer_name="Bác Một Ảnh",
+            customer_phone="0911",
+            shipping_address="HN",
+            items_text="Băng",
+            total_amount=100000,
+            photo_file_ids=["file_one"],
+        ),
+    )
+
+    # Order 2: 3 photos
+    oid2 = await create_order(
+        test_db,
+        Order(
+            customer_name="Bác Ba Ảnh",
+            customer_phone="0922",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=200000,
+            photo_file_ids=["file_1", "file_2", "file_3"],
+        ),
+    )
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.message.chat_id = 999
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    update.effective_chat.id = 999
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    context.bot.send_photo = AsyncMock()
+    context.bot.send_media_group = AsyncMock()
+
+    # 1 photo test
+    query.data = f"ord_act:view_photo:{oid1}"
+    await handle_order_action_callback(update, context)
+    context.bot.send_photo.assert_awaited_once()
+    assert context.bot.send_photo.call_args[1]["photo"] == "file_one"
+
+    # >= 2 photos test
+    query.data = f"ord_act:view_photo:{oid2}"
+    await handle_order_action_callback(update, context)
+    context.bot.send_media_group.assert_awaited_once()
+    media_arg = context.bot.send_media_group.call_args[1]["media"]
+    assert len(media_arg) == 3
+
+
+@pytest.mark.asyncio
+async def test_handle_action_state_photo_appends_photos(test_db):
+    """Sending photo while in await_photo appends photo file_id to order in DB."""
+    import time
+    from telegram import PhotoSize
+    from src.db.orders import create_order, get_order_by_id
+
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_name="Anh Thêm Ảnh",
+            customer_phone="0933",
+            shipping_address="Đà Nẵng",
+            items_text="Băng",
+            total_amount=100000,
+            photo_file_ids=["photo_old"],
+        ),
+    )
+
+    photo_small = MagicMock(spec=PhotoSize, file_id="thumb_id")
+    photo_large = MagicMock(spec=PhotoSize, file_id="high_res_id")
+
+    message = MagicMock(spec=Message)
+    message.photo = [photo_small, photo_large]
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    state = {
+        "action": "await_photo",
+        "order_id": oid,
+        "expires_at": time.time() + 120,
+    }
+
+    handled = await handle_action_state_photo(update, context, state)
+    assert handled is True
+
+    db_order = await get_order_by_id(test_db, oid)
+    assert db_order.photo_file_ids == ["photo_old", "high_res_id"]
+    message.reply_text.assert_awaited_once()
+    assert "ĐÃ THÊM ẢNH THÀNH CÔNG" in message.reply_text.call_args[1]["text"]
+
 
 
 

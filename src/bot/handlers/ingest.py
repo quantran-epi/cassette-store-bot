@@ -1,5 +1,6 @@
 import html
 import logging
+import time
 import uuid
 from contextlib import nullcontext
 
@@ -161,6 +162,20 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if text.startswith("/"):
         return  # Allow command handlers to process
 
+    # Check for active action_state (e.g. await_tracking) per D-12
+    action_state = context.user_data.get("action_state")
+    if action_state:
+        expires_at = action_state.get("expires_at", 0)
+        if time.time() <= expires_at:
+            from src.bot.handlers.order_actions import handle_action_state_text
+
+            handled = await handle_action_state_text(update, context, action_state)
+            if handled:
+                return
+        else:
+            # Expired after 120s: clean up state and proceed to regular ingestion
+            context.user_data.pop("action_state", None)
+
     await update.message.chat.send_action(ChatAction.TYPING)
 
     app_context = context.application.bot_data.get("app_context")
@@ -204,6 +219,20 @@ async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handle incoming photo with caption as an order message."""
     if not update.message or not update.message.photo:
         return
+
+    # Check for active action_state (e.g. await_photo) per D-11, D-12
+    action_state = context.user_data.get("action_state")
+    if action_state:
+        expires_at = action_state.get("expires_at", 0)
+        if time.time() <= expires_at:
+            from src.bot.handlers.order_actions import handle_action_state_photo
+
+            handled = await handle_action_state_photo(update, context, action_state)
+            if handled:
+                return
+        else:
+            # Expired after 120s: clean up state and proceed to regular ingestion
+            context.user_data.pop("action_state", None)
 
     caption = (update.message.caption or "").strip()
     if not caption:
