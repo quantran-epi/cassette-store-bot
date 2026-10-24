@@ -16,6 +16,7 @@ from telegram.ext import (
 from src.bot.handlers.base import ping_command, start_command
 from src.bot.handlers.callbacks import handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
+from src.bot.handlers.order_actions import handle_order_status_callback
 from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
 from src.bot.security import whitelist_gate
 from src.config import Settings
@@ -69,6 +70,13 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     )
 
     # Register navigation and order callbacks at group 0
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_order_status_callback,
+            pattern=r"^(ord_st(_menu|_cf)?:|ord_v_cur:)",
+        ),
+        group=0,
+    )
     app.add_handler(
         CallbackQueryHandler(
             handle_order_nav_callback,

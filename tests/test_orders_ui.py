@@ -14,6 +14,7 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import start_command
+from src.bot.handlers.order_actions import handle_order_status_callback
 from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
 from src.bot.keyboards import (
     NEXT_STATUS_MAP,
@@ -429,6 +430,142 @@ async def test_handle_order_nav_callback_flow(test_db):
     await handle_order_nav_callback(update, context)
     bk_text = query.edit_message_text.call_args[1]["text"]
     assert "Trang 1/2" in bk_text
+
+
+@pytest.mark.asyncio
+async def test_order_status_normal_transition(test_db):
+    """Normal status change updates DB immediately, shows toast alert, and refreshes card."""
+    from src.db.orders import create_order, get_order_by_id
+
+    order = Order(
+        customer_name="Trần Thị Bình",
+        customer_phone="0987654321",
+        shipping_address="Đà Nẵng",
+        items_text="Băng Hương Lan",
+        total_amount=220000,
+        cod_amount=220000,
+        status=OrderStatus.CHO_LAM,
+    )
+    oid = await create_order(test_db, order)
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = f"ord_st:{oid}:DANG_LAM"
+
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    await handle_order_status_callback(update, context)
+
+    # Toast alert called
+    query.answer.assert_awaited_once()
+    assert "Đã chuyển sang: 🛠️ Đang làm" in query.answer.call_args[1]["text"]
+    assert query.answer.call_args[1]["show_alert"] is False
+
+    # DB verified
+    db_order = await get_order_by_id(test_db, oid)
+    assert db_order.status == OrderStatus.DANG_LAM
+
+    # Message refreshed
+    query.edit_message_text.assert_awaited_once()
+    assert "🛠️ Đang làm" in query.edit_message_text.call_args[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_order_status_sensitive_requires_confirmation(test_db):
+    """Sensitive status (BOM_HANG, HUY_DON) requires 2-step confirmation modal before DB write."""
+    from src.db.orders import create_order, get_order_by_id
+
+    order = Order(
+        customer_name="Khách Bom",
+        customer_phone="0911000999",
+        shipping_address="Hải Phòng",
+        items_text="Băng Giao Linh",
+        total_amount=150000,
+        cod_amount=150000,
+        status=OrderStatus.CHO_LAM,
+    )
+    oid = await create_order(test_db, order)
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = f"ord_st:{oid}:BOM_HANG"
+
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    await handle_order_status_callback(update, context)
+
+    # Step 1: Must NOT update DB yet
+    db_order = await get_order_by_id(test_db, oid)
+    assert db_order.status == OrderStatus.CHO_LAM
+
+    # Step 1: Confirmation modal rendered
+    query.edit_message_text.assert_awaited_once()
+    modal_text = query.edit_message_text.call_args[1]["text"]
+    modal_kb = query.edit_message_text.call_args[1]["reply_markup"]
+    assert "XÁC NHẬN CHUYỂN TRẠNG THÁI" in modal_text
+    flat_cbs = [btn.callback_data for row in modal_kb.inline_keyboard for btn in row]
+    assert f"ord_st_cf:{oid}:BOM_HANG" in flat_cbs
+    assert f"ord_v_cur:{oid}" in flat_cbs
+
+    # Step 2: Confirming via ord_st_cf updates DB
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_st_cf:{oid}:BOM_HANG"
+
+    await handle_order_status_callback(update, context)
+
+    # Toast alert called
+    query.answer.assert_awaited_once()
+    assert "Đã chuyển sang: 🚫 Bom hàng" in query.answer.call_args[1]["text"]
+
+    # DB verified updated
+    updated_order = await get_order_by_id(test_db, oid)
+    assert updated_order.status == OrderStatus.BOM_HANG
+
+    # Message refreshed with updated card
+    query.edit_message_text.assert_awaited_once()
+    assert "🚫 Bom hàng" in query.edit_message_text.call_args[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_order_status_bad_request_ignored(test_db):
+    """BadRequest with 'Message is not modified' is caught safely without raising."""
+    from telegram.error import BadRequest
+    from src.db.orders import create_order
+
+    order = Order(
+        customer_name="Khách Test Safe",
+        customer_phone="0933445566",
+        shipping_address="Cần Thơ",
+        items_text="Băng",
+        total_amount=100000,
+        cod_amount=100000,
+        status=OrderStatus.CHO_LAM,
+    )
+    oid = await create_order(test_db, order)
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock(side_effect=BadRequest("Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"))
+    query.data = f"ord_st:{oid}:DANG_LAM"
+
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    # Should not raise exception
+    await handle_order_status_callback(update, context)
+    query.answer.assert_awaited_once()
+
 
 
 
