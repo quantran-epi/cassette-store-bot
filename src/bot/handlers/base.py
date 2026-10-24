@@ -4,25 +4,31 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from src.bot.keyboards import build_main_menu_reply_keyboard
 from src.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /start command for whitelisted users."""
+    """Handle /start command for whitelisted users with persistent 2x2 reply keyboard."""
     user = update.effective_user
     user_id = user.id if user else "Unknown"
-    first_name = user.first_name if user else "bạn"
+    first_name = user.first_name if user else "bác"
 
     text = (
         f"Xin chào {first_name}!\n\n"
         f"🤖 Bot Quản Lý Đơn Hàng Băng Cassette sẵn sàng phục vụ.\n"
         f"Telegram User ID nhận diện: `{user_id}`\n\n"
-        f"Sử dụng lệnh /ping để kiểm tra trạng thái hoạt động."
+        f"Bác chỉ cần bấm các nút to bên dưới để xem đơn hoặc gửi tin nhắn đặt hàng bất kỳ lúc nào nhé!"
     )
+    keyboard = build_main_menu_reply_keyboard()
     if update.effective_message:
-        await update.effective_message.reply_text(text, parse_mode="Markdown")
+        await update.effective_message.reply_text(
+            text,
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
 
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

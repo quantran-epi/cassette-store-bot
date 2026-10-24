@@ -1,7 +1,19 @@
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
-from telegram import CopyTextButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+import pytest
+from telegram import (
+    Chat,
+    CopyTextButton,
+    InlineKeyboardMarkup,
+    Message,
+    ReplyKeyboardMarkup,
+    Update,
+    User,
+)
+from telegram.ext import ContextTypes
 
+from src.bot.handlers.base import start_command
 from src.bot.keyboards import (
     NEXT_STATUS_MAP,
     STATUS_NAMES,
@@ -237,4 +249,37 @@ def test_build_status_selection_keyboard():
     assert len(status_cbs) == 8
     for cb in callbacks:
         assert len(cb.encode("utf-8")) <= 64
+
+
+@pytest.mark.asyncio
+async def test_start_command_sends_reply_keyboard():
+    """start_command attaches 2x2 persistent ReplyKeyboardMarkup (D-01, UI-01, UI-02)."""
+    user = User(id=12345, first_name="Bác Ba", is_bot=False)
+    chat = Chat(id=12345, type="private")
+    message = MagicMock(spec=Message)
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.effective_user = user
+    update.effective_chat = chat
+    update.effective_message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+
+    await start_command(update, context)
+
+    message.reply_text.assert_awaited_once()
+    args, kwargs = message.reply_text.call_args
+    sent_text = args[0]
+    markup = kwargs.get("reply_markup")
+
+    assert "Xin chào Bác Ba!" in sent_text
+    assert "Bác chỉ cần bấm các nút to bên dưới" in sent_text
+    assert isinstance(markup, ReplyKeyboardMarkup)
+    assert markup.resize_keyboard is True
+    assert markup.is_persistent is True
+    assert len(markup.keyboard) == 2
+    assert [btn.text for btn in markup.keyboard[0]] == ["📦 Đơn hôm nay", "📋 Xem theo ngày"]
+    assert [btn.text for btn in markup.keyboard[1]] == ["📝 Nhập đơn mới", "❓ Trợ giúp"]
+
 

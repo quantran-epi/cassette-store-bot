@@ -33,9 +33,10 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     """Build and configure the Telegram Bot Application."""
     app = ApplicationBuilder().token(settings.telegram_bot_token.get_secret_value()).build()
 
+    api_key_str = settings.nine_router_api_key.get_secret_value() or "dummy_key_for_init"
     openai_client = AsyncOpenAI(
         base_url=settings.nine_router_base_url,
-        api_key=settings.nine_router_api_key.get_secret_value(),
+        api_key=api_key_str,
     )
     app_context = AppContext(
         settings=settings,
