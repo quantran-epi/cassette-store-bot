@@ -544,6 +544,115 @@ async def test_search_callback_pagination():
     assert "Đơn #7" in text
 
 
+def test_order_detail_keyboard_custom_back():
+    from src.bot.keyboards import build_order_detail_keyboard
+    from src.models.order import Order, OrderStatus
+
+    order = Order(
+        id=99,
+        customer_name="Khách Test Back",
+        customer_phone="0901234567",
+        shipping_address="HCM",
+        items_text="Băng Test",
+        total_amount=100000,
+        status=OrderStatus.CHO_LAM,
+    )
+
+    # Default back_callback_data
+    kb_def = build_order_detail_keyboard(order, date_str="2026-10-25", page=2)
+    flat_def = [btn.callback_data for row in kb_def.inline_keyboard for btn in row if btn.callback_data]
+    assert "ord_bk:2026-10-25:2" in flat_def
+
+    # Custom back_callback_data for search preservation per D-13
+    kb_custom = build_order_detail_keyboard(order, date_str="search", page=1, back_callback_data="sch_bk:snap999")
+    flat_custom = [btn.callback_data for row in kb_custom.inline_keyboard for btn in row if btn.callback_data]
+    assert "sch_bk:snap999" in flat_custom
+    assert not any("ord_bk:" in cb for cb in flat_custom)
+
+
+@pytest.mark.asyncio
+async def test_search_view_order_detail_and_back_to_results(test_db):
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import CallbackQuery, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.search import handle_search_callback
+    from src.db.orders import create_order
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import SearchResult, SearchResultType
+
+    # 1. Seed order in test_db
+    order = Order(
+        customer_name="Bác Khánh",
+        customer_phone="0911889900",
+        shipping_address="456 Hai Bà Trưng, Đà Nẵng",
+        items_text="3 cuốn Khánh Ly",
+        total_amount=300000,
+        cod_amount=300000,
+        status=OrderStatus.CHO_LAM,
+    )
+    oid = await create_order(test_db, order)
+    order.id = oid
+
+    search_res = SearchResult(
+        result_type=SearchResultType.ORDERS,
+        sql_executed="SELECT * FROM orders",
+        orders=[order],
+    )
+
+    query = MagicMock(spec=CallbackQuery)
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    context.user_data = {
+        "searches": {
+            "search_01": {
+                "query": "tìm đơn bác Khánh",
+                "result": search_res,
+                "page": 1,
+            }
+        }
+    }
+
+    # Step 1: Click 'sch_v:search_01:{oid}' to view full detail card
+    query.data = f"sch_v:search_01:{oid}"
+    await handle_search_callback(update, context)
+
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    detail_text = query.edit_message_text.call_args[1]["text"]
+    detail_kb = query.edit_message_text.call_args[1]["reply_markup"]
+
+    assert f"CHI TIẾT ĐƠN HÀNG #{oid}" in detail_text
+    assert "Bác Khánh" in detail_text
+    assert "456 Hai Bà Trưng" in detail_text
+
+    # Verify back button points to 'sch_bk:search_01'
+    flat_cbs = [btn.callback_data for row in detail_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert "sch_bk:search_01" in flat_cbs
+
+    # Step 2: Click 'sch_bk:search_01' to return to search result snapshot
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = "sch_bk:search_01"
+    await handle_search_callback(update, context)
+
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    back_text = query.edit_message_text.call_args[1]["text"]
+    back_kb = query.edit_message_text.call_args[1]["reply_markup"]
+
+    assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in back_text
+    assert "Có phải bác muốn xem đơn này không?" in back_text
+    flat_back_cbs = [btn.callback_data for row in back_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert f"sch_v:search_01:{oid}" in flat_back_cbs
+    assert "sch_new" in flat_back_cbs
+
+
+
 
 
 

@@ -106,7 +106,10 @@ def render_order_detail_card(order: Order) -> str:
 
 
 def build_order_detail_keyboard(
-    order: Order, date_str: str, page: int
+    order: Order,
+    date_str: str,
+    page: int,
+    back_callback_data: str | None = None,
 ) -> InlineKeyboardMarkup:
     """Build multi-row inline keyboard with 1-tap CopyTextButtons and actions."""
     buttons: list[list[InlineKeyboardButton]] = []
@@ -172,6 +175,7 @@ def build_order_detail_keyboard(
     buttons.append(photo_row)
 
     # 5. Change status menu & Back navigation
+    back_cb = back_callback_data or f"ord_bk:{date_str}:{page}"
     buttons.append(
         [
             InlineKeyboardButton(
@@ -180,7 +184,7 @@ def build_order_detail_keyboard(
             ),
             InlineKeyboardButton(
                 "⬅️ Quay lại",
-                callback_data=f"ord_bk:{date_str}:{page}",
+                callback_data=back_cb,
             ),
         ]
     )
