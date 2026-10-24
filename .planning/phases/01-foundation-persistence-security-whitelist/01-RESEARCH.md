@@ -565,9 +565,9 @@ def build_application(settings: Settings) -> Application:
 | A1 | Người dùng bot là nội bộ (chủ shop/nhân viên), danh sách whitelist tương đối nhỏ (<50 user ID) nên lưu trực tiếp trong biến môi trường và nạp vào bộ nhớ `set[int]`. | Whitelist & Security | Thấp — nếu sau này mở rộng hàng nghìn user thì chuyển sang bảng `whitelist_users` trong SQLite mà không ảnh hưởng logic gate. |
 | A2 | Đơn vị tiền tệ lưu trữ trong database là số nguyên VNĐ (`INTEGER`), không dùng số thực để tránh sai số dấu phẩy động. | Database Schema | Rất thấp — chuẩn tiền tệ VNĐ không có hào/xu, luôn là số nguyên. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Format chi tiết tin nhắn `/start` và `/ping` cho admin:**
+1. **RESOLVED: Format chi tiết tin nhắn `/start` và `/ping` cho admin:**
    - Đã chốt theo Claude's Discretion:
      - `/start`: Hiển thị lời chào thân thiện, thông báo bot quản lý đơn Cassette Store đang hoạt động, hiển thị ID admin đã được xác thực, và tóm tắt các tính năng sẵn sàng.
      - `/ping`: Phản hồi `pong! 🏓`, kèm thông tin uptime bot và trạng thái kết nối SQLite (`OK`).
