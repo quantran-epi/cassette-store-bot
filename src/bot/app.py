@@ -16,6 +16,7 @@ from telegram.ext import (
 from src.bot.handlers.base import ping_command, start_command
 from src.bot.handlers.callbacks import handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
+from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
 from src.bot.security import whitelist_gate
 from src.config import Settings
 
@@ -58,7 +59,23 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(CommandHandler("start", start_command), group=0)
     app.add_handler(CommandHandler("ping", ping_command), group=0)
 
-    # Register ingestion and callback handlers at group 0
+    # Register main menu Reply Keyboard handler (MUST be registered before LLM text ingestion)
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(r"^(📦 Đơn hôm nay|📋 Xem theo ngày|📝 Nhập đơn mới|❓ Trợ giúp)$"),
+            handle_menu_reply,
+        ),
+        group=0,
+    )
+
+    # Register navigation and order callbacks at group 0
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_order_nav_callback,
+            pattern=r"^(ord_(dt|pg|v|bk):|ord_noop$|ord_act:(pick_date|new)$)",
+        ),
+        group=0,
+    )
     app.add_handler(
         CallbackQueryHandler(handle_order_callback, pattern=r"^ord:(cf|ca|ad):"),
         group=0,

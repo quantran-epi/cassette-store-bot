@@ -14,6 +14,7 @@ from telegram import (
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import start_command
+from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
 from src.bot.keyboards import (
     NEXT_STATUS_MAP,
     STATUS_NAMES,
@@ -281,5 +282,153 @@ async def test_start_command_sends_reply_keyboard():
     assert len(markup.keyboard) == 2
     assert [btn.text for btn in markup.keyboard[0]] == ["📦 Đơn hôm nay", "📋 Xem theo ngày"]
     assert [btn.text for btn in markup.keyboard[1]] == ["📝 Nhập đơn mới", "❓ Trợ giúp"]
+
+
+@pytest.mark.asyncio
+async def test_handle_menu_reply_today_orders(test_db):
+    """Clicking '📦 Đơn hôm nay' returns order list for today in Vietnam timezone."""
+    from src.db.orders import create_order
+    from src.bot.keyboards import TZ_VN
+
+    order = Order(
+        customer_name="Khách Hôm Nay",
+        customer_phone="0911223344",
+        shipping_address="Hà Nội",
+        items_text="Băng Nhạc Trẻ",
+        total_amount=180000,
+        cod_amount=180000,
+    )
+    order_id = await create_order(test_db, order)
+
+    user = User(id=123, first_name="Bác Năm", is_bot=False)
+    message = MagicMock(spec=Message)
+    message.text = "📦 Đơn hôm nay"
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.effective_user = user
+    update.message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    await handle_menu_reply(update, context)
+
+    message.reply_text.assert_awaited_once()
+    _, kwargs = message.reply_text.call_args
+    card_text = kwargs.get("text", "")
+    markup = kwargs.get("reply_markup")
+
+    assert "ĐƠN HÀNG NGÀY" in card_text
+    assert f"Đơn #{order_id}" in card_text
+    assert "Khách Hôm Nay" in card_text
+    assert isinstance(markup, InlineKeyboardMarkup)
+
+
+@pytest.mark.asyncio
+async def test_handle_menu_reply_other_buttons():
+    """Clicking date picker, new order, or help returns appropriate responses."""
+    user = User(id=123, first_name="Bác Năm", is_bot=False)
+    message = MagicMock(spec=Message)
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.effective_user = user
+    update.message = message
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {}
+
+    # 1. 📋 Xem theo ngày
+    message.text = "📋 Xem theo ngày"
+    await handle_menu_reply(update, context)
+    _, kwargs = message.reply_text.call_args
+    assert "CHỌN NGÀY XEM ĐƠN HÀNG" in kwargs.get("text", "")
+    assert isinstance(kwargs.get("reply_markup"), InlineKeyboardMarkup)
+
+    # 2. 📝 Nhập đơn mới
+    message.reply_text.reset_mock()
+    message.text = "📝 Nhập đơn mới"
+    await handle_menu_reply(update, context)
+    args, kwargs = message.reply_text.call_args
+    text_val = args[0] if args else kwargs.get("text", "")
+    assert "NHẬP ĐƠN HÀNG MỚI" in text_val
+
+    # 3. ❓ Trợ giúp
+    message.reply_text.reset_mock()
+    message.text = "❓ Trợ giúp"
+    await handle_menu_reply(update, context)
+    args, kwargs = message.reply_text.call_args
+    text_val = args[0] if args else kwargs.get("text", "")
+    assert "HƯỚNG DẪN SỬ DỤNG BOT" in text_val
+
+
+@pytest.mark.asyncio
+async def test_handle_order_nav_callback_flow(test_db):
+    """Test date selection, pagination, detail card view, and back navigation."""
+    from src.db.orders import create_order
+    from datetime import datetime
+    from src.bot.keyboards import TZ_VN
+
+    today_str = datetime.now(TZ_VN).strftime("%Y-%m-%d")
+
+    # Seed 6 orders for pagination test
+    order_ids = []
+    for i in range(1, 7):
+        oid = await create_order(
+            test_db,
+            Order(
+                customer_name=f"Khách {i}",
+                customer_phone=f"090000000{i}",
+                shipping_address=f"Địa chỉ {i}",
+                items_text=f"Băng {i}",
+                total_amount=100000 * i,
+                cod_amount=100000 * i,
+            ),
+        )
+        order_ids.append(oid)
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    # 1. Date selection callback ord_dt:YYYY-MM-DD
+    query.data = f"ord_dt:{today_str}"
+    await handle_order_nav_callback(update, context)
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    dt_text = query.edit_message_text.call_args[1]["text"]
+    assert "Trang 1/2" in dt_text
+
+    # 2. Pagination callback ord_pg:YYYY-MM-DD:2
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_pg:{today_str}:2"
+    await handle_order_nav_callback(update, context)
+    pg_text = query.edit_message_text.call_args[1]["text"]
+    assert "Trang 2/2" in pg_text
+
+    # 3. View detail card ord_v:ID:DATE:PAGE
+    first_oid = order_ids[-1]  # Most recent order is first
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_v:{first_oid}:{today_str}:1"
+    await handle_order_nav_callback(update, context)
+    v_text = query.edit_message_text.call_args[1]["text"]
+    v_kb = query.edit_message_text.call_args[1]["reply_markup"]
+    assert f"CHI TIẾT ĐƠN HÀNG #{first_oid}" in v_text
+    assert any(btn.copy_text is not None for row in v_kb.inline_keyboard for btn in row)
+
+    # 4. Back navigation callback ord_bk:DATE:PAGE
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_bk:{today_str}:1"
+    await handle_order_nav_callback(update, context)
+    bk_text = query.edit_message_text.call_args[1]["text"]
+    assert "Trang 1/2" in bk_text
+
 
 
