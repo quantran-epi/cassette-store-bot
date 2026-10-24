@@ -4,9 +4,11 @@ import pytest
 from src.db.customers import add_address, create_customer
 from src.db.orders import (
     append_order_photos,
+    count_orders_by_date,
     create_order,
     get_customer_order_stats,
     get_order_by_id,
+    list_orders_by_date,
     list_orders_by_status,
     update_order_status,
     update_order_tracking,
@@ -300,3 +302,53 @@ async def test_add_address_idempotent_and_append(test_db):
     # Duplicate of newly added address should not append
     res3 = await add_address(test_db, cust_id, "456 NGUYỄN HUỆ, Q1")
     assert res3 is False
+
+
+@pytest.mark.asyncio
+async def test_list_and_count_orders_by_date_utc7(test_db):
+    """list_orders_by_date and count_orders_by_date match records using date(created_at, '+7 hours')."""
+    # 2026-10-24 18:00:00 UTC -> 2026-10-25 01:00:00 UTC+7 (belongs to 2026-10-25)
+    await test_db.execute(
+        """
+        INSERT INTO orders (customer_name, customer_phone, shipping_address, items_text, total_amount, created_at)
+        VALUES ('Khách Tối 24', '0901', 'HCM', 'Băng 1', 100000, '2026-10-24 18:00:00')
+        """
+    )
+    # 2026-10-24 05:00:00 UTC -> 2026-10-24 12:00:00 UTC+7 (belongs to 2026-10-24)
+    await test_db.execute(
+        """
+        INSERT INTO orders (customer_name, customer_phone, shipping_address, items_text, total_amount, created_at)
+        VALUES ('Khách Trưa 24', '0902', 'HN', 'Băng 2', 200000, '2026-10-24 05:00:00')
+        """
+    )
+    # 2026-10-23 20:00:00 UTC -> 2026-10-24 03:00:00 UTC+7 (belongs to 2026-10-24)
+    await test_db.execute(
+        """
+        INSERT INTO orders (customer_name, customer_phone, shipping_address, items_text, total_amount, created_at)
+        VALUES ('Khách Khuya 23', '0903', 'ĐN', 'Băng 3', 300000, '2026-10-23 20:00:00')
+        """
+    )
+    await test_db.commit()
+
+    # Query for 2026-10-24 (should find Khách Trưa 24 and Khách Khuya 23)
+    orders_24 = await list_orders_by_date(test_db, "2026-10-24", limit=5, offset=0)
+    count_24 = await count_orders_by_date(test_db, "2026-10-24")
+    assert count_24 == 2
+    assert len(orders_24) == 2
+    names_24 = [o.customer_name for o in orders_24]
+    assert "Khách Trưa 24" in names_24
+    assert "Khách Khuya 23" in names_24
+    assert "Khách Tối 24" not in names_24
+
+    # Query for 2026-10-25 (should find Khách Tối 24)
+    orders_25 = await list_orders_by_date(test_db, "2026-10-25", limit=5, offset=0)
+    count_25 = await count_orders_by_date(test_db, "2026-10-25")
+    assert count_25 == 1
+    assert len(orders_25) == 1
+    assert orders_25[0].customer_name == "Khách Tối 24"
+
+    # Pagination offset/limit test
+    paged = await list_orders_by_date(test_db, "2026-10-24", limit=1, offset=1)
+    assert len(paged) == 1
+    assert paged[0].customer_name == "Khách Khuya 23"
+

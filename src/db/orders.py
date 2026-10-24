@@ -132,6 +132,32 @@ async def append_order_photos(
     return cursor.rowcount > 0
 
 
+async def list_orders_by_date(
+    db: aiosqlite.Connection,
+    date_str: str,
+    limit: int = 5,
+    offset: int = 0,
+) -> Sequence[Order]:
+    """List orders created on a given date (UTC+7) ordered by created_at DESC, id DESC."""
+    query = """
+        SELECT * FROM orders
+        WHERE date(created_at, '+7 hours') = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+    """
+    async with db.execute(query, (date_str, limit, offset)) as cursor:
+        rows = await cursor.fetchall()
+        return [_row_to_order(row) for row in rows]
+
+
+async def count_orders_by_date(db: aiosqlite.Connection, date_str: str) -> int:
+    """Count total orders created on a given date (UTC+7)."""
+    query = "SELECT COUNT(*) FROM orders WHERE date(created_at, '+7 hours') = ?"
+    async with db.execute(query, (date_str,)) as cursor:
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+
 async def list_orders_by_status(
     db: aiosqlite.Connection,
     status: OrderStatus,
