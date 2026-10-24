@@ -11,7 +11,7 @@ Telegram chatbot phục vụ quản lý đơn hàng cho shop bán băng cassette
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Foundation, Persistence & Security Whitelist** - Thiết lập cấu hình local, cơ sở dữ liệu SQLite WAL, thực thể khách hàng / đơn hàng / ảnh và middleware chặn người lạ bằng Telegram User ID whitelist.
+- [x] **Phase 1: Foundation, Persistence & Security Whitelist** - Thiết lập cấu hình local, cơ sở dữ liệu SQLite WAL, thực thể khách hàng / đơn hàng / ảnh và middleware chặn người lạ bằng Telegram User ID whitelist. (completed 2026-10-24)
 - [ ] **Phase 2: LLM Ingestion & Interactive Confirmation** - Tích hợp gateway 9router bóc tách tin nhắn tiếng Việt tự do thành cấu trúc chuẩn hoá tiền tệ VNĐ và luồng xác nhận hai pha qua thẻ preview trước khi lưu DB.
 - [ ] **Phase 3: Ergonomic Order Management & Low-Tech Actions** - Xây dựng giao diện chat Telegram với Reply Keyboard cố định, danh sách đơn theo ngày, thẻ chi tiết kèm nút sao chép 1 chạm, đổi trạng thái vòng đời và quản lý ảnh/mã vận đơn.
 - [ ] **Phase 4: Natural Language Order Search** - Tra cứu đơn hàng bằng ngôn ngữ tự nhiên tiếng Việt qua LLM kết hợp thẻ hỏi xác nhận trước khi hiển thị chi tiết.
@@ -36,7 +36,7 @@ Plans:
 
 - [x] 01-01-PLAN.md — Setup project environment, Pydantic-Settings v2 configuration, and Telegram bot application with Whitelist security gate.
 - [x] 01-02-PLAN.md — Build async SQLite database connection manager with WAL mode and Customer domain persistence.
-- [ ] 01-03-PLAN.md — Implement Order domain persistence with customer snapshot, photo attachments, 8-state status lifecycle, and runnable entrypoint.
+- [x] 01-03-PLAN.md — Implement Order domain persistence with customer snapshot, photo attachments, 8-state status lifecycle, and runnable entrypoint.
 
 ### Phase 2: LLM Ingestion & Interactive Confirmation
 
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation, Persistence & Security Whitelist | 2/3 | In Progress|  |
+| 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete   | 2026-10-24 |
 | 2. LLM Ingestion & Interactive Confirmation | 0/TBD | Not started | - |
 | 3. Ergonomic Order Management & Low-Tech Actions | 0/TBD | Not started | - |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
