@@ -1,12 +1,17 @@
+import json
 import logging
 import re
 import sqlite3
+from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import aiosqlite
 from openai import AsyncOpenAI
+
+from src.models.order import Order, OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,35 @@ QUY TẮC BẮT BUỘC:
    - Dùng `o.customer_name LIKE '%keyword%'` hoặc `o.items_text LIKE '%keyword%'`
    - Nếu từ khoá không dấu, có thể dùng `unaccent(o.customer_name) LIKE '%keyword%'` hoặc `unaccent(o.items_text) LIKE '%keyword%'`.
 """.strip()
+
+SYSTEM_PROMPT_SUMMARY = """
+Bạn là trợ lý cho chủ shop băng cassette lớn tuổi tại Việt Nam.
+Nhiệm vụ: Dựa vào câu hỏi của bác chủ và kết quả dữ liệu từ cơ sở dữ liệu, hãy trả lời bác bằng 1 câu tiếng Việt ngắn gọn, ấm áp, tự nhiên, rõ ràng.
+Ví dụ:
+- Hỏi: "hôm nay bán được bao nhiêu đơn" | Dữ liệu: [{"total_orders": 4, "total_revenue": 1200000}]
+  -> Trả lời: "Dạ hôm nay shop mình có 4 đơn hàng, tổng tiền là 1.200.000 đ bác nhé!"
+- Hỏi: "lần gần nhất có khách mua Tuấn Vũ là khi nào" | Dữ liệu: [{"created_at": "2026-10-24 14:30:00", "customer_name": "Anh Nam", "items_text": "2 cuốn Tuấn Vũ"}]
+  -> Trả lời: "Dạ đơn gần nhất có băng Tuấn Vũ là hôm qua của anh Nam (2 cuốn Tuấn Vũ) bác nhé!"
+Không dùng từ ngữ kỹ thuật, không đề cập đến database hay SQL.
+""".strip()
+
+
+class SearchResultType(str, Enum):
+    """Classification type of natural language search result."""
+
+    ORDERS = "ORDERS"
+    AGGREGATE = "AGGREGATE"
+
+
+@dataclass
+class SearchResult:
+    """Natural language search result container."""
+
+    result_type: SearchResultType
+    sql_executed: str
+    orders: list[Order] = field(default_factory=list)
+    summary_text: str | None = None
+    raw_rows: list[dict[str, Any]] = field(default_factory=list)
 
 
 def is_search_intent(text: str) -> bool:
@@ -218,3 +252,114 @@ async def execute_natural_language_search(
         async with db.execute(retry_sql) as cursor:
             rows = await cursor.fetchall()
             return retry_sql, [dict(row) for row in rows]
+
+
+def _dict_to_order(row: dict[str, Any]) -> Order:
+    """Convert row dict to Order domain model."""
+    photos = row.get("photo_file_ids", [])
+    if isinstance(photos, str):
+        try:
+            photos = json.loads(photos)
+        except json.JSONDecodeError:
+            photos = []
+
+    return Order(
+        id=row.get("id"),
+        customer_id=row.get("customer_id"),
+        customer_name=row.get("customer_name", ""),
+        customer_phone=row.get("customer_phone", ""),
+        shipping_address=row.get("shipping_address", ""),
+        items_text=row.get("items_text", ""),
+        total_amount=row.get("total_amount", 0),
+        cod_amount=row.get("cod_amount", 0),
+        payment_method=row.get("payment_method", "COD"),
+        status=OrderStatus(row["status"]) if "status" in row and row["status"] else OrderStatus.CHO_LAM,
+        tracking_code=row.get("tracking_code"),
+        photo_file_ids=photos if isinstance(photos, list) else [],
+        raw_text=row.get("raw_text", ""),
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+def classify_and_hydrate_results(
+    rows: list[dict[str, Any]], sql_executed: str
+) -> tuple[SearchResultType, list[Order] | list[dict[str, Any]]]:
+    """Classify results into ORDER records or AGGREGATE/scalar results per D-07."""
+    order_fields = {"id", "customer_name", "customer_phone", "items_text", "total_amount"}
+
+    if not rows:
+        # Check if the query was an aggregate query
+        is_aggregate_sql = bool(re.search(r"\b(COUNT|SUM|AVG|MAX|MIN)\s*\(", sql_executed, re.IGNORECASE))
+        if is_aggregate_sql:
+            return SearchResultType.AGGREGATE, []
+        return SearchResultType.ORDERS, []
+
+    first_row_keys = set(rows[0].keys())
+    if order_fields.issubset(first_row_keys):
+        orders = [_dict_to_order(row) for row in rows]
+        return SearchResultType.ORDERS, orders
+
+    return SearchResultType.AGGREGATE, rows
+
+
+async def summarize_aggregate_result(
+    client: AsyncOpenAI,
+    model_id: str,
+    query: str,
+    raw_rows: list[dict[str, Any]],
+) -> str:
+    """Summarize statistical/aggregate rows into natural Vietnamese sentence per D-07."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT_SUMMARY},
+        {
+            "role": "user",
+            "content": f"Câu hỏi của bác chủ: \"{query}\"\nDữ liệu kết quả: {json.dumps(raw_rows, ensure_ascii=False)}",
+        },
+    ]
+    response = await client.chat.completions.create(
+        model=model_id,
+        messages=messages,
+        temperature=0.3,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+async def run_order_search(
+    client: AsyncOpenAI,
+    model_id: str,
+    db: aiosqlite.Connection,
+    query: str,
+    current_time: datetime | None = None,
+) -> SearchResult:
+    """High-level natural language search workflow per D-04, D-06, D-07."""
+    sql, raw_rows = await execute_natural_language_search(
+        client=client,
+        model_id=model_id,
+        db=db,
+        query=query,
+        current_time=current_time,
+    )
+
+    result_type, hydrated = classify_and_hydrate_results(raw_rows, sql)
+
+    if result_type == SearchResultType.ORDERS:
+        return SearchResult(
+            result_type=result_type,
+            sql_executed=sql,
+            orders=hydrated,  # type: ignore[arg-type]
+            raw_rows=raw_rows,
+        )
+
+    summary_text = await summarize_aggregate_result(
+        client=client,
+        model_id=model_id,
+        query=query,
+        raw_rows=raw_rows,
+    )
+    return SearchResult(
+        result_type=result_type,
+        sql_executed=sql,
+        summary_text=summary_text,
+        raw_rows=raw_rows,
+    )

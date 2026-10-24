@@ -169,3 +169,123 @@ async def test_execute_search_query_retry_1shot(test_db):
     assert len(rows) == 1
     assert rows[0]["customer_name"] == "Chị Lan"
 
+
+def test_classify_search_result_order_records():
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import (
+        SearchResultType,
+        classify_and_hydrate_results,
+    )
+
+    rows = [
+        {
+            "id": 10,
+            "customer_id": 1,
+            "customer_name": "Anh Tuấn",
+            "customer_phone": "0903123456",
+            "shipping_address": "Hà Nội",
+            "items_text": "2 cuốn Tuấn Vũ",
+            "total_amount": 200000,
+            "cod_amount": 200000,
+            "payment_method": "COD",
+            "status": "CHO_LAM",
+            "tracking_code": None,
+            "photo_file_ids": '["file_1"]',
+            "raw_text": "đơn test",
+            "created_at": "2026-10-25 10:00:00",
+            "updated_at": "2026-10-25 10:00:00",
+        }
+    ]
+
+    res_type, hydrated = classify_and_hydrate_results(rows, "SELECT o.* FROM orders o")
+    assert res_type == SearchResultType.ORDERS
+    assert len(hydrated) == 1
+    order = hydrated[0]
+    assert isinstance(order, Order)
+    assert order.id == 10
+    assert order.customer_name == "Anh Tuấn"
+    assert order.status == OrderStatus.CHO_LAM
+    assert order.photo_file_ids == ["file_1"]
+
+
+def test_classify_search_result_aggregate_scalar():
+    from src.services.order_search import (
+        SearchResultType,
+        classify_and_hydrate_results,
+    )
+
+    rows = [{"total_orders": 5, "total_revenue": 1500000}]
+    res_type, hydrated = classify_and_hydrate_results(rows, "SELECT COUNT(*) AS total_orders, SUM(total_amount) AS total_revenue FROM orders")
+    assert res_type == SearchResultType.AGGREGATE
+    assert hydrated == rows
+
+    # Empty result for aggregate query
+    res_type_empty, hydrated_empty = classify_and_hydrate_results([], "SELECT COUNT(*) FROM orders WHERE status = 'BOM_HANG'")
+    assert res_type_empty == SearchResultType.AGGREGATE
+    assert hydrated_empty == []
+
+
+@pytest.mark.asyncio
+async def test_summarize_aggregate_result():
+    from unittest.mock import AsyncMock, MagicMock
+    from src.services.order_search import summarize_aggregate_result
+
+    mock_client = AsyncMock()
+    mock_resp = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content="Dạ hôm nay shop mình có 4 đơn hàng, tổng tiền là 1.200.000 đ bác nhé!"
+                )
+            )
+        ]
+    )
+    mock_client.chat.completions.create.return_value = mock_resp
+
+    summary = await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="hôm nay bán được bao nhiêu đơn",
+        raw_rows=[{"total_orders": 4, "total_revenue": 1200000}],
+    )
+
+    assert "4 đơn hàng" in summary
+    assert "1.200.000 đ" in summary
+    assert mock_client.chat.completions.create.call_count == 1
+    call_args = mock_client.chat.completions.create.call_args
+    assert call_args.kwargs["temperature"] == 0.3
+
+
+@pytest.mark.asyncio
+async def test_run_order_search_end_to_end(test_db):
+    from unittest.mock import AsyncMock, MagicMock
+    from src.services.order_search import SearchResultType, run_order_search
+
+    # Seed an order
+    await test_db.execute(
+        """
+        INSERT INTO orders (customer_name, customer_phone, shipping_address, items_text, total_amount, cod_amount)
+        VALUES ('Anh Hoàng', '0988776655', 'TP HCM', '3 cuốn Chế Linh', 350000, 350000)
+        """
+    )
+    await test_db.commit()
+
+    mock_client = AsyncMock()
+    # Mock LLM returning SQL for specific order
+    mock_choice = MagicMock()
+    mock_choice.message.content = "SELECT o.* FROM orders o WHERE o.customer_name LIKE '%Hoàng%'"
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+
+    result = await run_order_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="tìm đơn anh Hoàng",
+    )
+
+    assert result.result_type == SearchResultType.ORDERS
+    assert len(result.orders) == 1
+    assert result.orders[0].customer_name == "Anh Hoàng"
+    assert "SELECT o.* FROM orders" in result.sql_executed
+
+
