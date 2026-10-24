@@ -12,7 +12,7 @@ Telegram chatbot phục vụ quản lý đơn hàng cho shop bán băng cassette
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Foundation, Persistence & Security Whitelist** - Thiết lập cấu hình local, cơ sở dữ liệu SQLite WAL, thực thể khách hàng / đơn hàng / ảnh và middleware chặn người lạ bằng Telegram User ID whitelist. (completed 2026-10-24)
-- [ ] **Phase 2: LLM Ingestion & Interactive Confirmation** - Tích hợp gateway 9router bóc tách tin nhắn tiếng Việt tự do thành cấu trúc chuẩn hoá tiền tệ VNĐ và luồng xác nhận hai pha qua thẻ preview trước khi lưu DB.
+- [x] **Phase 2: LLM Ingestion & Interactive Confirmation** - Tích hợp gateway 9router bóc tách tin nhắn tiếng Việt tự do thành cấu trúc chuẩn hoá tiền tệ VNĐ và luồng xác nhận hai pha qua thẻ preview trước khi lưu DB. (completed 2026-10-24)
 - [ ] **Phase 3: Ergonomic Order Management & Low-Tech Actions** - Xây dựng giao diện chat Telegram với Reply Keyboard cố định, danh sách đơn theo ngày, thẻ chi tiết kèm nút sao chép 1 chạm, đổi trạng thái vòng đời và quản lý ảnh/mã vận đơn.
 - [ ] **Phase 4: Natural Language Order Search** - Tra cứu đơn hàng bằng ngôn ngữ tự nhiên tiếng Việt qua LLM kết hợp thẻ hỏi xác nhận trước khi hiển thị chi tiết.
 
@@ -56,11 +56,11 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — End-to-end order ingestion vertical slice: LLM 2-tier fallback extraction, Vietnamese currency normalization, interactive preview card & 2-phase confirmation.
+- [x] 02-01-PLAN.md — End-to-end order ingestion vertical slice: LLM 2-tier fallback extraction, Vietnamese currency normalization, interactive preview card & 2-phase confirmation.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Customer history intelligence (order stats & BOM_HANG alert), multi-address resolution, photo caption ingestion, and resilient error recovery.
+- [x] 02-02-PLAN.md — Customer history intelligence (order stats & BOM_HANG alert), multi-address resolution, photo caption ingestion, and resilient error recovery.
 
 ### Phase 3: Ergonomic Order Management & Low-Tech Actions
 
@@ -102,6 +102,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete    | 2026-10-24 |
-| 2. LLM Ingestion & Interactive Confirmation | 0/2 | Not started | - |
+| 2. LLM Ingestion & Interactive Confirmation | 2/2 | Complete   | 2026-10-24 |
 | 3. Ergonomic Order Management & Low-Tech Actions | 0/TBD | Not started | - |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
