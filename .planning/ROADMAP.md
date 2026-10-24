@@ -76,8 +76,15 @@ Plans:
   4. Người dùng chuyển trạng thái đơn (sang `Đang làm`, `Đã đóng gói`, `Đã tạo đơn`, `Shipper đã lấy`, `Đã giao`, `Bom hàng`, `Huỷ`) chỉ bằng 1 chạm nút Inline và nhận phản hồi tức thì không bị lỗi `Message is not modified`.
   5. Người dùng có thể nhập/cập nhật mã vận đơn cho đơn hàng và xem lại hoặc gửi thêm ảnh đính kèm (qua `file_id` Telegram) trực tiếp trong chat.
 
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
+
+Plans:
+**Wave 1**
+- [ ] 03-01-PLAN.md — Nền tảng dữ liệu đơn theo ngày UTC+7, Reply Keyboard 2x2, Inline Date Picker & thẻ chi tiết với CopyTextButton.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 03-02-PLAN.md — Điều hướng danh sách đơn phân trang, đổi trạng thái vòng đời 1 chạm kèm xác nhận chống bấm nhầm, nhập mã vận đơn & quản lý album ảnh.
 
 ### Phase 4: Natural Language Order Search
 
@@ -103,5 +110,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete    | 2026-10-24 |
 | 2. LLM Ingestion & Interactive Confirmation | 2/2 | Complete    | 2026-10-24 |
-| 3. Ergonomic Order Management & Low-Tech Actions | 0/TBD | Not started | - |
+| 3. Ergonomic Order Management & Low-Tech Actions | 0/2 | Not started | - |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
