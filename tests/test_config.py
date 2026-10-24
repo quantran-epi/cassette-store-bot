@@ -15,6 +15,17 @@ def test_settings_loads_comma_separated_whitelist(monkeypatch):
     assert settings.telegram_bot_token.get_secret_value() == "fake_bot_token_123"
 
 
+def test_settings_loads_comma_separated_from_dotenv(tmp_path):
+    """Test parsing comma-separated whitelist directly from .env file."""
+    env_file = tmp_path / ".env.test"
+    env_file.write_text(
+        'TELEGRAM_BOT_TOKEN="token_123"\n'
+        'TELEGRAM_WHITELIST_USER_IDS="111, 222, 333"\n'
+    )
+    settings = Settings(_env_file=env_file)
+    assert settings.telegram_whitelist_user_ids == [111, 222, 333]
+
+
 def test_settings_loads_json_array_whitelist(monkeypatch):
     """Test parsing JSON array string into list[int]."""
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake_bot_token_123")

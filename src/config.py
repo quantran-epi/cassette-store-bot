@@ -4,6 +4,7 @@ from typing import Any
 from pydantic import SecretStr, field_validator
 from pydantic_settings import (
     BaseSettings,
+    DotEnvSettingsSource,
     EnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
@@ -18,6 +19,16 @@ class CommaOrJsonEnvSettingsSource(EnvSettingsSource):
             return super().decode_complex_value(field_name, field_info, value)
         except (ValueError, TypeError):
             # Fallback for comma-separated or non-JSON string values
+            return value
+
+
+class CommaOrJsonDotEnvSettingsSource(DotEnvSettingsSource):
+    """Dotenv source that avoids JSON-decoding comma-separated strings for complex fields."""
+
+    def decode_complex_value(self, field_name: str, field_info: Any, value: Any) -> Any:
+        try:
+            return super().decode_complex_value(field_name, field_info, value)
+        except (ValueError, TypeError):
             return value
 
 
@@ -51,10 +62,19 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        custom_dotenv = (
+            CommaOrJsonDotEnvSettingsSource(
+                settings_cls,
+                env_file=dotenv_settings.env_file,
+                env_file_encoding=dotenv_settings.env_file_encoding,
+            )
+            if isinstance(dotenv_settings, DotEnvSettingsSource)
+            else dotenv_settings
+        )
         return (
             init_settings,
             CommaOrJsonEnvSettingsSource(settings_cls),
-            dotenv_settings,
+            custom_dotenv,
             file_secret_settings,
         )
 
