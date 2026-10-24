@@ -1,4 +1,5 @@
 import html
+import re
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +26,18 @@ STATUS_NAMES: dict[OrderStatus, str] = {
     OrderStatus.BOM_HANG: "🚫 Bom hàng",
     OrderStatus.HUY_DON: "❌ Đã huỷ đơn",
 }
+
+
+def extract_province_or_city(address: str) -> str:
+    """Extract province or city name from the end of a comma-separated address."""
+    if not address:
+        return ""
+    parts = [p.strip() for p in address.split(",") if p.strip()]
+    if not parts:
+        return ""
+    last = parts[-1]
+    cleaned = re.sub(r"^(TP\.?|Thành phố|Tỉnh)\s+", "", last, flags=re.IGNORECASE).strip()
+    return cleaned or last
 
 NEXT_STATUS_MAP: dict[OrderStatus, tuple[OrderStatus, str]] = {
     OrderStatus.CHO_LAM: (OrderStatus.DANG_LAM, "▶️ Bắt đầu làm"),
@@ -252,7 +265,9 @@ def render_order_list_card(
         status_label = STATUS_NAMES.get(order.status, order.status.value)
         total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
         cust_name = html.escape(order.customer_name)
+        addr = html.escape(order.shipping_address) if order.shipping_address else "<i>Chưa có Đ/C</i>"
         lines.append(f"📦 <b>Đơn #{order.id}</b> - {cust_name}")
+        lines.append(f"   📍 {addr}")
         lines.append(f"   💰 {total_fmt} | {status_label}")
 
     lines.append("────────────────────")
@@ -281,10 +296,10 @@ def build_order_list_keyboard(
 
     # 1 button per order for detail view
     for order in orders:
-        btn_label = f"👁️ Xem #{order.id} - {order.customer_name}"
+        btn_label = f"👁️ Xem đơn #{order.id} - {order.customer_name}"
         # Truncate label if too long for a single button
-        if len(btn_label) > 30:
-            btn_label = btn_label[:27] + "..."
+        if len(btn_label) > 34:
+            btn_label = btn_label[:31] + "..."
         buttons.append(
             [
                 InlineKeyboardButton(

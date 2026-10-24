@@ -232,5 +232,18 @@ async def handle_order_nav_callback(update: Update, context: ContextTypes.DEFAUL
                 )
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
-                    raise
+                    logger.error("Failed to edit message for order detail %d: %s", order_id, e)
+                    # Fallback: if edit fails (e.g. caption/media mismatch or Telegram formatting glitch), send fresh message
+                    await query.message.reply_text(
+                        text=card_text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML",
+                    )
+            except Exception as e:
+                logger.exception("Unexpected error showing order detail %d: %s", order_id, e)
+                await query.message.reply_text(
+                    text=card_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
             return
