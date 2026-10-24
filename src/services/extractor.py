@@ -28,6 +28,17 @@ Quy tắc số điện thoại:
 """
 
 
+def _clean_json_markdown(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        first_newline = cleaned.find("\n")
+        if first_newline != -1:
+            cleaned = cleaned[first_newline + 1 :]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
 async def extract_order_from_text(
     client: AsyncOpenAI,
     model_id: str,
@@ -50,6 +61,10 @@ async def extract_order_from_text(
         parsed = response.choices[0].message.parsed
         if parsed:
             return parsed
+        # If SDK didn't parse but returned raw content with markdown fence
+        raw_content = response.choices[0].message.content
+        if raw_content:
+            return ExtractedOrder.model_validate_json(_clean_json_markdown(raw_content))
     except (BadRequestError, Exception) as e:
         logger.warning("Tier 1 structured output failed, falling back to JSON mode: %s", e)
 
@@ -63,7 +78,7 @@ async def extract_order_from_text(
         )
         content = response.choices[0].message.content
         if content:
-            return ExtractedOrder.model_validate_json(content)
+            return ExtractedOrder.model_validate_json(_clean_json_markdown(content))
     except Exception as e:
         logger.error("Tier 2 LLM extraction failed: %s", e)
         return None

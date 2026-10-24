@@ -123,6 +123,37 @@ async def test_llm_extractor_2tier_fallback():
 
 
 @pytest.mark.asyncio
+async def test_llm_extractor_markdown_fence_cleaning():
+    """Verify JSON wrapped in ```json ... ``` code fence is parsed correctly in Tier 2."""
+    mock_client = MagicMock()
+    mock_client.beta.chat.completions.parse = AsyncMock(side_effect=Exception("parse error"))
+
+    markdown_payload = (
+        "```json\n"
+        '{\n  "customer_name": "Nguyễn Đức Thành",\n  "customer_phone": "0903626566",\n'
+        '  "shipping_address": "22 trần quốc vượng, cầu giấy",\n'
+        '  "items_text": "3 ud xám 90p",\n  "total_amount": 325000,\n  "cod_amount": 325000,\n'
+        '  "deposit_amount": 0,\n  "payment_method": "COD",\n  "notes": ""\n}\n'
+        "```"
+    )
+    mock_choice = MagicMock()
+    mock_choice.message.content = markdown_payload
+    mock_tier2_resp = MagicMock()
+    mock_tier2_resp.choices = [mock_choice]
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_tier2_resp)
+
+    res = await extract_order_from_text(
+        mock_client,
+        "default-model",
+        "raw text",
+    )
+    assert res is not None
+    assert res.customer_name == "Nguyễn Đức Thành"
+    assert res.customer_phone == "0903626566"
+    assert res.cod_amount == 325000
+
+
+@pytest.mark.asyncio
 async def test_llm_extractor_both_tiers_fail_returns_none():
     """If both Tier 1 and Tier 2 fail, extract_order_from_text returns None safely."""
     mock_client = MagicMock()

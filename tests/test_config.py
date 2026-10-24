@@ -60,7 +60,7 @@ def test_settings_defaults(monkeypatch):
     monkeypatch.delenv("NINE_ROUTER_BASE_URL", raising=False)
     monkeypatch.delenv("NINE_ROUTER_MODEL_ID", raising=False)
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
 
     assert settings.sqlite_db_path == "cassette_store.db"
     assert settings.nine_router_base_url == "https://api.9router.com/v1"
