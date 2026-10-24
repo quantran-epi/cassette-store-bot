@@ -51,8 +51,12 @@ Plans:
   3. Khi bấm `❌ Huỷ bỏ`, đơn bị huỷ ngay, không có bản ghi nào được ghi vào DB.
   4. Khi bấm `✅ Xác nhận lưu`, thông tin đơn và khách hàng mới được lưu vĩnh viễn vào DB và bot cập nhật tin nhắn thông báo thành công.
 
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
+
+Plans:
+- [ ] 02-01-PLAN.md — End-to-end order ingestion vertical slice: LLM 2-tier fallback extraction, Vietnamese currency normalization, interactive preview card & 2-phase confirmation.
+- [ ] 02-02-PLAN.md — Customer history intelligence (order stats & BOM_HANG alert), multi-address resolution, photo caption ingestion, and resilient error recovery.
 
 ### Phase 3: Ergonomic Order Management & Low-Tech Actions
 
@@ -94,6 +98,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete    | 2026-10-24 |
-| 2. LLM Ingestion & Interactive Confirmation | 0/TBD | Not started | - |
+| 2. LLM Ingestion & Interactive Confirmation | 0/2 | Not started | - |
 | 3. Ergonomic Order Management & Low-Tech Actions | 0/TBD | Not started | - |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
