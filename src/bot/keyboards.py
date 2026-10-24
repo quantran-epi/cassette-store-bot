@@ -173,3 +173,183 @@ def build_order_detail_keyboard(
     )
 
     return InlineKeyboardMarkup(buttons)
+
+
+def build_date_picker_keyboard(
+    base_date: datetime | None = None,
+) -> InlineKeyboardMarkup:
+    """Build fast inline date selection keyboard (Today, Yesterday, and 3 previous days)."""
+    if base_date is None:
+        now_vn = datetime.now(TZ_VN)
+    else:
+        now_vn = base_date if base_date.tzinfo else base_date.replace(tzinfo=TZ_VN)
+
+    today = now_vn.date()
+    yesterday = today - timedelta(days=1)
+
+    keyboard: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("Hôm nay", callback_data=f"ord_dt:{today.isoformat()}"),
+            InlineKeyboardButton("Hôm qua", callback_data=f"ord_dt:{yesterday.isoformat()}"),
+        ]
+    ]
+
+    # Vietnamese day of week names: Monday=0 -> Thứ Hai, etc.
+    weekday_names = {
+        0: "Thứ Hai",
+        1: "Thứ Ba",
+        2: "Thứ Tư",
+        3: "Thứ Năm",
+        4: "Thứ Sáu",
+        5: "Thứ Bảy",
+        6: "Chủ Nhật",
+    }
+
+    # 3 prior days
+    prior_row: list[InlineKeyboardButton] = []
+    for i in range(2, 5):
+        d = today - timedelta(days=i)
+        wd = weekday_names[d.weekday()]
+        label = f"{wd}, {d.strftime('%d/%m')}"
+        prior_row.append(InlineKeyboardButton(label, callback_data=f"ord_dt:{d.isoformat()}"))
+
+    # Split prior days into 2 rows for clean layout (2 buttons + 1 button) or 1 row each
+    # For elderly users, 1 button per row or 2-column makes it easy to tap
+    keyboard.append([prior_row[0]])
+    keyboard.append([prior_row[1], prior_row[2]])
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+def render_order_list_card(
+    orders: Sequence[Order],
+    date_str: str,
+    page: int,
+    total_pages: int,
+    total_orders: int,
+) -> str:
+    """Render paginated order list card (5 orders/page) or empty notice."""
+    if total_orders == 0:
+        return (
+            f"📅 <b>ĐƠN HÀNG NGÀY {date_str}</b>\n\n"
+            f"Ngày này chưa có đơn hàng nào bác nhé!"
+        )
+
+    # Convert YYYY-MM-DD to DD/MM/YYYY for friendly Vietnamese display
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        display_date = dt.strftime("%d/%m/%Y")
+    except ValueError:
+        display_date = date_str
+
+    lines = [
+        f"📅 <b>ĐƠN HÀNG NGÀY {display_date}</b>",
+        f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})",
+        "────────────────────",
+    ]
+
+    for order in orders:
+        status_label = STATUS_NAMES.get(order.status, order.status.value)
+        total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
+        cust_name = html.escape(order.customer_name)
+        lines.append(f"📦 <b>Đơn #{order.id}</b> - {cust_name}")
+        lines.append(f"   💰 {total_fmt} | {status_label}")
+
+    lines.append("────────────────────")
+    lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
+    return "\n".join(lines)
+
+
+def build_order_list_keyboard(
+    orders: Sequence[Order],
+    date_str: str,
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    """Build list keyboard with order detail buttons and pagination navigation."""
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    if not orders:
+        # Empty state per D-04
+        buttons.append(
+            [
+                InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new"),
+                InlineKeyboardButton("📋 Chọn ngày khác", callback_data="ord_act:pick_date"),
+            ]
+        )
+        return InlineKeyboardMarkup(buttons)
+
+    # 1 button per order for detail view
+    for order in orders:
+        btn_label = f"👁️ Xem #{order.id} - {order.customer_name}"
+        # Truncate label if too long for a single button
+        if len(btn_label) > 30:
+            btn_label = btn_label[:27] + "..."
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    btn_label,
+                    callback_data=f"ord_v:{order.id}:{date_str}:{page}",
+                )
+            ]
+        )
+
+    # Pagination navigation row: [⬅️ Trước] [Trang X/Y] [Sau ➡️]
+    nav_row: list[InlineKeyboardButton] = []
+    if page > 1:
+        nav_row.append(
+            InlineKeyboardButton("⬅️ Trước", callback_data=f"ord_pg:{date_str}:{page - 1}")
+        )
+    nav_row.append(
+        InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop")
+    )
+    if page < total_pages:
+        nav_row.append(
+            InlineKeyboardButton("Sau ➡️", callback_data=f"ord_pg:{date_str}:{page + 1}")
+        )
+    buttons.append(nav_row)
+
+    # Pick another date bottom button per D-03
+    buttons.append(
+        [
+            InlineKeyboardButton("📋 Chọn ngày khác", callback_data="ord_act:pick_date")
+        ]
+    )
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_status_selection_keyboard(
+    order_id: int,
+    current_status: OrderStatus,
+) -> InlineKeyboardMarkup:
+    """Build 8-status selection keyboard with (Hiện tại) mark and back button."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    all_statuses = list(OrderStatus)
+
+    # 2 buttons per row
+    for i in range(0, len(all_statuses), 2):
+        row: list[InlineKeyboardButton] = []
+        for st in all_statuses[i : i + 2]:
+            label = STATUS_NAMES.get(st, st.value)
+            if st == current_status:
+                label = f"{label} (Hiện tại)"
+            row.append(
+                InlineKeyboardButton(
+                    label,
+                    callback_data=f"ord_st:{order_id}:{st.value}",
+                )
+            )
+        buttons.append(row)
+
+    # Back to order detail card
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Quay lại thẻ đơn",
+                callback_data=f"ord_v_cur:{order_id}",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(buttons)
+
