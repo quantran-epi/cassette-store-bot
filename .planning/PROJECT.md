@@ -59,10 +59,13 @@ Phase 01 hoàn thành — Walking skeleton chạy được với access control 
 | Hàng hoá dạng free-text trong đơn | Đúng nhu cầu thực tế của shop cassette, không bắt tạo mã sản phẩm rườm rà | Validated in Phase 01 |
 | 9router làm gateway LLM | Tương thích chuẩn OpenAI API, dễ dàng chuyển đổi linh hoạt giữa các model qua settings | Validated in Phase 01 |
 | Whitelist Telegram User ID | Bot nội bộ cho người nhà/chủ shop, ngăn chặn người lạ truy cập dữ liệu khách hàng | Validated in Phase 01 |
+| 2-tier LLM parsing (parse + json_object) | Chống crash 400 trên 9router khi đổi model | Validated in Phase 02 |
+| In-memory draft orders trước khi lưu DB | Tránh ghi rác vào SQLite khi người dùng bấm huỷ | Validated in Phase 02 |
+| Cảnh báo khách bom hàng & gợi ý đổi địa chỉ | Giúp chủ shop lớn tuổi nhận diện rủi ro và chọn địa chỉ nhanh | Validated in Phase 02 |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-10-24 after Phase 01 completion*
+*Last updated: 2026-10-24 after Phase 02 completion*

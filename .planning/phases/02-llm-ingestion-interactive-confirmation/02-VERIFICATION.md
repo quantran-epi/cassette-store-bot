@@ -1,27 +1,31 @@
 ---
 phase: 02-llm-ingestion-interactive-confirmation
-verified: 2026-10-24T15:58:00Z
-status: human_needed
+verified: 2026-10-24T18:40:00Z
+status: passed
 score: 12/12 must-haves verified
+covered_files:
+  - .planning/phases/02-llm-ingestion-interactive-confirmation/02-01-PLAN.md
+  - .planning/phases/02-llm-ingestion-interactive-confirmation/02-01-SUMMARY.md
+  - .planning/phases/02-llm-ingestion-interactive-confirmation/02-02-PLAN.md
+  - .planning/phases/02-llm-ingestion-interactive-confirmation/02-02-SUMMARY.md
+  - src/bot/app.py
+  - src/bot/handlers/callbacks.py
+  - src/bot/handlers/ingest.py
+  - src/db/customers.py
+  - src/db/orders.py
+  - src/models/extractor.py
+  - src/services/extractor.py
+covered_digest: "v2:sha256:499874b32c39386dda9f3a1a3d9e74a69c2178e37895254fb072cab1ab0718c7"
+behavior_unverified: 0
 overrides_applied: 0
-human_verification:
-  - test: "Gửi tin nhắn text đặt hàng tự do tiếng Việt trên Telegram (VD: 'Anh Tuấn 0912345678 ở 123 Lê Lợi Q1 lấy 2 cuốn Tuấn Vũ 3 giá 250k cọc 50k')"
-    expected: "Bot phản hồi thẻ xem trước HTML chuẩn đẹp: SĐT dạng mono <code>0912345678</code>, Tổng tiền 250.000 đ, Tiền COD 200.000 đ (đã cọc 50.000 đ) kèm 2 nút bấm Inline [✅ Xác nhận lưu] và [❌ Huỷ bỏ]"
-    why_human: "Kiểm tra trực quan độ thoáng mắt, tương thích font chữ và bố cục nút bấm trên ứng dụng di động Telegram thực tế"
-  - test: "Bấm nút [✅ Xác nhận lưu] trên thẻ xem trước vừa tạo"
-    expected: "Thẻ cập nhật ngay lập tức thành thông báo thành công có mã đơn #ID, không bị biểu tượng đồng hồ quay (spinner 30s)"
-    why_human: "Đánh giá cảm giác phản hồi tức thì của người lớn tuổi khi thao tác 1 chạm"
-  - test: "Gửi 1 bức ảnh chụp băng cassette kèm caption chú thích đặt hàng"
-    expected: "Bot bóc tách caption bình thường, tạo thẻ xem trước và lưu kèm file_id ảnh gốc chất lượng cao nhất khi bấm xác nhận"
-    why_human: "Kiểm tra luồng tải media thực tế qua mạng Telegram Bot API"
 ---
 
 # Phase 02: LLM Ingestion & Interactive Confirmation Verification Report
 
 **Phase Goal:** Quản trị viên dán bất kỳ tin nhắn text hoặc gửi ảnh kèm chú thích đặt hàng tự do; bot dùng LLM 9router bóc tách tự động thành công thông tin khách hàng, số điện thoại, sản phẩm, tiền COD, địa chỉ, hiển thị thẻ xem trước trực quan kèm lịch sử khách cũ, và chỉ lưu vào SQLite khi người dùng bấm nút [Xác nhận lưu] một chạm.
-**Verified:** 2026-10-24T15:58:00Z
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Verified:** 2026-10-24T18:40:00Z
+**Status:** passed
+**Re-verification:** Yes — UAT completed, status upgraded to passed
 
 ## Goal Achievement
 
@@ -65,7 +69,7 @@ human_verification:
 | `src/bot/handlers/callbacks.py` | Two-phase confirmation, cancellation, and address selection callbacks | ✓ VERIFIED | Contains `handle_order_callback`, `ord:cf:`, `ord:ca:`, `ord:ad:` handling |
 | `src/db/orders.py` | Customer order stats aggregate query | ✓ VERIFIED | Contains `get_customer_order_stats` calculating `total_orders`, `total_spent`, `bom_count` |
 | `src/db/customers.py` | Idempotent customer address append operation | ✓ VERIFIED | Contains `add_address` with normalized deduplication |
-| `src/bot/app.py` | App wiring with handlers and dependencies | ✓ VERIFIED | Registers `filters.PHOTO`, `filters.TEXT`, `CallbackQueryHandler(pattern=r"^ord:(cf|ca|ad):")` |
+| `src/bot/app.py` | App wiring with handlers and dependencies | ✓ VERIFIED | Registers `filters.PHOTO`, `filters.TEXT`, `CallbackQueryHandler(pattern=r"^ord:(cf\|ca\|ad):")` |
 
 ### Key Link Verification
 
@@ -93,7 +97,7 @@ human_verification:
 | DB customer stats & address deduplication | Python script querying in-memory SQLite with orders (BOM_HANG & HUY_DON) | `total_orders=3, total_spent=300000, bom_count=1`, address deduplicated | ✓ PASS |
 | Preview card & callback data size | Python script rendering card and asserting inline button bytes <= 64 bytes | `len(callback_data) <= 64` passed, BOM warning included | ✓ PASS |
 | Callback pattern regex routing | Python script asserting `ord:(cf\|ca\|ad):[a-f0-9]{8}(:\d+)?` | Regex matches valid callback tokens and rejects invalid | ✓ PASS |
-| Full pytest test suite | `./.venv/bin/pytest -v` | 57 passed in 0.52s | ✓ PASS |
+| Full pytest test suite | `./.venv/bin/pytest -v` | 59 passed in 1.90s | ✓ PASS |
 
 ### Probe Execution
 
@@ -114,28 +118,19 @@ No probes declared or required for Phase 02.
 | ---- | ---- | ------- | -------- | ------ |
 | None | - | - | - | Zero debt markers (TODO/FIXME/XXX) in `src/`. Clean implementations. |
 
-### Human Verification Required
+### Human Verification (UAT Completed)
 
-### 1. Visual UX on Mobile Telegram
-**Test:** Gửi tin nhắn text đặt hàng tự do tiếng Việt trên Telegram (VD: *"Anh Tuấn 0912345678 ở 123 Lê Lợi Q1 lấy 2 cuốn Tuấn Vũ 3 giá 250k cọc 50k"*).  
-**Expected:** Bot gửi thẻ xem trước định dạng HTML đẹp mắt, số điện thoại nằm trong thẻ code mono một chạm, hiển thị rõ Tổng tiền 250.000 đ và Tiền COD 200.000 đ kèm 2 nút bấm to `[✅ Xác nhận lưu]` và `[❌ Huỷ bỏ]`.  
-**Why human:** Thẩm mỹ giao diện trực quan và trải nghiệm nhìn đọc của người lớn tuổi trên màn hình điện thoại thực tế không thể đo bằng unit test.
+All 3 human verification checks previously flagged have been tested and verified via `02-UAT.md` (3 passed, 0 issues):
 
-### 2. Immediate Button Tap Feedback
-**Test:** Bấm nút `[✅ Xác nhận lưu]` hoặc `[❌ Huỷ bỏ]`.  
-**Expected:** Thẻ cập nhật trạng thái ngay lập tức (không thấy loader xoay vòng 30 giây của Telegram).  
-**Why human:** Đảm bảo `query.answer()` và Telegram API đáp ứng độ mượt thực tế.
-
-### 3. Photo Caption Ingestion on Real Telegram
-**Test:** Gửi 1 ảnh chụp cuộn băng cassette kèm caption thông tin giao hàng trên Telegram.  
-**Expected:** Bot trích xuất caption bóc tách chính xác, lưu đơn thành công kèm ảnh độ nét cao nhất vào SQLite.  
-**Why human:** Kiểm tra quá trình truyền nhận media stream thực tế với Telegram CDN.
+1. **Visual UX on Mobile Telegram**: PASSED — HTML preview card renders clearly with bold labels, mono phone tag, itemized product list, separate Total/COD amounts.
+2. **Immediate Button Tap Feedback**: PASSED — Tap `[✅ Xác nhận lưu]` or `[❌ Huỷ bỏ]` acknowledged instantly via `answer_callback_query` with 0 spinner delay.
+3. **Photo Caption Ingestion on Real Telegram**: PASSED — Photo caption parsed cleanly, order row stores `photo_file_ids` with highest-resolution file_id.
 
 ### Gaps Summary
 
-No technical or functional gaps found in the codebase. All 12 observable truths, 7 required artifacts, and 4 key links are implemented, wired, and verified with 57 automated tests passing. Status is set to `human_needed` exclusively to perform visual layout validation and live interaction on Telegram mobile app.
+No technical or functional gaps found in the codebase. All 12 observable truths, 7 required artifacts, and 4 key links are implemented, wired, and verified with 59 automated tests passing. UAT completed with 3 passed tests and 0 issues. Status is `passed`.
 
 ---
 
-_Verified: 2026-10-24T15:58:00Z_  
+_Verified: 2026-10-24T18:40:00Z_  
 _Verifier: Claude (gsd-verifier)_
