@@ -1,11 +1,13 @@
 import html
 import logging
 import uuid
+from contextlib import nullcontext
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
+from src.db.connection import get_db_connection
 from src.db.customers import get_customer_by_phone
 from src.db.orders import get_customer_order_stats
 from src.models.extractor import ExtractedOrder
@@ -90,22 +92,29 @@ async def process_extracted_order(
 
     app_context = context.application.bot_data.get("app_context")
     db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
+    settings = context.application.bot_data.get("settings")
+    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
 
     stats = None
     address_auto_filled = False
     available_addresses: list[str] = []
 
-    if db:
-        customer = await get_customer_by_phone(db, extracted.customer_phone)
-        if customer and customer.id:
-            stats = await get_customer_order_stats(db, customer.id)
-            if not extracted.shipping_address:
-                if len(customer.addresses) == 1:
-                    extracted.shipping_address = customer.addresses[0]
-                    address_auto_filled = True
-                elif len(customer.addresses) >= 2:
-                    extracted.shipping_address = customer.addresses[-1]
-                    available_addresses = list(customer.addresses)
+    db_ctx = nullcontext(db) if db else get_db_connection(db_path)
+    try:
+        async with db_ctx as active_db:
+            if active_db:
+                customer = await get_customer_by_phone(active_db, extracted.customer_phone)
+                if customer and customer.id:
+                    stats = await get_customer_order_stats(active_db, customer.id)
+                    if not extracted.shipping_address:
+                        if len(customer.addresses) == 1:
+                            extracted.shipping_address = customer.addresses[0]
+                            address_auto_filled = True
+                        elif len(customer.addresses) >= 2:
+                            extracted.shipping_address = customer.addresses[-1]
+                            available_addresses = list(customer.addresses)
+    except Exception as e:
+        logger.warning("Customer history lookup failed: %s", e)
 
     draft_id = uuid.uuid4().hex[:8]
     draft_data = {

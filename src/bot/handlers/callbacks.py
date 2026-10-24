@@ -1,11 +1,13 @@
 import html
 import logging
 import re
+from contextlib import nullcontext
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.ingest import render_preview_card
+from src.db.connection import get_db_connection
 from src.db.customers import add_address, create_customer, get_customer_by_phone
 from src.db.orders import create_order
 from src.models.customer import Customer
@@ -78,57 +80,64 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
             else context.application.bot_data.get("db")
         )
 
-        if not db:
-            logger.error("Database connection missing in bot_data")
-            await query.edit_message_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
-            return
+        settings = context.application.bot_data.get("settings")
+        db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
 
-        phone = draft["customer_phone"]
-        name = draft["customer_name"] or "Khách lẻ"
-        address = draft["shipping_address"] or ""
+        # If persistent connection is not in bot_data, create a context connection
+        db_ctx = nullcontext(db) if db else get_db_connection(db_path)
 
-        # Match or create customer
-        customer = await get_customer_by_phone(db, phone)
-        if not customer:
-            addresses = [address] if address else []
-            new_customer = Customer(
-                name=name,
-                phones=[phone],
-                addresses=addresses,
-                notes=draft.get("notes") or "",
+        async with db_ctx as active_db:
+            if not active_db:
+                logger.error("Database connection could not be established")
+                await query.edit_message_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return
+
+            phone = draft["customer_phone"]
+            name = draft["customer_name"] or "Khách lẻ"
+            address = draft["shipping_address"] or ""
+
+            # Match or create customer
+            customer = await get_customer_by_phone(active_db, phone)
+            if not customer:
+                addresses = [address] if address else []
+                new_customer = Customer(
+                    name=name,
+                    phones=[phone],
+                    addresses=addresses,
+                    notes=draft.get("notes") or "",
+                )
+                cust_id = await create_customer(active_db, new_customer)
+                customer = new_customer
+                customer.id = cust_id
+            else:
+                # If customer provided a new address, append idempotently (D-06)
+                if address:
+                    await add_address(active_db, customer.id, address)
+
+            # Create Order
+            new_order = Order(
+                customer_id=customer.id,
+                customer_name=customer.name,
+                customer_phone=phone,
+                shipping_address=address,
+                items_text=draft.get("items_text") or "",
+                total_amount=draft.get("total_amount", 0),
+                cod_amount=draft.get("cod_amount", 0),
+                payment_method=draft.get("payment_method", "COD"),
+                status=OrderStatus.CHO_LAM,
+                photo_file_ids=draft.get("photo_file_ids") or [],
+                raw_text=draft.get("raw_text") or "",
             )
-            cust_id = await create_customer(db, new_customer)
-            customer = new_customer
-            customer.id = cust_id
-        else:
-            # If customer provided a new address, append idempotently (D-06)
-            if address:
-                await add_address(db, customer.id, address)
+            order_id = await create_order(active_db, new_order)
 
-        # Create Order
-        new_order = Order(
-            customer_id=customer.id,
-            customer_name=customer.name,
-            customer_phone=phone,
-            shipping_address=address,
-            items_text=draft.get("items_text") or "",
-            total_amount=draft.get("total_amount", 0),
-            cod_amount=draft.get("cod_amount", 0),
-            payment_method=draft.get("payment_method", "COD"),
-            status=OrderStatus.CHO_LAM,
-            photo_file_ids=draft.get("photo_file_ids") or [],
-            raw_text=draft.get("raw_text") or "",
-        )
-        order_id = await create_order(db, new_order)
+            success_card = (
+                f"✅ <b>ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG</b>\n"
+                f"📦 <b>Mã đơn:</b> <code>#{order_id}</code>\n"
+                f"👤 <b>Khách:</b> {html.escape(customer.name)}\n"
+                f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
+                f"💰 <b>Tổng tiền:</b> {new_order.total_amount:,} đ\n"
+                f"💵 <b>Tiền COD thu:</b> {new_order.cod_amount:,} đ\n"
+                f"<i>Trạng thái: Chờ làm</i>"
+            ).replace(",", ".")
 
-        success_card = (
-            f"✅ <b>ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG</b>\n"
-            f"📦 <b>Mã đơn:</b> <code>#{order_id}</code>\n"
-            f"👤 <b>Khách:</b> {html.escape(customer.name)}\n"
-            f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
-            f"💰 <b>Tổng tiền:</b> {new_order.total_amount:,} đ\n"
-            f"💵 <b>Tiền COD thu:</b> {new_order.cod_amount:,} đ\n"
-            f"<i>Trạng thái: Chờ làm</i>"
-        ).replace(",", ".")
-
-        await query.edit_message_text(success_card, parse_mode="HTML")
+            await query.edit_message_text(success_card, parse_mode="HTML")
