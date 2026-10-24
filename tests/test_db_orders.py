@@ -1,14 +1,17 @@
 import aiosqlite
 import pytest
 
+from src.db.customers import add_address, create_customer
 from src.db.orders import (
     append_order_photos,
     create_order,
+    get_customer_order_stats,
     get_order_by_id,
     list_orders_by_status,
     update_order_status,
     update_order_tracking,
 )
+from src.models.customer import Customer
 from src.models.order import Order, OrderStatus
 
 
@@ -212,3 +215,88 @@ async def test_list_orders_by_status(test_db):
 async def test_get_non_existent_order(test_db):
     """get_order_by_id returns None when ID not found."""
     assert await get_order_by_id(test_db, 99999) is None
+
+
+@pytest.mark.asyncio
+async def test_get_customer_order_stats(test_db):
+    """get_customer_order_stats calculates total orders, spend excluding HUY_DON, and BOM_HANG count."""
+    # Customer without orders returns 0 stats
+    stats_empty = await get_customer_order_stats(test_db, 99999)
+    assert stats_empty == {"total_orders": 0, "total_spent": 0, "bom_count": 0}
+
+    # Create customer
+    customer = Customer(
+        name="Khách Thống Kê",
+        phones=["0918888888"],
+        addresses=["123 Test Street"],
+    )
+    cust_id = await create_customer(test_db, customer)
+
+    # Create 3 orders: CHO_LAM (150k), BOM_HANG (200k), HUY_DON (300k)
+    await create_order(
+        test_db,
+        Order(
+            customer_id=cust_id,
+            customer_name=customer.name,
+            customer_phone=customer.phones[0],
+            shipping_address=customer.addresses[0],
+            items_text="Băng 1",
+            total_amount=150000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+    await create_order(
+        test_db,
+        Order(
+            customer_id=cust_id,
+            customer_name=customer.name,
+            customer_phone=customer.phones[0],
+            shipping_address=customer.addresses[0],
+            items_text="Băng 2",
+            total_amount=200000,
+            status=OrderStatus.BOM_HANG,
+        ),
+    )
+    await create_order(
+        test_db,
+        Order(
+            customer_id=cust_id,
+            customer_name=customer.name,
+            customer_phone=customer.phones[0],
+            shipping_address=customer.addresses[0],
+            items_text="Băng 3",
+            total_amount=300000,
+            status=OrderStatus.HUY_DON,
+        ),
+    )
+
+    stats = await get_customer_order_stats(test_db, cust_id)
+    assert stats["total_orders"] == 3
+    # HUY_DON excluded from spend -> 150000 + 200000 = 350000
+    assert stats["total_spent"] == 350000
+    assert stats["bom_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_add_address_idempotent_and_append(test_db):
+    """add_address appends new address, avoids duplicates case-insensitively, trims whitespace."""
+    cust_id = await create_customer(
+        test_db,
+        Customer(
+            name="Khách Địa Chỉ",
+            phones=["0919999999"],
+            addresses=["123 Lê Lợi, Q1"],
+        ),
+    )
+
+    # Duplicate with different case and whitespace should not append
+    res1 = await add_address(test_db, cust_id, "  123 lê lợi, q1  ")
+    assert res1 is False
+
+    # New distinct address appends
+    res2 = await add_address(test_db, cust_id, "456 Nguyễn Huệ, Q1")
+    assert res2 is True
+
+    # Duplicate of newly added address should not append
+    res3 = await add_address(test_db, cust_id, "456 NGUYỄN HUỆ, Q1")
+    assert res3 is False

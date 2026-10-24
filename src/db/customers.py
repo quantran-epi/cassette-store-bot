@@ -98,3 +98,28 @@ async def list_customers(
     async with db.execute(query, (limit, offset)) as cursor:
         rows = await cursor.fetchall()
         return [_row_to_customer(row) for row in rows]
+
+
+async def add_address(
+    db: aiosqlite.Connection, customer_id: int, new_address: str
+) -> bool:
+    """Append new address to customer's address list if not already present.
+
+    Compares normalized addresses (stripped, lower-cased) to avoid duplicates.
+    Returns True if added, False if already exists or customer not found.
+    """
+    clean_address = new_address.strip()
+    if not clean_address:
+        return False
+
+    customer = await get_customer_by_id(db, customer_id)
+    if not customer:
+        return False
+
+    normalized_existing = {addr.strip().lower() for addr in customer.addresses}
+    if clean_address.lower() in normalized_existing:
+        return False
+
+    customer.addresses.append(clean_address)
+    return await update_customer(db, customer)
+
