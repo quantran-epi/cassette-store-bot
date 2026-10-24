@@ -3,10 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 from telegram import Update
 from telegram.ext import CallbackContext
 
-from src.bot.handlers.ingest import render_preview_card
+from src.bot.handlers.ingest import render_preview_card, handle_text_order
 from src.bot.handlers.callbacks import handle_order_callback
-from src.db.orders import get_order_by_id, list_orders_by_status
+from src.db.orders import list_orders_by_status
 from src.models.order import OrderStatus
+from src.models.extractor import ExtractedOrder
 
 
 def test_render_preview_card_layout_and_buttons():
@@ -171,7 +172,7 @@ async def test_order_callback_expired_draft(test_db):
     """When draft_id not found in memory, responds with expiry message."""
     update = MagicMock(spec=Update)
     query = MagicMock()
-    query.data = "ord:cf:nonexist"
+    query.data = "ord:cf:12345678"
     query.answer = AsyncMock()
     query.edit_message_text = AsyncMock()
     update.callback_query = query
@@ -187,3 +188,91 @@ async def test_order_callback_expired_draft(test_db):
     query.answer.assert_awaited_once()
     query.edit_message_text.assert_awaited_once()
     assert "hết hạn" in query.edit_message_text.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_handle_text_order_flow(test_db):
+    """handle_text_order calls LLM, saves draft to pending_orders, replies with preview card."""
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.text = "Bác Hùng 0912345678 123 Lê Lợi 2 băng Tuấn Vũ 250k"
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Bác Hùng",
+        customer_phone="0912345678",
+        shipping_address="123 Lê Lợi",
+        items_text="2 băng Tuấn Vũ",
+        total_amount=250000,
+        cod_amount=250000,
+        deposit_amount=0,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    try:
+        await handle_text_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    kwargs = message.reply_text.call_args[1]
+    assert kwargs["parse_mode"] == "HTML"
+    assert "250.000 đ" in kwargs["text"]
+
+    pending = context.user_data.get("pending_orders", {})
+    assert len(pending) == 1
+    draft = list(pending.values())[0]
+    assert draft["customer_phone"] == "0912345678"
+    assert draft["total_amount"] == 250000
+
+
+@pytest.mark.asyncio
+async def test_handle_text_order_missing_phone(test_db):
+    """handle_text_order asks politely if no phone number extracted."""
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.text = "Alo shop ơi cho hỏi giá băng"
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    extracted_mock = ExtractedOrder(
+        customer_name=None,
+        customer_phone=None,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    try:
+        await handle_text_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    assert "số điện thoại" in message.reply_text.call_args[0][0]
+    assert len(context.user_data.get("pending_orders", {})) == 0

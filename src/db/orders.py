@@ -148,3 +148,27 @@ async def list_orders_by_status(
     async with db.execute(query, (status.value, limit, offset)) as cursor:
         rows = await cursor.fetchall()
         return [_row_to_order(row) for row in rows]
+
+
+async def get_customer_order_stats(
+    db: aiosqlite.Connection, customer_id: int
+) -> dict[str, int]:
+    """Retrieve customer lifetime order count, total spend, and BOM_HANG count."""
+    query = """
+        SELECT
+            COUNT(*) AS total_orders,
+            COALESCE(SUM(CASE WHEN status != 'HUY_DON' THEN total_amount ELSE 0 END), 0) AS total_spent,
+            COUNT(CASE WHEN status = 'BOM_HANG' THEN 1 END) AS bom_count
+        FROM orders
+        WHERE customer_id = ?
+    """
+    async with db.execute(query, (customer_id,)) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            return {"total_orders": 0, "total_spent": 0, "bom_count": 0}
+        return {
+            "total_orders": row["total_orders"],
+            "total_spent": row["total_spent"],
+            "bom_count": row["bom_count"],
+        }
+
