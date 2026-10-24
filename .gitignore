@@ -29,3 +29,6 @@ env/
 *.egg-info/
 dist/
 build/
+
+# Claude Code local settings
+.claude/
