@@ -17,10 +17,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Smart Ingestion with LLM (INGEST)
 
-- [ ] **INGEST-01**: Nhận tin nhắn free-text bất kỳ từ Zalo/Facebook chuyển sang; LLM (qua 9router gateway) tự động bóc tách: Tên khách, SĐT, Địa chỉ, Danh sách băng cassette, Tiền thu khách, Tiền COD, Hình thức thanh toán.
-- [ ] **INGEST-02**: Tự động chuẩn hoá đơn vị tiền tệ tiếng Việt ("250k", "1tr2", "50 ngàn", "cọc 50k thu 200k") thành số nguyên VNĐ chuẩn xác.
-- [ ] **INGEST-03**: Hiển thị thẻ thông tin đơn xem trước (preview card) kèm 2 nút bấm Inline: `✅ Xác nhận lưu` và `❌ Huỷ bỏ`.
-- [ ] **INGEST-04**: Đơn hàng chỉ được ghi vào DB và gửi thông báo hoàn tất sau khi người dùng bấm nút xác nhận.
+- [x] **INGEST-01**: Nhận tin nhắn free-text bất kỳ từ Zalo/Facebook chuyển sang; LLM (qua 9router gateway) tự động bóc tách: Tên khách, SĐT, Địa chỉ, Danh sách băng cassette, Tiền thu khách, Tiền COD, Hình thức thanh toán.
+- [x] **INGEST-02**: Tự động chuẩn hoá đơn vị tiền tệ tiếng Việt ("250k", "1tr2", "50 ngàn", "cọc 50k thu 200k") thành số nguyên VNĐ chuẩn xác.
+- [x] **INGEST-03**: Hiển thị thẻ thông tin đơn xem trước (preview card) kèm 2 nút bấm Inline: `✅ Xác nhận lưu` và `❌ Huỷ bỏ`.
+- [x] **INGEST-04**: Đơn hàng chỉ được ghi vào DB và gửi thông báo hoàn tất sau khi người dùng bấm nút xác nhận.
 
 ### Ergonomic Admin & Low-tech UX (UI)
 
@@ -71,10 +71,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 1 | Complete |
 | DATA-03 | Phase 1 | Complete |
 | DATA-04 | Phase 1 | Complete |
-| INGEST-01 | Phase 2 | Pending |
-| INGEST-02 | Phase 2 | Pending |
-| INGEST-03 | Phase 2 | Pending |
-| INGEST-04 | Phase 2 | Pending |
+| INGEST-01 | Phase 2 | Complete |
+| INGEST-02 | Phase 2 | Complete |
+| INGEST-03 | Phase 2 | Complete |
+| INGEST-04 | Phase 2 | Complete |
 | DATA-05 | Phase 3 | Pending |
 | UI-01 | Phase 3 | Pending |
 | UI-02 | Phase 3 | Pending |
