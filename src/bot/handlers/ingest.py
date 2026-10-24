@@ -41,6 +41,11 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
     if draft.get("address_auto_filled"):
         address_label = "📍 <b>Địa chỉ</b> <i>(tự lấy từ đơn trước)</i>:"
 
+    photo_tag = ""
+    photos = draft.get("photo_file_ids") or []
+    if photos:
+        photo_tag = f"\n📷 <b>Ảnh đính kèm:</b> {len(photos)} ảnh"
+
     text = (
         f"📦 <b>ĐƠN HÀNG MỚI (Xem trước)</b>\n"
         f"👤 <b>Khách:</b> {name}{history_tag}\n"
@@ -49,6 +54,7 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
         f"📼 <b>Băng cassette:</b> {items}\n"
         f"💰 <b>Tổng tiền:</b> {total}\n"
         f"💵 <b>Tiền COD thu:</b> {cod}{deposit_info}"
+        f"{photo_tag}"
         f"{warning_tag}\n"
         f"────────────────────\n"
         f"Bác bấm nút bên dưới để xác nhận nhé:"

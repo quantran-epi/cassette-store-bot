@@ -130,13 +130,18 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             order_id = await create_order(active_db, new_order)
 
+            photo_tag = ""
+            if new_order.photo_file_ids:
+                photo_tag = f"\n📷 <b>Ảnh đính kèm:</b> {len(new_order.photo_file_ids)} ảnh"
+
             success_card = (
                 f"✅ <b>ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG</b>\n"
                 f"📦 <b>Mã đơn:</b> <code>#{order_id}</code>\n"
                 f"👤 <b>Khách:</b> {html.escape(customer.name)}\n"
                 f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
                 f"💰 <b>Tổng tiền:</b> {new_order.total_amount:,} đ\n"
-                f"💵 <b>Tiền COD thu:</b> {new_order.cod_amount:,} đ\n"
+                f"💵 <b>Tiền COD thu:</b> {new_order.cod_amount:,} đ"
+                f"{photo_tag}\n"
                 f"<i>Trạng thái: Chờ làm</i>"
             ).replace(",", ".")
 
