@@ -57,7 +57,7 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
         ],
         [
             KeyboardButton("📝 Nhập đơn mới"),
-            KeyboardButton("❓ Trợ giúp"),
+            KeyboardButton("🔍 Tra cứu đơn"),
         ],
     ]
     return ReplyKeyboardMarkup(
@@ -367,4 +367,184 @@ def build_status_selection_keyboard(
         ]
     )
     return InlineKeyboardMarkup(buttons)
+
+
+def render_search_single_order_card(order: Order, query: str) -> str:
+    """Format single order confirmation preview card per D-08."""
+    status_label = STATUS_NAMES.get(order.status, order.status.value)
+    total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
+    cust_name = html.escape(order.customer_name)
+    phone = html.escape(order.customer_phone)
+    items = html.escape(order.items_text)
+    esc_query = html.escape(query.strip())
+
+    return (
+        f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n"
+        f"<i>(Tìm theo: '{esc_query}')</i>\n"
+        f"────────────────────\n"
+        f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
+        f"📼 <b>Băng:</b> {items}\n"
+        f"💰 <b>Tổng tiền:</b> {total_fmt} | <b>Trạng thái:</b> {status_label}\n"
+        f"────────────────────\n"
+        f"Có phải bác muốn xem đơn này không?"
+    )
+
+
+def build_search_single_order_keyboard(
+    order_id: int, search_id: str
+) -> InlineKeyboardMarkup:
+    """Build inline keyboard for single order confirmation per D-08, D-14."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "👁️ Đúng rồi, xem chi tiết",
+                    callback_data=f"sch_v:{search_id}:{order_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔍 Tìm câu khác",
+                    callback_data="sch_new",
+                )
+            ],
+        ]
+    )
+
+
+def render_search_empty_card(query: str) -> str:
+    """Format friendly empty search result card per D-10."""
+    esc_query = html.escape(query.strip())
+    return (
+        f"🔍 <b>KẾT QUẢ TÌM KIẾM</b>\n"
+        f"<i>(Tìm theo: '{esc_query}')</i>\n\n"
+        f"Dạ em tìm trong sổ không thấy đơn nào như bác tả rồi!\n\n"
+        f"💡 <b>Mẹo tìm kiếm:</b>\n"
+        f"• Bác có thể tìm theo tên khách: <code>tìm đơn anh Tuấn</code>\n"
+        f"• Tìm theo tên băng/ca sĩ: <code>tìm đơn Tuấn Vũ</code>\n"
+        f"• Hoặc tìm theo ngày: <code>tìm đơn hôm qua</code>"
+    )
+
+
+def build_search_empty_keyboard() -> InlineKeyboardMarkup:
+    """Build inline keyboard for empty search result per D-10."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🔍 Thử tìm lại",
+                    callback_data="sch_new",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📝 Nhập đơn mới",
+                    callback_data="ord_act:new",
+                )
+            ],
+        ]
+    )
+
+
+def render_search_multi_card(
+    orders: Sequence[Order],
+    query: str,
+    page: int,
+    total_pages: int,
+    total_orders: int,
+) -> str:
+    """Render paginated multi-order search result preview card per D-09."""
+    esc_query = html.escape(query.strip())
+    lines = [
+        f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
+        f"<i>(Tìm theo: '{esc_query}')</i>",
+        f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
+        "────────────────────",
+    ]
+
+    for order in orders:
+        status_label = STATUS_NAMES.get(order.status, order.status.value)
+        total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
+        cust_name = html.escape(order.customer_name)
+        items = html.escape(order.items_text)
+        lines.append(f"📦 <b>Đơn #{order.id}</b> - {cust_name}")
+        lines.append(f"   📼 {items}")
+        lines.append(f"   💰 {total_fmt} | {status_label}")
+
+    lines.append("────────────────────")
+    lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
+    return "\n".join(lines)
+
+
+def build_search_multi_keyboard(
+    orders: Sequence[Order],
+    search_id: str,
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    """Build multi-order search list keyboard with order detail buttons and pagination per D-09."""
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for order in orders:
+        btn_label = f"👁️ Xem đơn #{order.id} - {order.customer_name}"
+        if len(btn_label) > 34:
+            btn_label = btn_label[:31] + "..."
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    btn_label,
+                    callback_data=f"sch_v:{search_id}:{order.id}",
+                )
+            ]
+        )
+
+    # Pagination navigation row: [◀️ Trang trước] [Trang X/Y] [Trang sau ▶️]
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "◀️ Trang trước",
+                    callback_data=f"sch_pg:{search_id}:{page - 1}",
+                )
+            )
+        nav_row.append(
+            InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop")
+        )
+        if page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "Trang sau ▶️",
+                    callback_data=f"sch_pg:{search_id}:{page + 1}",
+                )
+            )
+        buttons.append(nav_row)
+
+    # Bottom action: new query
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "🔍 Tìm câu khác",
+                callback_data="sch_new",
+            )
+        ]
+    )
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_search_prompt_keyboard() -> InlineKeyboardMarkup:
+    """Build inline keyboard for search mode prompt per D-03."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "❌ Huỷ tra cứu",
+                    callback_data="sch_cancel",
+                )
+            ]
+        ]
+    )
+
 

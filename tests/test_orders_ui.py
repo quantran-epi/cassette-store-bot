@@ -61,7 +61,7 @@ def test_build_main_menu_reply_keyboard_structure():
     row0 = [btn.text for btn in markup.keyboard[0]]
     row1 = [btn.text for btn in markup.keyboard[1]]
     assert row0 == ["📦 Đơn hôm nay", "📋 Xem theo ngày"]
-    assert row1 == ["📝 Nhập đơn mới", "❓ Trợ giúp"]
+    assert row1 == ["📝 Nhập đơn mới", "🔍 Tra cứu đơn"]
 
 
 def test_render_order_detail_card_html_and_code():
@@ -287,7 +287,7 @@ async def test_start_command_sends_reply_keyboard():
     assert markup.is_persistent is True
     assert len(markup.keyboard) == 2
     assert [btn.text for btn in markup.keyboard[0]] == ["📦 Đơn hôm nay", "📋 Xem theo ngày"]
-    assert [btn.text for btn in markup.keyboard[1]] == ["📝 Nhập đơn mới", "❓ Trợ giúp"]
+    assert [btn.text for btn in markup.keyboard[1]] == ["📝 Nhập đơn mới", "🔍 Tra cứu đơn"]
 
 
 @pytest.mark.asyncio

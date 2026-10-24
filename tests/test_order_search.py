@@ -289,3 +289,110 @@ async def test_run_order_search_end_to_end(test_db):
     assert "SELECT o.* FROM orders" in result.sql_executed
 
 
+def test_render_search_single_order_card():
+    from src.bot.keyboards import render_search_single_order_card
+    from src.models.order import Order, OrderStatus
+
+    order = Order(
+        id=77,
+        customer_name="Bác Tuấn",
+        customer_phone="0903123456",
+        shipping_address="123 Lê Duẩn, Hà Nội",
+        items_text="2 cuốn Tuấn Vũ",
+        total_amount=200000,
+        cod_amount=200000,
+        status=OrderStatus.CHO_LAM,
+    )
+    card = render_search_single_order_card(order, query="anh Tuấn hôm qua")
+
+    assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in card
+    assert "Tìm theo: &#x27;anh Tuấn hôm qua&#x27;" in card or "Tìm theo: 'anh Tuấn hôm qua'" in card
+    assert "Đơn #77" in card
+    assert "Bác Tuấn" in card
+    assert "<code>0903123456</code>" in card
+    assert "2 cuốn Tuấn Vũ" in card
+    assert "200.000 đ" in card
+    assert "⏳ Chờ làm" in card
+    assert "Có phải bác muốn xem đơn này không?" in card
+
+
+def test_build_search_single_order_keyboard():
+    from src.bot.keyboards import build_search_single_order_keyboard
+
+    kb = build_search_single_order_keyboard(order_id=77, search_id="abc12345")
+    flat_btns = [btn for row in kb.inline_keyboard for btn in row]
+    texts = [btn.text for btn in flat_btns]
+    cbs = [btn.callback_data for btn in flat_btns]
+
+    assert "👁️ Đúng rồi, xem chi tiết" in texts
+    assert "🔍 Tìm câu khác" in texts
+    assert "sch_v:abc12345:77" in cbs
+    assert "sch_new" in cbs
+
+
+def test_render_search_empty_card():
+    from src.bot.keyboards import build_search_empty_keyboard, render_search_empty_card
+
+    card = render_search_empty_card(query="đơn ông trời")
+    assert "KẾT QUẢ TÌM KIẾM" in card
+    assert "không thấy đơn nào như bác tả rồi" in card
+    assert "Mẹo tìm kiếm:" in card
+
+    kb = build_search_empty_keyboard()
+    flat_btns = [btn for row in kb.inline_keyboard for btn in row]
+    cbs = [btn.callback_data for btn in flat_btns]
+    assert "sch_new" in cbs
+    assert "ord_act:new" in cbs
+
+
+def test_render_search_multi_card():
+    from src.bot.keyboards import build_search_multi_keyboard, render_search_multi_card
+    from src.models.order import Order, OrderStatus
+
+    orders = [
+        Order(
+            id=1,
+            customer_name="Khách A",
+            customer_phone="0901",
+            shipping_address="HN",
+            items_text="Băng A",
+            total_amount=150000,
+            status=OrderStatus.CHO_LAM,
+        ),
+        Order(
+            id=2,
+            customer_name="Khách B",
+            customer_phone="0902",
+            shipping_address="HCM",
+            items_text="Băng B",
+            total_amount=250000,
+            status=OrderStatus.DA_GIAO,
+        ),
+    ]
+
+    card = render_search_multi_card(
+        orders=orders,
+        query="băng nhạc",
+        page=1,
+        total_pages=2,
+        total_orders=7,
+    )
+
+    assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in card
+    assert "7 đơn hàng" in card
+    assert "Trang 1/2" in card
+    assert "Đơn #1" in card
+    assert "Khách A" in card
+    assert "Đơn #2" in card
+    assert "Khách B" in card
+
+    kb = build_search_multi_keyboard(orders=orders, search_id="s123", page=1, total_pages=2)
+    flat_btns = [btn for row in kb.inline_keyboard for btn in row]
+    cbs = [btn.callback_data for btn in flat_btns]
+    assert "sch_v:s123:1" in cbs
+    assert "sch_v:s123:2" in cbs
+    assert "sch_pg:s123:2" in cbs
+    assert "sch_new" in cbs
+
+
+
