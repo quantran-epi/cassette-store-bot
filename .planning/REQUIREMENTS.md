@@ -9,7 +9,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Core Data & Persistence (DATA)
 
-- [ ] **DATA-01**: Khách hàng được lưu trữ với tên, hỗ trợ nhiều số điện thoại, nhiều địa chỉ nhận hàng, và ghi chú đi kèm.
+- [x] **DATA-01**: Khách hàng được lưu trữ với tên, hỗ trợ nhiều số điện thoại, nhiều địa chỉ nhận hàng, và ghi chú đi kèm.
 - [ ] **DATA-02**: Đơn hàng lưu chi tiết hàng hoá dạng text tự do (tên băng cassette, số lượng, giá), tổng tiền thu khách, tiền COD, hình thức (chuyển khoản trước hay COD), và mã vận đơn đối tác ship.
 - [ ] **DATA-03**: Quản lý vòng đời đơn hàng qua 7 trạng thái rõ ràng: `Chờ làm` -> `Đang làm` -> `Đã đóng gói` -> `Đã tạo đơn trên app vận chuyển` -> `Shipper đã lấy hàng` -> `Đã giao thành công` / `Bom hàng` / `Huỷ đơn`.
 - [ ] **DATA-04**: Đơn hàng hỗ trợ đính kèm 1 hoặc nhiều ảnh (lưu trữ mã `file_id` Telegram vào DB, hỗ trợ gửi kèm lúc tạo đơn hoặc thêm ảnh bổ sung sau khi có đơn).
@@ -67,7 +67,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | CFG-01 | Phase 1 | Complete |
 | SEC-01 | Phase 1 | Complete |
-| DATA-01 | Phase 1 | Pending |
+| DATA-01 | Phase 1 | Complete |
 | DATA-02 | Phase 1 | Pending |
 | DATA-03 | Phase 1 | Pending |
 | DATA-04 | Phase 1 | Pending |
