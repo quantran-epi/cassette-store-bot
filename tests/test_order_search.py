@@ -81,3 +81,91 @@ def test_is_search_intent():
     assert is_search_intent("Tuấn Vũ 2 cuốn gửi 123 Lê Lợi 0903123456") is False
     assert is_search_intent("Khánh Ly hạ trắng thu 300k") is False
     assert is_search_intent("đơn mới nè") is False
+
+
+def test_generate_sql_from_query_prompt():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from src.services.order_search import build_text_to_sql_prompt
+
+    fixed_time = datetime(2026, 10, 25, 9, 30, 0, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
+    sys_prompt, user_prompt = build_text_to_sql_prompt("tìm đơn Tuấn Vũ hôm nay", current_time=fixed_time)
+
+    assert "CREATE TABLE IF NOT EXISTS orders" in sys_prompt or "Table orders" in sys_prompt
+    assert "2026-10-25 09:30:00" in sys_prompt
+    assert "2026-10-25" in sys_prompt
+    assert "+7 hours" in sys_prompt
+    assert "<query>tìm đơn Tuấn Vũ hôm nay</query>" in user_prompt
+
+
+@pytest.mark.asyncio
+async def test_execute_search_query_success(test_db):
+    from unittest.mock import AsyncMock, MagicMock
+    from src.services.order_search import execute_natural_language_search
+
+    # Seed an order in test_db
+    await test_db.execute(
+        """
+        INSERT INTO orders (customer_name, customer_phone, shipping_address, items_text, total_amount, cod_amount)
+        VALUES ('Anh Tuấn', '0903123456', 'Hà Nội', '2 cuốn Tuấn Vũ', 200000, 200000)
+        """
+    )
+    await test_db.commit()
+
+    # Mock OpenAI client
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "SELECT * FROM orders WHERE customer_name LIKE '%Tuấn%'"
+    mock_resp = MagicMock(choices=[mock_choice])
+    mock_client.chat.completions.create.return_value = mock_resp
+
+    sql, rows = await execute_natural_language_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="tìm đơn anh Tuấn",
+    )
+
+    assert "SELECT * FROM orders" in sql
+    assert len(rows) == 1
+    assert rows[0]["customer_name"] == "Anh Tuấn"
+
+
+@pytest.mark.asyncio
+async def test_execute_search_query_retry_1shot(test_db):
+    from unittest.mock import AsyncMock, MagicMock
+    import sqlite3
+    from src.services.order_search import execute_natural_language_search
+
+    # Seed an order in test_db
+    await test_db.execute(
+        """
+        INSERT INTO orders (customer_name, customer_phone, shipping_address, items_text, total_amount, cod_amount)
+        VALUES ('Chị Lan', '0912345678', 'Đà Nẵng', '1 cuốn Giao Linh', 150000, 150000)
+        """
+    )
+    await test_db.commit()
+
+    mock_client = AsyncMock()
+    # First response has syntax error (NONEXISTENT_FUNCTION), second response fixes it
+    resp_bad = MagicMock(choices=[MagicMock(message=MagicMock(content="SELECT NONEXISTENT_FN(foo) FROM orders"))])
+    resp_good = MagicMock(choices=[MagicMock(message=MagicMock(content="SELECT * FROM orders WHERE customer_name LIKE '%Lan%'"))])
+    mock_client.chat.completions.create.side_effect = [resp_bad, resp_good]
+
+    sql, rows = await execute_natural_language_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="tìm đơn chị Lan",
+    )
+
+    assert mock_client.chat.completions.create.call_count == 2
+    # Verify retry call included error message
+    retry_call_args = mock_client.chat.completions.create.call_args_list[1]
+    messages = retry_call_args.kwargs["messages"]
+    retry_content = " ".join(m["content"] for m in messages)
+    assert "no such function: NONEXISTENT_FN" in retry_content or "SELECT NONEXISTENT_FN" in retry_content
+
+    assert len(rows) == 1
+    assert rows[0]["customer_name"] == "Chị Lan"
+
