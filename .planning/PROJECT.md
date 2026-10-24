@@ -18,6 +18,7 @@ Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất
 
 - [ ] Lưu trữ và quản lý thông tin khách hàng: tên, nhiều số điện thoại, nhiều địa chỉ, ghi chú.
 - [ ] Lưu trữ và quản lý đơn hàng: tham chiếu khách hàng, chi tiết hàng hoá (dạng text tự do ghi tên các cuốn cassette, số lượng, giá), tổng tiền thu khách, tiền COD, hình thức (chuyển khoản trước / COD), mã vận đơn đơn vị vận chuyển.
+- [ ] Lưu trữ và hiển thị ảnh đơn hàng (1 hoặc nhiều ảnh, lưu trữ qua mã file_id Telegram).
 - [ ] Quản lý trạng thái đơn hàng vòng đời đầy đủ: Chờ làm -> Đang làm -> Đã đóng gói -> Đã tạo đơn trên app vận chuyển -> Shipper đã lấy hàng -> Đã giao thành công / Bom hàng / Huỷ đơn.
 - [ ] Bóc tách tin nhắn đơn hàng bằng LLM (qua 9router / OpenAI-compatible API): nhận free-text tiếng Việt, extract thông tin có cấu trúc, trả về kèm Inline Keyboard "Xác nhận / Huỷ", lưu DB và thông báo sau xác nhận.
 - [ ] Tập lệnh quản trị nhanh thân thiện với người lớn tuổi: đổi trạng thái đơn, đánh dấu đã giao, xem danh sách đơn theo ngày (hôm nay, hôm qua, ngày cụ thể).
