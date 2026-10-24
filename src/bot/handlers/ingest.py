@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 import time
@@ -15,6 +16,10 @@ from src.models.extractor import ExtractedOrder
 from src.services.extractor import extract_order_from_text
 
 logger = logging.getLogger(__name__)
+
+MEDIA_GROUP_DEBOUNCE_SECONDS: float = 0.8
+_MEDIA_GROUP_BUFFERS: dict[str, dict] = {}
+_PROCESSED_MEDIA_GROUPS: dict[str, float] = {}
 
 
 def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, InlineKeyboardMarkup]:
@@ -234,17 +239,13 @@ async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
             # Expired after 120s: clean up state and proceed to regular ingestion
             context.user_data.pop("action_state", None)
 
-    caption = (update.message.caption or "").strip()
-    if not caption:
-        await update.message.reply_text(
-            "Bác vui lòng gửi kèm ảnh với phần chú thích (caption) là thông tin đơn hàng nhé!"
-        )
-        return
-
-    # Take highest resolution photo file_id per D-09 / T-02-06
-    highest_res_photo = update.message.photo[-1]
-    photo_file_id = highest_res_photo.file_id
-
+async def _extract_and_process_photo_order(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    caption: str,
+    photo_file_ids: list[str],
+) -> None:
+    """Extract order info from photo caption and reply with preview card."""
     await update.message.chat.send_action(ChatAction.TYPING)
 
     app_context = context.application.bot_data.get("app_context")
@@ -286,5 +287,102 @@ async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context,
         extracted,
         raw_text=caption,
-        photo_file_ids=[photo_file_id],
+        photo_file_ids=photo_file_ids,
     )
+
+
+async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle incoming photo or photo album with caption as an order message."""
+    if not update.message or not update.message.photo:
+        return
+
+    # Check for active action_state (e.g. await_photo) per D-11, D-12
+    action_state = context.user_data.get("action_state")
+    if action_state:
+        expires_at = action_state.get("expires_at", 0)
+        if time.time() <= expires_at:
+            from src.bot.handlers.order_actions import handle_action_state_photo
+
+            handled = await handle_action_state_photo(update, context, action_state)
+            if handled:
+                return
+        else:
+            # Expired after 120s: clean up state and proceed to regular ingestion
+            context.user_data.pop("action_state", None)
+
+    media_group_id = getattr(update.message, "media_group_id", None)
+
+    # Single photo flow (media_group_id is None)
+    if not media_group_id:
+        caption = (update.message.caption or "").strip()
+        if not caption:
+            await update.message.reply_text(
+                "Bác vui lòng gửi kèm ảnh với phần chú thích (caption) là thông tin đơn hàng nhé!"
+            )
+            return
+
+        highest_res_photo = update.message.photo[-1]
+        photo_file_id = highest_res_photo.file_id
+        await _extract_and_process_photo_order(
+            update,
+            context,
+            caption,
+            [photo_file_id],
+        )
+        return
+
+    # Media group album flow
+    now = time.time()
+    # Prune expired processed media groups (>60s)
+    to_prune = [mg_id for mg_id, ts in _PROCESSED_MEDIA_GROUPS.items() if now - ts > 60.0]
+    for mg_id in to_prune:
+        _PROCESSED_MEDIA_GROUPS.pop(mg_id, None)
+
+    if media_group_id in _PROCESSED_MEDIA_GROUPS:
+        return
+
+    caption = (update.message.caption or "").strip()
+    highest_res_photo = update.message.photo[-1]
+    photo_file_id = highest_res_photo.file_id
+
+    # If album buffer already exists, append photo and capture caption if provided
+    if media_group_id in _MEDIA_GROUP_BUFFERS:
+        buf = _MEDIA_GROUP_BUFFERS[media_group_id]
+        if photo_file_id not in buf["photos"]:
+            buf["photos"].append(photo_file_id)
+        if caption and not buf["caption"]:
+            buf["caption"] = caption
+            buf["caption_update"] = update
+        return
+
+    # First photo in album: initialize buffer and start debounce window
+    buf = {
+        "photos": [photo_file_id],
+        "caption": caption,
+        "caption_update": update if caption else None,
+        "first_update": update,
+    }
+    _MEDIA_GROUP_BUFFERS[media_group_id] = buf
+
+    try:
+        await asyncio.sleep(MEDIA_GROUP_DEBOUNCE_SECONDS)
+
+        effective_update = buf["caption_update"] or buf["first_update"]
+        final_caption = buf["caption"]
+        photos = list(buf["photos"])
+
+        if not final_caption:
+            await effective_update.message.reply_text(
+                "Bác vui lòng gửi kèm ảnh với phần chú thích (caption) là thông tin đơn hàng nhé!"
+            )
+            return
+
+        await _extract_and_process_photo_order(
+            effective_update,
+            context,
+            final_caption,
+            photos,
+        )
+    finally:
+        _MEDIA_GROUP_BUFFERS.pop(media_group_id, None)
+        _PROCESSED_MEDIA_GROUPS[media_group_id] = time.time()
