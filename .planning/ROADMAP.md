@@ -53,9 +53,13 @@ Plans:
 
 **Plans**: 2 plans
 **UI hint**: yes
-
 Plans:
+**Wave 1**
+
 - [ ] 02-01-PLAN.md — End-to-end order ingestion vertical slice: LLM 2-tier fallback extraction, Vietnamese currency normalization, interactive preview card & 2-phase confirmation.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02-PLAN.md — Customer history intelligence (order stats & BOM_HANG alert), multi-address resolution, photo caption ingestion, and resilient error recovery.
 
 ### Phase 3: Ergonomic Order Management & Low-Tech Actions
