@@ -13,7 +13,7 @@ Telegram chatbot phục vụ quản lý đơn hàng cho shop bán băng cassette
 
 - [x] **Phase 1: Foundation, Persistence & Security Whitelist** - Thiết lập cấu hình local, cơ sở dữ liệu SQLite WAL, thực thể khách hàng / đơn hàng / ảnh và middleware chặn người lạ bằng Telegram User ID whitelist. (completed 2026-10-24)
 - [x] **Phase 2: LLM Ingestion & Interactive Confirmation** - Tích hợp gateway 9router bóc tách tin nhắn tiếng Việt tự do thành cấu trúc chuẩn hoá tiền tệ VNĐ và luồng xác nhận hai pha qua thẻ preview trước khi lưu DB. (completed 2026-10-24)
-- [ ] **Phase 3: Ergonomic Order Management & Low-Tech Actions** - Xây dựng giao diện chat Telegram với Reply Keyboard cố định, danh sách đơn theo ngày, thẻ chi tiết kèm nút sao chép 1 chạm, đổi trạng thái vòng đời và quản lý ảnh/mã vận đơn.
+- [x] **Phase 3: Ergonomic Order Management & Low-Tech Actions** - Xây dựng giao diện chat Telegram với Reply Keyboard cố định, danh sách đơn theo ngày, thẻ chi tiết kèm nút sao chép 1 chạm, đổi trạng thái vòng đời và quản lý ảnh/mã vận đơn. (completed 2026-10-24)
 - [ ] **Phase 4: Natural Language Order Search** - Tra cứu đơn hàng bằng ngôn ngữ tự nhiên tiếng Việt qua LLM kết hợp thẻ hỏi xác nhận trước khi hiển thị chi tiết.
 
 ## Phase Details
@@ -76,7 +76,7 @@ Plans:
   4. Người dùng chuyển trạng thái đơn (sang `Đang làm`, `Đã đóng gói`, `Đã tạo đơn`, `Shipper đã lấy`, `Đã giao`, `Bom hàng`, `Huỷ`) chỉ bằng 1 chạm nút Inline và nhận phản hồi tức thì không bị lỗi `Message is not modified`.
   5. Người dùng có thể nhập/cập nhật mã vận đơn cho đơn hàng và xem lại hoặc gửi thêm ảnh đính kèm (qua `file_id` Telegram) trực tiếp trong chat.
 
-**Plans**: 2/2 plans executed
+**Plans**: 2/2 plans complete
 **UI hint**: yes
 
 Plans:
@@ -110,5 +110,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete    | 2026-10-24 |
 | 2. LLM Ingestion & Interactive Confirmation | 2/2 | Complete    | 2026-10-24 |
-| 3. Ergonomic Order Management & Low-Tech Actions | 2/2 | In Progress|  |
+| 3. Ergonomic Order Management & Low-Tech Actions | 2/2 | Complete    | 2026-10-24 |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |

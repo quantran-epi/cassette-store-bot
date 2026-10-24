@@ -13,7 +13,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DATA-02**: Đơn hàng lưu chi tiết hàng hoá dạng text tự do (tên băng cassette, số lượng, giá), tổng tiền thu khách, tiền COD, hình thức (chuyển khoản trước hay COD), và mã vận đơn đối tác ship.
 - [x] **DATA-03**: Quản lý vòng đời đơn hàng qua 7 trạng thái rõ ràng: `Chờ làm` -> `Đang làm` -> `Đã đóng gói` -> `Đã tạo đơn trên app vận chuyển` -> `Shipper đã lấy hàng` -> `Đã giao thành công` / `Bom hàng` / `Huỷ đơn`.
 - [x] **DATA-04**: Đơn hàng hỗ trợ đính kèm 1 hoặc nhiều ảnh (lưu trữ mã `file_id` Telegram vào DB, hỗ trợ gửi kèm lúc tạo đơn hoặc thêm ảnh bổ sung sau khi có đơn).
-- [ ] **DATA-05**: Nhập và cập nhật mã vận đơn cho đơn hàng cụ thể.
+- [x] **DATA-05**: Nhập và cập nhật mã vận đơn cho đơn hàng cụ thể.
 
 ### Smart Ingestion with LLM (INGEST)
 
@@ -24,12 +24,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Ergonomic Admin & Low-tech UX (UI)
 
-- [ ] **UI-01**: 100% tính năng vận hành trên giao diện chat Telegram thông qua Inline Buttons và Reply Keyboard (không làm web/app riêng cho thao tác hàng ngày).
-- [ ] **UI-02**: Menu phím bấm to, cố định dưới khung chat (Reply Keyboard) cho các thao tác chính: Đơn hôm nay, Nhập đơn mới, Tra cứu đơn, Trợ giúp.
-- [ ] **UI-03**: Liệt kê danh sách đơn theo ngày: Hôm nay, Hôm qua, hoặc ngày cụ thể tuỳ chọn bằng nút bấm.
-- [ ] **UI-04**: Thẻ chi tiết đơn hàng cung cấp các nút bấm Inline "Sao chép nhanh" 1 chạm (`CopyTextButton` / định dạng code mono) để copy SĐT, Địa chỉ nhận hàng, Mã vận đơn dán trực tiếp vào app ship (GHTK/GHN) mà không phải bôi đen chọn chữ.
-- [ ] **UI-05**: Đổi trạng thái đơn hàng trực tiếp bằng 1 chạm thông qua danh sách nút bấm Inline trạng thái tương ứng.
-- [ ] **UI-06**: Xem lại danh sách ảnh đã đính kèm của đơn hàng trong Telegram chat (dưới dạng media group hoặc từng ảnh) và nút thêm ảnh mới cho đơn.
+- [x] **UI-01**: 100% tính năng vận hành trên giao diện chat Telegram thông qua Inline Buttons và Reply Keyboard (không làm web/app riêng cho thao tác hàng ngày).
+- [x] **UI-02**: Menu phím bấm to, cố định dưới khung chat (Reply Keyboard) cho các thao tác chính: Đơn hôm nay, Nhập đơn mới, Tra cứu đơn, Trợ giúp.
+- [x] **UI-03**: Liệt kê danh sách đơn theo ngày: Hôm nay, Hôm qua, hoặc ngày cụ thể tuỳ chọn bằng nút bấm.
+- [x] **UI-04**: Thẻ chi tiết đơn hàng cung cấp các nút bấm Inline "Sao chép nhanh" 1 chạm (`CopyTextButton` / định dạng code mono) để copy SĐT, Địa chỉ nhận hàng, Mã vận đơn dán trực tiếp vào app ship (GHTK/GHN) mà không phải bôi đen chọn chữ.
+- [x] **UI-05**: Đổi trạng thái đơn hàng trực tiếp bằng 1 chạm thông qua danh sách nút bấm Inline trạng thái tương ứng.
+- [x] **UI-06**: Xem lại danh sách ảnh đã đính kèm của đơn hàng trong Telegram chat (dưới dạng media group hoặc từng ảnh) và nút thêm ảnh mới cho đơn.
 
 ### Natural Language Search & Security / Config (SEARCH & SEC)
 
@@ -75,13 +75,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INGEST-02 | Phase 2 | Complete |
 | INGEST-03 | Phase 2 | Complete |
 | INGEST-04 | Phase 2 | Complete |
-| DATA-05 | Phase 3 | Pending |
-| UI-01 | Phase 3 | Pending |
-| UI-02 | Phase 3 | Pending |
-| UI-03 | Phase 3 | Pending |
-| UI-04 | Phase 3 | Pending |
-| UI-05 | Phase 3 | Pending |
-| UI-06 | Phase 3 | Pending |
+| DATA-05 | Phase 3 | Complete |
+| UI-01 | Phase 3 | Complete |
+| UI-02 | Phase 3 | Complete |
+| UI-03 | Phase 3 | Complete |
+| UI-04 | Phase 3 | Complete |
+| UI-05 | Phase 3 | Complete |
+| UI-06 | Phase 3 | Complete |
 | SEARCH-01 | Phase 4 | Pending |
 | SEARCH-02 | Phase 4 | Pending |
 
