@@ -311,6 +311,8 @@ async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
             context.user_data.pop("action_state", None)
 
     media_group_id = getattr(update.message, "media_group_id", None)
+    if not isinstance(media_group_id, str):
+        media_group_id = None
 
     # Single photo flow (media_group_id is None)
     if not media_group_id:

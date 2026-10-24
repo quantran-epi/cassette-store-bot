@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -604,3 +605,186 @@ async def test_order_confirmation_appends_new_address_for_existing_customer(test
     assert len(customer.addresses) == 2
     assert "Địa chỉ cũ 1" in customer.addresses
     assert "Địa chỉ mới 2" in customer.addresses
+
+
+@pytest.mark.asyncio
+async def test_media_group_album_bundled_single_preview(test_db):
+    """Media group album bundles all photo_file_ids into single draft and sends 1 preview card."""
+    media_group_id = "album_123"
+
+    # Photo 1 has caption
+    update1 = MagicMock(spec=Update)
+    msg1 = MagicMock()
+    msg1.media_group_id = media_group_id
+    msg1.caption = "Khách Mai 0988112233 456 Lê Lợi 2 băng Chế Linh 300k"
+    msg1.photo = [MagicMock(file_id="photo_1")]
+    msg1.chat.send_action = AsyncMock()
+    msg1.reply_text = AsyncMock()
+    update1.message = msg1
+
+    # Photo 2 has no caption
+    update2 = MagicMock(spec=Update)
+    msg2 = MagicMock()
+    msg2.media_group_id = media_group_id
+    msg2.caption = None
+    msg2.photo = [MagicMock(file_id="photo_2")]
+    msg2.chat.send_action = AsyncMock()
+    msg2.reply_text = AsyncMock()
+    update2.message = msg2
+
+    # Photo 3 has no caption
+    update3 = MagicMock(spec=Update)
+    msg3 = MagicMock()
+    msg3.media_group_id = media_group_id
+    msg3.caption = None
+    msg3.photo = [MagicMock(file_id="photo_3")]
+    msg3.chat.send_action = AsyncMock()
+    msg3.reply_text = AsyncMock()
+    update3.message = msg3
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Khách Mai",
+        customer_phone="0988112233",
+        shipping_address="456 Lê Lợi",
+        items_text="2 băng Chế Linh",
+        total_amount=300000,
+        cod_amount=300000,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    monkeypatch.setattr("src.bot.handlers.ingest.MEDIA_GROUP_DEBOUNCE_SECONDS", 0.05)
+
+    try:
+        await asyncio.gather(
+            handle_photo_order(update1, context),
+            handle_photo_order(update2, context),
+            handle_photo_order(update3, context),
+        )
+    finally:
+        monkeypatch.undo()
+
+    # Update 1 should have replied with preview card
+    msg1.reply_text.assert_awaited_once()
+    # Update 2 and 3 should NOT have replied with any warning
+    msg2.reply_text.assert_not_awaited()
+    msg3.reply_text.assert_not_awaited()
+
+    # Check preview card content
+    preview_text = msg1.reply_text.call_args[1]["text"]
+    assert "3 ảnh" in preview_text
+    assert "300.000 đ" in preview_text
+
+    # Check pending_orders has exactly 1 draft with all 3 photo IDs
+    pending = context.user_data.get("pending_orders", {})
+    assert len(pending) == 1
+    draft = list(pending.values())[0]
+    assert draft["customer_name"] == "Khách Mai"
+    assert draft["photo_file_ids"] == ["photo_1", "photo_2", "photo_3"]
+
+
+@pytest.mark.asyncio
+async def test_media_group_album_missing_all_captions(test_db):
+    """When all photos in album lack caption, only 1 warning message is sent."""
+    media_group_id = "album_nocap_456"
+
+    update1 = MagicMock(spec=Update)
+    msg1 = MagicMock()
+    msg1.media_group_id = media_group_id
+    msg1.caption = None
+    msg1.photo = [MagicMock(file_id="p1")]
+    msg1.reply_text = AsyncMock()
+    update1.message = msg1
+
+    update2 = MagicMock(spec=Update)
+    msg2 = MagicMock()
+    msg2.media_group_id = media_group_id
+    msg2.caption = ""
+    msg2.photo = [MagicMock(file_id="p2")]
+    msg2.reply_text = AsyncMock()
+    update2.message = msg2
+
+    update3 = MagicMock(spec=Update)
+    msg3 = MagicMock()
+    msg3.media_group_id = media_group_id
+    msg3.caption = None
+    msg3.photo = [MagicMock(file_id="p3")]
+    msg3.reply_text = AsyncMock()
+    update3.message = msg3
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("src.bot.handlers.ingest.MEDIA_GROUP_DEBOUNCE_SECONDS", 0.05)
+    try:
+        await asyncio.gather(
+            handle_photo_order(update1, context),
+            handle_photo_order(update2, context),
+            handle_photo_order(update3, context),
+        )
+    finally:
+        monkeypatch.undo()
+
+    msg1.reply_text.assert_awaited_once()
+    assert "chú thích" in msg1.reply_text.call_args[0][0].lower()
+    msg2.reply_text.assert_not_awaited()
+    msg3.reply_text.assert_not_awaited()
+    assert len(context.user_data.get("pending_orders", {})) == 0
+
+
+@pytest.mark.asyncio
+async def test_single_photo_without_media_group_retains_behavior(test_db):
+    """Single photo without media_group_id processes immediately with 1 photo_file_id."""
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.media_group_id = None
+    message.caption = "Khách Hùng 0912345678 123 Lê Lợi 1 băng Tuấn Vũ 150k"
+    message.photo = [MagicMock(file_id="single_photo_1")]
+    message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Khách Hùng",
+        customer_phone="0912345678",
+        shipping_address="123 Lê Lợi",
+        items_text="1 băng Tuấn Vũ",
+        total_amount=150000,
+        cod_amount=150000,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    try:
+        await handle_photo_order(update, context)
+    finally:
+        monkeypatch.undo()
+
+    message.reply_text.assert_awaited_once()
+    pending = context.user_data.get("pending_orders", {})
+    assert len(pending) == 1
+    draft = list(pending.values())[0]
+    assert draft["photo_file_ids"] == ["single_photo_1"]
