@@ -33,7 +33,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Natural Language Search & Security / Config (SEARCH & SEC)
 
-- [ ] **SEARCH-01**: Tra cứu/tìm kiếm đơn hàng bằng ngôn ngữ tự nhiên thông qua tin nhắn chat tự do (VD: *"tìm đơn anh Tuấn hôm qua mua 2 cuốn Tuấn Vũ"*).
+- [x] **SEARCH-01**: Tra cứu/tìm kiếm đơn hàng bằng ngôn ngữ tự nhiên thông qua tin nhắn chat tự do (VD: *"tìm đơn anh Tuấn hôm qua mua 2 cuốn Tuấn Vũ"*).
 - [ ] **SEARCH-02**: LLM truy vấn tìm kiếm đơn hàng phù hợp trong DB; gửi lại thẻ xác nhận *"Có phải bạn muốn xem đơn này không?"* kèm nút xác nhận trước khi hiển thị chi tiết hoặc thao tác.
 - [x] **SEC-01**: Whitelist Telegram User ID bảo mật — chỉ các Telegram User ID được cấu hình mới có quyền sử dụng bot; chặn và từ chối toàn bộ tương tác từ người lạ.
 - [x] **CFG-01**: Cấu hình hệ thống local (`.env` / file settings): quản lý Bot Token, danh sách Whitelist User IDs, URL 9router, API Key và Model ID (cho phép linh hoạt chọn/đổi model LLM trong setting).
@@ -82,7 +82,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-04 | Phase 3 | Complete |
 | UI-05 | Phase 3 | Complete |
 | UI-06 | Phase 3 | Complete |
-| SEARCH-01 | Phase 4 | Pending |
+| SEARCH-01 | Phase 4 | Complete |
 | SEARCH-02 | Phase 4 | Pending |
 
 **Coverage:**
