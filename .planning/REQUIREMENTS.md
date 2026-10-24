@@ -65,15 +65,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| CFG-01 | Phase 1 | Pending |
+| SEC-01 | Phase 1 | Pending |
 | DATA-01 | Phase 1 | Pending |
 | DATA-02 | Phase 1 | Pending |
 | DATA-03 | Phase 1 | Pending |
 | DATA-04 | Phase 1 | Pending |
-| DATA-05 | Phase 3 | Pending |
 | INGEST-01 | Phase 2 | Pending |
 | INGEST-02 | Phase 2 | Pending |
 | INGEST-03 | Phase 2 | Pending |
 | INGEST-04 | Phase 2 | Pending |
+| DATA-05 | Phase 3 | Pending |
 | UI-01 | Phase 3 | Pending |
 | UI-02 | Phase 3 | Pending |
 | UI-03 | Phase 3 | Pending |
@@ -82,8 +84,6 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UI-06 | Phase 3 | Pending |
 | SEARCH-01 | Phase 4 | Pending |
 | SEARCH-02 | Phase 4 | Pending |
-| SEC-01 | Phase 1 | Pending |
-| CFG-01 | Phase 1 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
@@ -92,4 +92,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-24*
-*Last updated: 2026-10-24 after initialization*
+*Last updated: 2026-10-24 after roadmap creation*
