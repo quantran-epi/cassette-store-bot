@@ -26,7 +26,12 @@ Telegram chatbot phục vụ quản lý đơn hàng cho shop bán băng cassette
   1. Người lạ (User ID không có trong whitelist cấu hình) gửi tin nhắn đến bot bị từ chối/bỏ qua hoàn toàn, bot không phản hồi dữ liệu nhạy cảm.
   2. Người trong whitelist gửi lệnh kiểm tra bot khởi động thành công với cấu hình nạp từ `.env` (bot token, whitelist IDs, 9router URL, API Key, Model ID).
   3. Hệ thống tạo và lưu trữ thành công bản ghi khách hàng (hỗ trợ nhiều SĐT, nhiều địa chỉ, ghi chú) và đơn hàng (text hàng hoá tự do, tổng tiền, COD, hình thức thanh toán, mảng `file_id` ảnh, 7 trạng thái vòng đời từ `Chờ làm` đến `Đã giao thành công` / `Bom hàng` / `Huỷ đơn`) vào SQLite ở chế độ WAL mà không bị lỗi lock.
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Setup project environment, Pydantic-Settings v2 configuration, and Telegram bot application with Whitelist security gate.
+- [ ] 01-02-PLAN.md — Build async SQLite database connection manager with WAL mode and Customer domain persistence.
+- [ ] 01-03-PLAN.md — Implement Order domain persistence with customer snapshot, photo attachments, 8-state status lifecycle, and runnable entrypoint.
 
 ### Phase 2: LLM Ingestion & Interactive Confirmation
 **Goal**: Người dùng gửi một đoạn chat đặt hàng tự do tiếng Việt bất kỳ, bot dùng LLM bóc tách chính xác và hiển thị thẻ xem trước kèm nút bấm xác nhận trước khi ghi dữ liệu.
@@ -74,7 +79,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation, Persistence & Security Whitelist | 0/TBD | Not started | - |
+| 1. Foundation, Persistence & Security Whitelist | 0/3 | In progress | - |
 | 2. LLM Ingestion & Interactive Confirmation | 0/TBD | Not started | - |
 | 3. Ergonomic Order Management & Low-Tech Actions | 0/TBD | Not started | - |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
