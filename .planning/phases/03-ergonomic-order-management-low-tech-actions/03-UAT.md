@@ -1,11 +1,11 @@
 ---
-status: testing
+status: diagnosed
 phase: 03-ergonomic-order-management-low-tech-actions
 source:
   - .planning/phases/03-ergonomic-order-management-low-tech-actions/03-01-SUMMARY.md
   - .planning/phases/03-ergonomic-order-management-low-tech-actions/03-02-SUMMARY.md
 started: "2026-10-24T20:00:00Z"
-updated: "2026-10-24T21:00:00Z"
+updated: "2026-10-24T21:10:00Z"
 ---
 
 ## Current Test
@@ -64,8 +64,10 @@ skipped: 0
   reason: "User reported: thêm ảnh vào đơn đã tạo thì ok, thêm nhiều ảnh cũng được, nhưng thêm mới đơn mà chọn nhiều ảnh từ đầu thì chỉ lưu được 1 ảnh, các ảnh còn lại bot rep thêm 1 tin nhắn là bác vui lòng gửi ..."
   severity: major
   test: 8
+  root_cause: "Telegram sends multi-photo albums as separate updates with the same media_group_id where only one update carries the caption and siblings have caption=None. handle_photo_order processes each update individually without media_group_id buffering, causing caption=None siblings to trigger warning replies while only 1 photo ID is saved to the draft."
   artifacts:
     - path: "src/bot/handlers/ingest.py"
-      issue: "handle_photo_order treats each media group item as separate message without media_group_id buffering"
+      issue: "handle_photo_order lacks media_group_id buffering"
   missing:
-    - "Buffer photo file_ids by media_group_id so multi-photo albums bundle all photos into the order draft without redundant warning messages."
+    - "Add media_group_id debounce buffer in handle_photo_order so all sibling photo_file_ids are collected and passed together into process_extracted_order without sending duplicate missing-caption warnings."
+  debug_session: ".planning/debug/media-group-album-photos.md"
