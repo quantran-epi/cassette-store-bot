@@ -1,6 +1,6 @@
-import json
 import pytest
-from pydantic import SecretStr, ValidationError
+from pydantic import ValidationError
+
 from src.config import Settings
 
 
