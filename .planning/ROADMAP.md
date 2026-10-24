@@ -35,7 +35,7 @@ Telegram chatbot phục vụ quản lý đơn hàng cho shop bán băng cassette
 Plans:
 
 - [x] 01-01-PLAN.md — Setup project environment, Pydantic-Settings v2 configuration, and Telegram bot application with Whitelist security gate.
-- [ ] 01-02-PLAN.md — Build async SQLite database connection manager with WAL mode and Customer domain persistence.
+- [x] 01-02-PLAN.md — Build async SQLite database connection manager with WAL mode and Customer domain persistence.
 - [ ] 01-03-PLAN.md — Implement Order domain persistence with customer snapshot, photo attachments, 8-state status lifecycle, and runnable entrypoint.
 
 ### Phase 2: LLM Ingestion & Interactive Confirmation
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation, Persistence & Security Whitelist | 1/3 | In Progress|  |
+| 1. Foundation, Persistence & Security Whitelist | 2/3 | In Progress|  |
 | 2. LLM Ingestion & Interactive Confirmation | 0/TBD | Not started | - |
 | 3. Ergonomic Order Management & Low-Tech Actions | 0/TBD | Not started | - |
 | 4. Natural Language Order Search | 0/TBD | Not started | - |
