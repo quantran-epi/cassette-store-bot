@@ -94,7 +94,7 @@
 
 **Wave 3 (Gap Closure)** *(blocked on Wave 2 completion)*
 
-- [ ] 07-03-PLAN.md — Resilient keyword search, 9router chatter cleanup, and optimistic locking timestamp normalization (MUT-02, MUT-04, MUT-05)
+- [x] 07-03-PLAN.md — Resilient keyword search, 9router chatter cleanup, and optimistic locking timestamp normalization (MUT-02, MUT-04, MUT-05)
 
 **UI hint**: yes
 
@@ -123,5 +123,5 @@
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
 | 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 2/2 | Completed | 2026-10-25 |
-| 7. Natural Language Order Mutation Pipeline | v1.1 | 2/3 | In Progress | - |
+| 7. Natural Language Order Mutation Pipeline | v1.1 | 3/3 | Completed | 2026-10-25 |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
