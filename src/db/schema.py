@@ -57,7 +57,7 @@ async def init_db(db: aiosqlite.Connection) -> None:
         """
     )
     async with db.execute("PRAGMA table_info(orders);") as cursor:
-        cols = {row["name"] for row in await cursor.fetchall()}
+        cols = {row[1] for row in await cursor.fetchall()}
         if "created_by_user_id" not in cols:
             await db.execute("ALTER TABLE orders ADD COLUMN created_by_user_id INTEGER;")
         if "created_by_name" not in cols:
