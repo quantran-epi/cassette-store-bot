@@ -21,7 +21,7 @@
 
 - [x] **Phase 5: Role-Based Access Control & Telegram Admin Suite** - Phân quyền 2 cấp độ Super Admin vs Admin, menu /admin Telegram và xem log trực tiếp (completed 2026-10-25)
 - [x] **Phase 6: Telegram Database Backup Engine & Scheduled Tasks** - Snapshot SQLite atomic qua VACUUM INTO, nén gzip gửi định kỳ và thủ công vào chat Super Admin (completed 2026-10-25)
-- [ ] **Phase 7: Natural Language Order Mutation Pipeline** - 3-Way Intent Router, bóc tách delta thay đổi bằng LLM, thẻ so sánh trực quan Trước/Sau và xác nhận 1-chạm
+- [x] **Phase 7: Natural Language Order Mutation Pipeline** - 3-Way Intent Router, bóc tách delta thay đổi bằng LLM, thẻ so sánh trực quan Trước/Sau và xác nhận 1-chạm (completed 2026-10-25)
 - [ ] **Phase 8: Containerization & Kubernetes Deployment** - Multi-stage Dockerfile non-root, Docker Compose và Kubernetes manifests RWO Recreate
 
 ## Phase Details
@@ -119,5 +119,5 @@
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
 | 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 2/2 | Completed | 2026-10-25 |
-| 7. Natural Language Order Mutation Pipeline | v1.1 | 2/2 | Completed | 2026-10-25 |
+| 7. Natural Language Order Mutation Pipeline | v1.1 | 2/2 | Complete   | 2026-10-25 |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
