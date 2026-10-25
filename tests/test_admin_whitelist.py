@@ -192,3 +192,22 @@ async def test_add_whitelist_text_input_timeout():
     update.effective_message.reply_text.assert_awaited_once()
     msg = update.effective_message.reply_text.call_args[0][0]
     assert "hết thời gian" in msg
+
+
+@pytest.mark.asyncio
+async def test_whitelist_role_pick_cannot_demote_root_super_admin():
+    update = make_mock_update(
+        user_id=123456,
+        is_callback=True,
+        callback_data="adm:wl:role_pick:999999:STAFF",
+    )
+    context = make_mock_context(user_role=UserRole.ADMIN)
+
+    await handle_admin_callback(update, context)
+
+    # 999999 role must remain SUPER_ADMIN
+    assert context.bot_data["admin_roles"][999999] == UserRole.SUPER_ADMIN
+    update.callback_query.answer.assert_awaited_with(
+        "🛡️ Không thể chỉnh sửa, hạ quyền hoặc xoá Root Super Admin!", show_alert=True
+    )
+    update.callback_query.edit_message_text.assert_not_awaited()

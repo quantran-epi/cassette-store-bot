@@ -370,6 +370,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             target_id = int(parts[3])
             chosen_role = parts[4]
 
+            if super_admin_id is not None and target_id == super_admin_id:
+                await query.answer("🛡️ Không thể chỉnh sửa, hạ quyền hoặc xoá Root Super Admin!", show_alert=True)
+                return
+
             pending = context.user_data.pop("pending_add_user", {})
             name = pending.get("name", "") if pending.get("telegram_id") == target_id else ""
 
