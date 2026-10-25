@@ -35,7 +35,10 @@
   2. Quản trị viên có thể xem danh sách whitelist, thêm mới hoặc xoá Telegram User ID trực tiếp qua tin nhắn/nút bấm trên Telegram với hiệu lực tức thì
   3. Hệ thống phân định 2 vai trò `SUPER_ADMIN` và `ADMIN`; tài khoản root `SUPER_ADMIN_ID` cấu hình trong `.env` luôn được bảo vệ chống tự khoá, và decorator `@require_role` chặn đứng người lạ hoặc admin thường khi cố truy cập lệnh/callback trái thẩm quyền
   4. Super Admin có thể xem 25-50 dòng log gần nhất trực tiếp qua lệnh `/logs` định dạng HTML `<pre>` ngay trong chat Telegram mà không cần mở terminal máy chủ
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 05-01-PLAN.md — Foundation persistence, RBAC role decorator, and ring buffer log handler (RBAC-01, RBAC-02, RBAC-05)
+- [ ] 05-02-PLAN.md — Telegram Admin Suite UI, LLM model switcher with probe, whitelist CRUD, and /logs viewer (RBAC-03, RBAC-04)
 **UI hint**: yes
 
 ### Phase 6: Telegram Database Backup Engine & Scheduled Tasks
@@ -82,7 +85,7 @@
 | 2. LLM Ingestion & Interactive Confirmation | v1.0 | 2/2 | Completed | 2026-10-24 |
 | 3. Ergonomic Order Management & Low-Tech Actions | v1.0 | 3/3 | Completed | 2026-10-24 |
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
-| 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 0/TBD | Not started | - |
+| 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 0/2 | Not started | - |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 0/TBD | Not started | - |
 | 7. Natural Language Order Mutation Pipeline | v1.1 | 0/TBD | Not started | - |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
