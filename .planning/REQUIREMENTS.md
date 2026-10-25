@@ -23,8 +23,8 @@
 
 ### Telegram Database Backup Engine (BKP)
 
-- [ ] **BKP-01**: Hệ thống tạo bản sao lưu snapshot SQLite an toàn bằng lệnh `VACUUM INTO` từ live DB đang bật WAL và nén bằng `gzip` giảm 75-85% dung lượng
-- [ ] **BKP-02**: Hệ thống gửi file nén `.sqlite3.gz` trực tiếp qua Telegram Document tới chat riêng của Super Admin (`TELEGRAM_SUPER_ADMIN_ID`) kèm kiểm tra giới hạn 50MB
+- [x] **BKP-01**: Hệ thống tạo bản sao lưu snapshot SQLite an toàn bằng lệnh `VACUUM INTO` từ live DB đang bật WAL và nén bằng `gzip` giảm 75-85% dung lượng
+- [x] **BKP-02**: Hệ thống gửi file nén `.sqlite3.gz` trực tiếp qua Telegram Document tới chat riêng của Super Admin (`TELEGRAM_SUPER_ADMIN_ID`) kèm kiểm tra giới hạn 50MB
 - [ ] **BKP-03**: Hệ thống tự động sao lưu định kỳ hàng ngày vào lúc 02:00 sáng (giờ Việt Nam, UTC+7) thông qua PTB JobQueue / background scheduler
 - [ ] **BKP-04**: Super Admin có thể kích hoạt sao lưu thủ công tức thì theo yêu cầu bằng lệnh `/backup` hoặc nút bấm trên menu `/admin` kèm phản hồi file ngay lập tức
 
@@ -67,8 +67,8 @@
 | RBAC-03 | Phase 5 | Complete |
 | RBAC-04 | Phase 5 | Complete |
 | RBAC-05 | Phase 5 | Validated |
-| BKP-01 | Phase 6 | Pending |
-| BKP-02 | Phase 6 | Pending |
+| BKP-01 | Phase 6 | Complete |
+| BKP-02 | Phase 6 | Complete |
 | BKP-03 | Phase 6 | Pending |
 | BKP-04 | Phase 6 | Pending |
 | MUT-01 | Phase 7 | Pending |

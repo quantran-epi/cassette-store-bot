@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-10-25T07:00:23.562Z"
-last_activity: 2026-10-25 — Completed 05-01-PLAN.md (RBAC persistence, decorator, logging)
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-10-25T07:22:00.000Z"
+last_activity: 2026-10-25 -- Completed 06-01-PLAN.md
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 25
+  total_plans: 4
+  completed_plans: 3
+  percent: 50
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-25)
 
 **Core value:** Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
-**Current focus:** Ready for Phase 5 planning (Role-Based Access Control & Telegram Admin Suite)
+**Current focus:** Phase 06 — telegram-database-backup-engine-scheduled-tasks
 
 ## Current Position
 
-Phase: Phase 5 of 8 (Role-Based Access Control & Telegram Admin Suite)
-Plan: 2 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-10-25 — Completed 05-01-PLAN.md (RBAC persistence, decorator, logging)
+Phase: 06 (telegram-database-backup-engine-scheduled-tasks) — EXECUTING
+Plan: 2 of 2
+Status: Executing Phase 06
+Last activity: 2026-10-25 -- Completed 06-01-PLAN.md
 
-Progress: [████░░░░░░] 38%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 12
-- Average duration: -
-- Total execution time: -
+- Total plans completed: 13
+- Average duration: 4.8m
+- Total execution time: ~10m
 
 **By Phase:**
 
@@ -49,7 +49,7 @@ Progress: [████░░░░░░] 38%
 | 3. Ergonomic Order Management & Low-Tech Actions | 3 | - | - |
 | 4. Natural Language Order Search | 3 | - | - |
 | 5. Role-Based Access Control & Telegram Admin Suite | 1 | 4m | 4m |
-| 6. Telegram Database Backup Engine & Scheduled Tasks | 0 | - | - |
+| 6. Telegram Database Backup Engine & Scheduled Tasks | 1 | 4m | 4m |
 | 7. Natural Language Order Mutation Pipeline | 0 | - | - |
 | 8. Containerization & Kubernetes Deployment | 0 | - | - |
 
@@ -59,6 +59,7 @@ Progress: [████░░░░░░] 38%
 - Trend: Stable
 
 | Phase 05 P02 | 6min | 3 tasks | 9 files |
+| Phase 06 P01 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,12 @@ Progress: [████░░░░░░] 38%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
+
+- [Phase 06 P01]: Hot backup via VACUUM INTO ? guarantees zero lockups and clean WAL checkpoint snapshot
+- [Phase 06 P01]: Raw uncompressed snapshot file is unlinked immediately in try...finally
+- [Phase 06 P01]: Local directory retention caps backup archives at 7 newest files
+- [Phase 06 P01]: Safe size limit 48MB blocks upload and signals warning before hitting Telegram 50MB ceiling
+- [Phase 06 P01]: Telegram document transmission retries 3 times on transient network error with exponential backoff (2s, 5s, 10s)
 
 - [Milestone v1.1 Roadmap]: 19 requirements grouped into 4 phases under coarse granularity (Phases 5 to 8).
 - [Phase 5: RBAC]: Dual-tier role model (SUPER_ADMIN vs ADMIN) with immutable root Super Admin ID in .env, @require_role decorator, and Telegram /admin suite.
@@ -93,10 +100,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-25T06:18:31.032Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-telegram-database-backup-engine-scheduled-tasks/06-CONTEXT.md
+Last session: 2026-10-25T07:22:00.000Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: .planning/phases/06-telegram-database-backup-engine-scheduled-tasks/06-02-PLAN.md
 
 ## Operator Next Steps
 
-- Execute 05-02-PLAN.md: Telegram Admin Suite UI, LLM model switcher with probe, whitelist CRUD, and /logs viewer
+- Execute 06-02-PLAN.md: PTB JobQueue background scheduling, /backup command, admin UI wiring for backups, schedule configuration, model deletion, and whitelist user renaming

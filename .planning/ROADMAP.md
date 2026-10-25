@@ -64,7 +64,7 @@
 **Plans**: 2 plans
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Core SQLite snapshotting via VACUUM INTO, gzip compression, 7-archive retention pruning, and 48MB threshold upload gate (BKP-01, BKP-02)
+- [x] 06-01-PLAN.md — Core SQLite snapshotting via VACUUM INTO, gzip compression, 7-archive retention pruning, and 48MB threshold upload gate (BKP-01, BKP-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -110,6 +110,6 @@
 | 3. Ergonomic Order Management & Low-Tech Actions | v1.0 | 3/3 | Completed | 2026-10-24 |
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
 | 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
-| 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 0/2 | Planned | - |
+| 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 1/2 | In progress | - |
 | 7. Natural Language Order Mutation Pipeline | v1.1 | 0/TBD | Not started | - |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
