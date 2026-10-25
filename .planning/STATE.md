@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-10-25T09:20:00.000Z"
-last_activity: 2026-10-25 -- Phase 07 Plan 02 complete
+stopped_at: Planned 07-03-PLAN.md (gap closure)
+last_updated: "2026-10-25T18:00:00.000Z"
+last_activity: 2026-10-25 -- Phase 07 Plan 03 gap closure planned
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 6
+  completed_phases: 2
+  total_plans: 7
   completed_plans: 6
-  percent: 75
+  percent: 85
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-25)
 
 **Core value:** Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
-**Current focus:** Phase 07 — natural-language-order-mutation-pipeline
+**Current focus:** Phase 07 — natural-language-order-mutation-pipeline (gap closure)
 
 ## Current Position
 
-Phase: 07 (natural-language-order-mutation-pipeline) — COMPLETE
-Plan: 2 of 2
-Status: Phase 07 complete
-Last activity: 2026-10-25 -- Phase 07 Plan 02 complete
+Phase: 07 (natural-language-order-mutation-pipeline) — IN PROGRESS (GAP CLOSURE)
+Plan: 3 of 3
+Status: Plan 07-03 ready for execution
+Last activity: 2026-10-25 -- Phase 07 Plan 03 gap closure planned
 
-Progress: [██████████] 100%
+Progress: [████████░░] 85%
 
 ## Performance Metrics
 
@@ -94,6 +94,7 @@ Recent decisions affecting current work:
 - [Phase 07]: order_history table and creator columns in orders provide full auditability.
 - [Phase 07]: Visual Diff card with 14-char divider (──────────────) and 120s TTL eliminates clutter on small mobile screens.
 - [Phase 07]: Optimistic locking UPDATE WHERE id=? AND updated_at=? prevents concurrent overwrites and alerts with last modifier details.
+- [Phase 07 Gap Closure]: Normalize updated_at timestamps to millisecond precision before optimistic locking comparison; strip Vietnamese conversational filler tokens ('khách', 'bác', 'đơn') for flexible search; regex JSON extraction blocks across trailing chatter.
 
 ### Pending Todos
 
@@ -113,10 +114,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-25T09:20:00.000Z
-Stopped at: Completed 07-02-PLAN.md
-Resume file: None
+Last session: 2026-10-25T17:45:00.000Z
+Stopped at: Planned 07-03-PLAN.md (gap closure)
+Resume file: .planning/phases/07-natural-language-order-mutation-pipeline/07-03-PLAN.md
 
 ## Operator Next Steps
 
-- Proceed to Phase 08: Containerization & Kubernetes Deployment
+- Execute Phase 07 Plan 03 via `/gsd-execute-phase 07 --gaps-only`

@@ -21,7 +21,7 @@
 
 - [x] **Phase 5: Role-Based Access Control & Telegram Admin Suite** - Phân quyền 2 cấp độ Super Admin vs Admin, menu /admin Telegram và xem log trực tiếp (completed 2026-10-25)
 - [x] **Phase 6: Telegram Database Backup Engine & Scheduled Tasks** - Snapshot SQLite atomic qua VACUUM INTO, nén gzip gửi định kỳ và thủ công vào chat Super Admin (completed 2026-10-25)
-- [x] **Phase 7: Natural Language Order Mutation Pipeline** - 3-Way Intent Router, bóc tách delta thay đổi bằng LLM, thẻ so sánh trực quan Trước/Sau và xác nhận 1-chạm (completed 2026-10-25)
+- [ ] **Phase 7: Natural Language Order Mutation Pipeline** - 3-Way Intent Router, bóc tách delta thay đổi bằng LLM, thẻ so sánh trực quan Trước/Sau và xác nhận 1-chạm (in gap closure)
 - [ ] **Phase 8: Containerization & Kubernetes Deployment** - Multi-stage Dockerfile non-root, Docker Compose và Kubernetes manifests RWO Recreate
 
 ## Phase Details
@@ -83,7 +83,7 @@
   4. Người dùng bấm `[✅ Xác nhận sửa]`, đơn hàng được cập nhật nguyên tử vào DB với khóa lạc quan (optimistic locking chống xung đột); nếu bấm huỷ hoặc quá 120s thì giữ nguyên trạng thái cũ
   5. Khi câu chat chưa nói rõ trạng thái đích, hệ thống hiển thị danh sách nút bấm trạng thái gợi ý để người dùng bấm chọn 1-chạm
 
-**Plans**: 2 plans
+**Plans**: 3 plans
 **Wave 1**
 
 - [x] 07-01-PLAN.md — Database audit migration, 3-Way Intent Router, and 2-tier LLM delta extractor (MUT-01, MUT-02, MUT-03)
@@ -91,6 +91,10 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 07-02-PLAN.md — Visual Diff Card, 14-char divider, status suggestion disambiguation, optimistic locking update, and Telegram pipeline integration (MUT-04, MUT-05)
+
+**Wave 3 (Gap Closure)** *(blocked on Wave 2 completion)*
+
+- [ ] 07-03-PLAN.md — Resilient keyword search, 9router chatter cleanup, and optimistic locking timestamp normalization (MUT-02, MUT-04, MUT-05)
 
 **UI hint**: yes
 
@@ -119,5 +123,5 @@
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
 | 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 2/2 | Completed | 2026-10-25 |
-| 7. Natural Language Order Mutation Pipeline | v1.1 | 2/2 | Complete   | 2026-10-25 |
+| 7. Natural Language Order Mutation Pipeline | v1.1 | 2/3 | In Progress | - |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
