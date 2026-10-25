@@ -16,25 +16,25 @@
 ### Role-Based Access Control & Telegram Admin Suite (RBAC)
 
 - [ ] **RBAC-01**: Hệ thống lưu trữ danh sách quản trị viên trong bảng `admin_users` với 2 cấp độ: `SUPER_ADMIN` và `ADMIN`, neo cứng `SUPER_ADMIN_ID` gốc trong cấu hình `.env` để chống tự khoá
-- [ ] **RBAC-02**: Decorator phân quyền `@require_role` kiểm soát chặt chẽ cả lệnh gõ (`/admin`, `/backup`) lẫn các nút bấm `CallbackQuery` để chống leo thang đặc quyền
-- [ ] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống (bot, DB, LLM), thống kê doanh thu, kích hoạt backup dữ liệu, và cấu hình đổi model LLM (tương đương console)
+- [ ] **RBAC-02**: Decorator phân quyền `@require_role` kiểm soát chặt chẽ cả lệnh gõ (`/admin`, `/backup`, `/logs`) lẫn các nút bấm `CallbackQuery` để chống leo thang đặc quyền
+- [ ] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống (bot, DB, LLM) và cấu hình chuyển đổi model LLM 9router trực tiếp
 - [ ] **RBAC-04**: Quản trị viên trên Telegram có thể quản lý whitelist người dùng (xem danh sách, thêm mới, xoá Telegram ID khỏi whitelist) với hiệu lực tức thì
-- [ ] **RBAC-05**: Super Admin có thể thêm hoặc xoá user khỏi nhóm Admin qua giao diện Telegram; Admin cấp 2 bị chặn hoàn toàn quyền can thiệp danh sách Admin
+- [ ] **RBAC-05**: Super Admin có thể xem log gần nhất qua lệnh `/logs` (ring buffer 25-50 dòng định dạng `<pre>` HTML) trực tiếp trên Telegram mà không cần truy cập terminal
 
-### Interactive Server Console App (CLI)
-
-- [ ] **CLI-01**: Console chạy trực tiếp trên terminal server, đọc input không đồng bộ không làm nghẽn event loop của Telegram và tự phát hiện chế độ headless (`isatty`)
-- [ ] **CLI-02**: Quản trị viên console có thể xem bảng điều khiển trạng thái (trạng thái bot, SQLite DB, kết nối LLM 9router) và log gần nhất
-- [ ] **CLI-03**: Quản trị viên console có thể quản lý danh sách whitelist (xem danh sách, thêm Telegram ID mới, xoá Telegram ID)
-- [ ] **CLI-04**: Quản trị viên console có thể điều chỉnh cấu hình model LLM (xem model hiện tại, đổi Model ID 9router) áp dụng ngay lập tức
-- [ ] **CLI-05**: Quản trị viên console có thể kích hoạt sao lưu cơ sở dữ liệu lên GitHub ngay lập tức bằng lệnh dòng lệnh
-
-### GitHub Database Backup Engine (BKP)
+### Telegram Database Backup Engine (BKP)
 
 - [ ] **BKP-01**: Hệ thống tạo bản sao lưu snapshot SQLite an toàn bằng lệnh `VACUUM INTO` từ live DB đang bật WAL và nén bằng `gzip` giảm 75-85% dung lượng
-- [ ] **BKP-02**: Hệ thống tải trực tiếp file nén `.db.gz` lên private GitHub repository qua GitHub Contents REST API bằng `httpx` không cần Git CLI hoặc SSH key
-- [ ] **BKP-03**: Hệ thống tự động sao lưu định kỳ hàng ngày vào lúc 02:00 sáng (giờ Việt Nam, UTC+7) thông qua PTB JobQueue (APScheduler)
-- [ ] **BKP-04**: Hệ thống hỗ trợ kích hoạt sao lưu thủ công tức thì theo yêu cầu từ cả Console server lẫn nút bấm Telegram của Admin kèm thông báo kết quả
+- [ ] **BKP-02**: Hệ thống gửi file nén `.sqlite3.gz` trực tiếp qua Telegram Document tới chat riêng của Super Admin (`TELEGRAM_SUPER_ADMIN_ID`) kèm kiểm tra giới hạn 50MB
+- [ ] **BKP-03**: Hệ thống tự động sao lưu định kỳ hàng ngày vào lúc 02:00 sáng (giờ Việt Nam, UTC+7) thông qua PTB JobQueue / background scheduler
+- [ ] **BKP-04**: Super Admin có thể kích hoạt sao lưu thủ công tức thì theo yêu cầu bằng lệnh `/backup` hoặc nút bấm trên menu `/admin` kèm phản hồi file ngay lập tức
+
+### Containerization & Production Deployment (DEP)
+
+- [ ] **DEP-01**: `Dockerfile` tối ưu multi-stage trên nền `python:3.12-slim`, chạy với non-root user (UID 10001) và cấu hình múi giờ `TZ=Asia/Ho_Chi_Minh`
+- [ ] **DEP-02**: Thư mục dữ liệu `/app/data` được cấu hình volume mount để bảo toàn file SQLite chính và các file WAL (`-wal`, `-shm`) khi container khởi động lại
+- [ ] **DEP-03**: File cấu hình `docker-compose.yml` chuẩn production với biến môi trường, health check, chính sách restart và volume mount dữ liệu bền vững
+- [ ] **DEP-04**: Bộ manifest Kubernetes chuẩn: `Deployment` (enforce `replicas: 1` và `strategy.type: Recreate`), PersistentVolumeClaim (RWO), ConfigMap và Secret
+- [ ] **DEP-05**: Cơ chế tắt container an toàn (graceful shutdown) bắt tín hiệu `SIGTERM`/`SIGINT`, thực thi `PRAGMA wal_checkpoint(TRUNCATE)` và đóng kết nối DB sạch sẽ
 
 ## Future Requirements (v2)
 
@@ -43,47 +43,48 @@
 - **VOICE-02**: Trả lời xác nhận bằng giọng nói tổng hợp TTS thân thiện với người khiếm thị
 
 ### Advanced Operations
-- **RESTORE-01**: Wizard khôi phục dữ liệu từ GitHub backup trực tiếp trên console
+- **RESTORE-01**: Wizard khôi phục dữ liệu từ file backup gửi ngược lại vào Telegram chat
 - **ANALYTICS-01**: Báo cáo doanh thu biểu đồ nâng cao qua tin nhắn hình ảnh Telegram
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Web-based Dashboard (Flask/FastAPI/React) | Vi phạm nguyên tắc zero-maintenance, tăng bề mặt tấn công; Telegram + Console terminal đáp ứng 100% nhu cầu quản trị |
-| Git CLI subprocess & SSH keys on server | Dễ xung đột merge, lỗi key SSH; dùng trực tiếp GitHub Contents REST API qua `httpx` gọn nhẹ hơn |
-| Sửa đơn trực tiếp không qua xác nhận 2-phase | Rủi ro xoá nhầm hoặc sai lệch dữ liệu do nhận diện giọng nói/text; bắt buộc phải có thẻ so sánh và nút bấm xác nhận |
-| Đồng bộ tự động 2 chiều API vận chuyển | Người dùng tự tạo đơn app ngoài; bot giữ vai trò sổ tay số hoá thông minh |
+| Interactive Server Console App (CLI) | Merchant operates 100% on mobile Telegram. Telegram Admin Suite and `/logs` eliminate the need for server SSH terminal access. |
+| GitHub Contents API Backup | Native Telegram Document upload to Super Admin is faster, free, zero external credentials, and avoids GitHub token expiration. |
+| Multi-replica Kubernetes autoscaling | SQLite is single-writer. Running multiple replicas on shared storage causes database corruption. Strictly enforce `replicas: 1` with `Recreate`. |
+| Web-Based Admin Dashboard (FastAPI/React) | Adds port exposure, TLS certificates, and auth attack surface without helping the elderly merchant who lives in Telegram. |
+| Direct NL Mutation Without Confirmation | Voice-to-text noise or accidental typos could silently overwrite order records. 2-phase diff preview with 120s TTL is mandatory. |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MUT-01 | Phase 8 | Pending |
-| MUT-02 | Phase 8 | Pending |
-| MUT-03 | Phase 8 | Pending |
-| MUT-04 | Phase 8 | Pending |
-| MUT-05 | Phase 8 | Pending |
-| RBAC-01 | Phase 6 | Pending |
-| RBAC-02 | Phase 6 | Pending |
-| RBAC-03 | Phase 6 | Pending |
-| RBAC-04 | Phase 6 | Pending |
-| RBAC-05 | Phase 6 | Pending |
-| CLI-01 | Phase 7 | Pending |
-| CLI-02 | Phase 7 | Pending |
-| CLI-03 | Phase 7 | Pending |
-| CLI-04 | Phase 7 | Pending |
-| CLI-05 | Phase 7 | Pending |
-| BKP-01 | Phase 5 | Pending |
-| BKP-02 | Phase 5 | Pending |
-| BKP-03 | Phase 5 | Pending |
-| BKP-04 | Phase 5 | Pending |
+| RBAC-01 | Phase 5 | Pending |
+| RBAC-02 | Phase 5 | Pending |
+| RBAC-03 | Phase 5 | Pending |
+| RBAC-04 | Phase 5 | Pending |
+| RBAC-05 | Phase 5 | Pending |
+| BKP-01 | Phase 6 | Pending |
+| BKP-02 | Phase 6 | Pending |
+| BKP-03 | Phase 6 | Pending |
+| BKP-04 | Phase 6 | Pending |
+| MUT-01 | Phase 7 | Pending |
+| MUT-02 | Phase 7 | Pending |
+| MUT-03 | Phase 7 | Pending |
+| MUT-04 | Phase 7 | Pending |
+| MUT-05 | Phase 7 | Pending |
+| DEP-01 | Phase 8 | Pending |
+| DEP-02 | Phase 8 | Pending |
+| DEP-03 | Phase 8 | Pending |
+| DEP-04 | Phase 8 | Pending |
+| DEP-05 | Phase 8 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 19 total
+- Milestone v1.1 requirements: 19 total
 - Mapped to phases: 19
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-25*
-*Last updated: 2026-10-25 after milestone v1.1 roadmap creation*
+*Last updated: 2026-10-25 after milestone v1.1 scope adjustment*
