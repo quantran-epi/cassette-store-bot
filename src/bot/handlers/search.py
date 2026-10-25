@@ -30,7 +30,7 @@ def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
     """Resolve active database connection or create context connection per G-04-3."""
     app_context = context.application.bot_data.get("app_context")
     db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
-    settings = context.application.bot_data.get("settings")
+    settings = getattr(app_context, "settings", None) if app_context else context.application.bot_data.get("settings")
     db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
     return nullcontext(db) if db else get_db_connection(db_path)
 
