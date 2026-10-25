@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
-status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-10-25T07:22:00.000Z"
-last_activity: 2026-10-25 -- Completed 06-01-PLAN.md
+status: complete
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-10-25T07:45:00.000Z"
+last_activity: 2026-10-25 -- Completed 06-02-PLAN.md
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-25)
 
 **Core value:** Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
-**Current focus:** Phase 06 — telegram-database-backup-engine-scheduled-tasks
+**Current focus:** Phase 06 — telegram-database-backup-engine-scheduled-tasks (Complete)
 
 ## Current Position
 
-Phase: 06 (telegram-database-backup-engine-scheduled-tasks) — EXECUTING
+Phase: 06 (telegram-database-backup-engine-scheduled-tasks) — COMPLETE
 Plan: 2 of 2
-Status: Executing Phase 06
-Last activity: 2026-10-25 -- Completed 06-01-PLAN.md
+Status: Phase 06 Complete
+Last activity: 2026-10-25 -- Completed 06-02-PLAN.md
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 13
+- Total plans completed: 14
 - Average duration: 4.8m
-- Total execution time: ~10m
+- Total execution time: ~16m
 
 **By Phase:**
 
@@ -49,7 +49,7 @@ Progress: [█████░░░░░] 50%
 | 3. Ergonomic Order Management & Low-Tech Actions | 3 | - | - |
 | 4. Natural Language Order Search | 3 | - | - |
 | 5. Role-Based Access Control & Telegram Admin Suite | 1 | 4m | 4m |
-| 6. Telegram Database Backup Engine & Scheduled Tasks | 1 | 4m | 4m |
+| 6. Telegram Database Backup Engine & Scheduled Tasks | 2 | 10m | 5m |
 | 7. Natural Language Order Mutation Pipeline | 0 | - | - |
 | 8. Containerization & Kubernetes Deployment | 0 | - | - |
 
@@ -60,6 +60,7 @@ Progress: [█████░░░░░] 50%
 
 | Phase 05 P02 | 6min | 3 tasks | 9 files |
 | Phase 06 P01 | 4min | 2 tasks | 2 files |
+| Phase 06 P02 | 6min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,11 @@ Progress: [█████░░░░░] 50%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Phase 06 P02]: PTB JobQueue schedules daily backup at target HH:MM Asia/Ho_Chi_Minh without immediate execution on boot
+- [Phase 06 P02]: Dynamic rescheduling clears existing job by name and registers new schedule without bot restart
+- [Phase 06 P02]: /backup and adm:bkp:trigger strictly enforce SUPER_ADMIN role with progress feedback and document dispatch
+- [Phase 06 P02]: Model switcher starts with empty default list, dynamically appends probed models, and protects active model from deletion
+- [Phase 06 P02]: Whitelist user display names can be edited interactively via 60s TTL prompt
 - [Phase 06 P01]: Hot backup via VACUUM INTO ? guarantees zero lockups and clean WAL checkpoint snapshot
 - [Phase 06 P01]: Raw uncompressed snapshot file is unlinked immediately in try...finally
 - [Phase 06 P01]: Local directory retention caps backup archives at 7 newest files
@@ -100,10 +106,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-25T07:22:00.000Z
-Stopped at: Completed 06-01-PLAN.md
-Resume file: .planning/phases/06-telegram-database-backup-engine-scheduled-tasks/06-02-PLAN.md
+Last session: 2026-10-25T07:45:00.000Z
+Stopped at: Completed 06-02-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
-- Execute 06-02-PLAN.md: PTB JobQueue background scheduling, /backup command, admin UI wiring for backups, schedule configuration, model deletion, and whitelist user renaming
+- Proceed to Phase 07: Natural Language Order Mutation Pipeline
+

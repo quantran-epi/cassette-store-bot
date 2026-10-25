@@ -20,7 +20,7 @@
 ### 🚧 v1.1 NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 
 - [x] **Phase 5: Role-Based Access Control & Telegram Admin Suite** - Phân quyền 2 cấp độ Super Admin vs Admin, menu /admin Telegram và xem log trực tiếp (completed 2026-10-25)
-- [ ] **Phase 6: Telegram Database Backup Engine & Scheduled Tasks** - Snapshot SQLite atomic qua VACUUM INTO, nén gzip gửi định kỳ và thủ công vào chat Super Admin
+- [x] **Phase 6: Telegram Database Backup Engine & Scheduled Tasks** - Snapshot SQLite atomic qua VACUUM INTO, nén gzip gửi định kỳ và thủ công vào chat Super Admin (completed 2026-10-25)
 - [ ] **Phase 7: Natural Language Order Mutation Pipeline** - 3-Way Intent Router, bóc tách delta thay đổi bằng LLM, thẻ so sánh trực quan Trước/Sau và xác nhận 1-chạm
 - [ ] **Phase 8: Containerization & Kubernetes Deployment** - Multi-stage Dockerfile non-root, Docker Compose và Kubernetes manifests RWO Recreate
 
@@ -68,7 +68,7 @@
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-02-PLAN.md — PTB JobQueue background scheduling, /backup command, admin UI wiring for backups, schedule configuration, model deletion, and whitelist user renaming (BKP-03, BKP-04)
+- [x] 06-02-PLAN.md — PTB JobQueue background scheduling, /backup command, admin UI wiring for backups, schedule configuration, model deletion, and whitelist user renaming (BKP-03, BKP-04)
 
 ### Phase 7: Natural Language Order Mutation Pipeline
 
