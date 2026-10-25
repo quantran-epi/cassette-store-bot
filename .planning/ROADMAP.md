@@ -38,7 +38,7 @@
   3. Hệ thống phân định 2 vai trò `SUPER_ADMIN` và `ADMIN`; tài khoản root `SUPER_ADMIN_ID` cấu hình trong `.env` luôn được bảo vệ chống tự khoá, và decorator `@require_role` chặn đứng người lạ hoặc admin thường khi cố truy cập lệnh/callback trái thẩm quyền
   4. Super Admin có thể xem 25-50 dòng log gần nhất trực tiếp qua lệnh `/logs` định dạng HTML `<pre>` ngay trong chat Telegram mà không cần mở terminal máy chủ
 
-**Plans**: 2 plansPlans:
+**Plans**: 2 plans
 **Wave 1**
 
 - [x] 05-01-PLAN.md — Foundation persistence, RBAC role decorator, and ring buffer log handler (RBAC-01, RBAC-02, RBAC-05)
@@ -61,7 +61,14 @@
   3. File `.sqlite3.gz` tải về từ Telegram giải nén thành file SQLite nguyên vẹn, đọc được toàn bộ dữ liệu đơn hàng và khách hàng mới nhất
   4. Khi dung lượng vượt 48MB hoặc gặp lỗi gửi Telegram, hệ thống ghi log cảnh báo chi tiết và không làm gián đoạn hay crash tiến trình bot đang phục vụ khách
 
-**Plans**: TBD
+**Plans**: 2 plans
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Core SQLite snapshotting via VACUUM INTO, gzip compression, 7-archive retention pruning, and 48MB threshold upload gate (BKP-01, BKP-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-02-PLAN.md — PTB JobQueue background scheduling, /backup command, admin UI wiring for backups, schedule configuration, model deletion, and whitelist user renaming (BKP-03, BKP-04)
 
 ### Phase 7: Natural Language Order Mutation Pipeline
 
@@ -103,6 +110,6 @@
 | 3. Ergonomic Order Management & Low-Tech Actions | v1.0 | 3/3 | Completed | 2026-10-24 |
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
 | 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
-| 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 0/TBD | Not started | - |
+| 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 0/2 | Planned | - |
 | 7. Natural Language Order Mutation Pipeline | v1.1 | 0/TBD | Not started | - |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
