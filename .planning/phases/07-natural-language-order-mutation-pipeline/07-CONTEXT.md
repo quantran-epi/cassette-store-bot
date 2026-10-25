@@ -32,6 +32,9 @@ Người dùng gửi tin nhắn chat tự nhiên chứa ý định chỉnh sửa
 - **D-12:** Xử lý huỷ hoặc hết hạn 120s: Khi bấm `[❌ Huỷ]` hoặc quá 120s TTL, edit tin nhắn thẻ Diff thành `❌ Đã huỷ yêu cầu sửa đơn` / `⏰ Đã hết hạn 120s` và gỡ bỏ toàn bộ nút bấm inline để chống bấm nhầm lần 2.
 - **D-13:** Gợi ý trạng thái đích chưa rõ (MUT-05): Dựa vào trạng thái hiện tại của đơn, chỉ gợi ý các bước kế tiếp hợp lý theo vòng đời đơn hàng (ví dụ: `DANG_LAM` gợi ý `DA_DONG_GOI`, `DA_TAO_DON`, `HUY_DON`), hiển thị 3-4 nút bấm trực quan.
 - **D-14:** Phản hồi sau khi xác nhận sửa thành công: Sửa trực tiếp (edit) tin nhắn thẻ Diff thành thẻ đơn hàng đã cập nhật kèm thông báo `✅ Đã cập nhật thành công đơn #12!` và các nút hành động (Copy text, Đổi trạng thái). Giữ màn hình chat sạch sẽ.
+- **D-19:** Rút ngắn divider và phân tách danh sách:
+  - Đường kẻ phân cách (`divider`): rút ngắn từ 20 ký tự xuống 14 ký tự (`──────────────`) để chống vỡ dòng trên màn hình điện thoại nhỏ hoặc cỡ chữ lớn của người già.
+  - Định dạng danh sách đơn (`order list card`): thêm 1 dòng trống giãn cách giữa các đơn liên tiếp trong danh sách để tách khối trực quan rõ ràng, chống dính chữ.
 
 ### Khóa lạc quan & Lịch sử sửa đơn (Optimistic Locking & Audit Trail)
 - **D-15:** Cơ chế khóa lạc quan: Sử dụng kiểm tra `WHERE id = ? AND updated_at = ?` khi thực hiện UPDATE. Nếu rowcount == 0 nghĩa là đã có xung đột xảy ra trong 120s chờ xác nhận.
