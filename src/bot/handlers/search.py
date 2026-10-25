@@ -130,12 +130,22 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 return
 
+            bot_data = (
+                context.application.bot_data
+                if getattr(context, "application", None) and isinstance(getattr(context.application, "bot_data", None), dict)
+                else getattr(context, "bot_data", {})
+            )
+            active_model = (
+                (bot_data.get("active_model_id") if isinstance(bot_data, dict) else None)
+                or settings.nine_router_model_id
+            )
+
             if chat:
                 result = await run_with_typing(
                     chat,
                     run_order_search(
                         client=openai_client,
-                        model_id=settings.nine_router_model_id,
+                        model_id=active_model,
                         db=active_db,
                         query=query_text,
                     ),
@@ -143,7 +153,7 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 result = await run_order_search(
                     client=openai_client,
-                    model_id=settings.nine_router_model_id,
+                    model_id=active_model,
                     db=active_db,
                     query=query_text,
                 )

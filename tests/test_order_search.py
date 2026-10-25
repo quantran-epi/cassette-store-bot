@@ -1,4 +1,7 @@
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
+from telegram import Update
+from telegram.ext import ContextTypes
 
 from src.db.connection import remove_accents
 from src.services.order_search import (
@@ -738,6 +741,39 @@ async def test_process_search_query_without_bot_data_db(tmp_path):
     assert "⚠️ Hệ thống tra cứu đang bận" not in reply_text
     assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in reply_text
     assert "Anh Tuấn" in reply_text
+
+
+@pytest.mark.asyncio
+async def test_process_search_query_uses_active_model_id():
+    """Verify process_search_query passes active_model_id from bot_data if present."""
+    from src.bot.handlers.search import process_search_query
+
+    mock_client = MagicMock()
+    mock_settings = MagicMock()
+    mock_settings.nine_router_model_id = "default-model"
+    mock_settings.sqlite_db_path = "test.db"
+
+    message = MagicMock()
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.effective_message = message
+    update.effective_chat = None
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {
+        "db": MagicMock(),
+        "settings": mock_settings,
+        "openai_client": mock_client,
+        "active_model_id": "custom-active-model",
+    }
+    context.user_data = {}
+
+    with patch("src.bot.handlers.search.run_order_search", new_callable=AsyncMock) as mock_search:
+        mock_search.return_value = MagicMock(orders=[], interpretation="Không tìm thấy")
+        await process_search_query(update, context, "tìm đơn")
+
+    mock_search.assert_awaited_once()
+    assert mock_search.call_args[1]["model_id"] == "custom-active-model"
 
 
 @pytest.mark.asyncio
