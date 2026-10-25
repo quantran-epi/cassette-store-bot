@@ -541,22 +541,22 @@ async def test_order_card_displays_reminder_and_deletion(test_db):
 
 
 def test_sunday_weekday_formatting_and_thu2_tuan_sau():
-    """Verify Sunday 2026-10-25 is Chủ Nhật and 'thứ 2 tuần sau' parses to 2026-11-02."""
+    """Verify Sunday 2026-10-25 is Chủ Nhật and 'thứ 2 tuần sau' parses to 2026-10-26 (tomorrow, start of next week)."""
     from src.services.extractor import VN_WEEKDAYS, _parse_vietnamese_relative_time
 
     # Sunday 2026-10-25
     sunday_dt = datetime(2026, 10, 25, 10, 0, tzinfo=VN_TZ)
     assert VN_WEEKDAYS[sunday_dt.weekday()] == "Chủ Nhật"
 
-    # 'thứ 2 tuần sau' on Sunday must be 2026-11-02 (NOT 2026-10-27)
+    # 'thứ 2 tuần sau' on Sunday (end of week) means tomorrow Monday (start of next week, 2026-10-26)
     res_next_week, _ = _parse_vietnamese_relative_time("thứ 2 tuần sau", sunday_dt)
-    assert res_next_week == "2026-11-02 09:00"
+    assert res_next_week == "2026-10-26 09:00"
 
-    # 'thứ 2' (tomorrow) on Sunday must be 2026-10-26
+    # 'thứ 2' on Sunday also means tomorrow Monday (2026-10-26)
     res_tomorrow, _ = _parse_vietnamese_relative_time("thứ 2", sunday_dt)
     assert res_tomorrow == "2026-10-26 09:00"
 
-    # 'thứ 2 tuần sau' on Wednesday 2026-10-21 must be 2026-10-26
+    # 'thứ 2 tuần sau' on Wednesday 2026-10-21 means Monday of next week (2026-10-26)
     wed_dt = datetime(2026, 10, 21, 10, 0, tzinfo=VN_TZ)
     res_wed, _ = _parse_vietnamese_relative_time("thứ 2 tuần sau", wed_dt)
     assert res_wed == "2026-10-26 09:00"

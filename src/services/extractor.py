@@ -207,7 +207,7 @@ def _parse_vietnamese_relative_time(
             current_wd = now_dt.weekday()
             days_ahead = (wd_idx - current_wd) % 7
             if "tuần sau" in text_lower:
-                if days_ahead == 0 or wd_idx > current_wd or current_wd == 6:
+                if days_ahead == 0 or wd_idx > current_wd:
                     days_ahead += 7
             elif "tới" in text_lower or "sau" in text_lower:
                 if days_ahead == 0:
@@ -416,6 +416,7 @@ async def extract_reminder_from_text(
         f"Mốc thời gian hiện tại tại Việt Nam: {now_str}.\n"
         f"Nhiệm vụ: Trích xuất chính xác thời điểm cần nhắc việc (remind_at: 'YYYY-MM-DD HH:MM') và nội dung tóm tắt (reminder_text) từ tin nhắn của người dùng.\n"
         f"Quy tắc:\n"
+        f"- Một tuần tính từ Thứ 2 đến Chủ Nhật. Nếu hôm nay là Chủ Nhật thì 'thứ 2 tuần sau' chính là ngày mai (Thứ 2).\n"
         f"- Nếu chỉ nói ngày (VD: 'thứ 2 tuần sau', 'mai', 'ngày 28/10') mà không nói giờ: đặt 09:00 cho sáng/ngày, hoặc 15:00 nếu có nhắc 'chiều'.\n"
         f"- Nếu không có ngày cụ thể nhưng có giờ (VD: '15h nhắc'): lấy ngày hôm nay lúc 15:00 (hoặc ngày mai nếu giờ đã qua).\n"
         f"- Trả về remind_at định dạng chuẩn ISO 'YYYY-MM-DD HH:MM'."
