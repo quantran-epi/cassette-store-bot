@@ -125,7 +125,6 @@ async def handle_mutation_flow(
             db,
             order_id=effective_order_id,
             keyword=delta.target_customer_keyword,
-            phone=delta.new_customer_phone,
             limit=5,
         )
 

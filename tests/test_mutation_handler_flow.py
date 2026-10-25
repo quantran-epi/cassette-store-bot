@@ -319,3 +319,39 @@ async def test_ingest_routes_mutate_intent(mock_context):
         await handle_text_order(update, mock_context)
         assert mock_mut_flow.called
         assert mock_mut_flow.call_args[0][2] == "huỷ đơn 5"
+
+
+@pytest.mark.asyncio
+async def test_mutation_flow_finds_order_when_updating_phone(mock_context):
+    """Test order discovery succeeds when mutating phone with customer keyword (CR-01)."""
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+        order = Order(
+            customer_name="Trần Văn Nam",
+            customer_phone="0912345678",
+            shipping_address="Hà Nội",
+            items_text="1 cuốn",
+            total_amount=150000,
+            status=OrderStatus.CHO_LAM,
+        )
+        oid = await create_order(db, order)
+        mock_context.application.bot_data["db"] = db
+
+        update = MagicMock(spec=Update)
+        update.message = MagicMock(spec=Message)
+        update.message.reply_to_message = None
+        update.message.text = "đổi sđt anh Nam thành 0988776655"
+        update.message.reply_text = AsyncMock()
+        update.message.chat.send_action = AsyncMock()
+
+        delta = OrderMutationDelta(
+            target_customer_keyword="Nam",
+            new_customer_phone="0988776655",
+        )
+        with patch("src.bot.handlers.mutation.extract_mutation_delta", new=AsyncMock(return_value=delta)):
+            await handle_mutation_flow(update, mock_context, "đổi sđt anh Nam thành 0988776655")
+
+        assert update.message.reply_text.called
+        card_text = update.message.reply_text.call_args[0][0]
+        assert f"SỬA ĐƠN HÀNG #{oid}" in card_text
+
