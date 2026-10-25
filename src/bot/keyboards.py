@@ -127,15 +127,17 @@ def build_order_detail_keyboard(
         )
 
     # 2. 1-Tap Copy buttons for Phone & Address (D-05, UI-04)
+    safe_phone = (order.customer_phone or "").strip()[:256] or "Chưa có SĐT"
+    safe_address = (order.shipping_address or "").strip()[:256] or "Chưa có địa chỉ"
     buttons.append(
         [
             InlineKeyboardButton(
                 "📋 Copy SĐT",
-                copy_text=CopyTextButton(text=order.customer_phone),
+                copy_text=CopyTextButton(text=safe_phone),
             ),
             InlineKeyboardButton(
                 "📍 Copy Địa chỉ",
-                copy_text=CopyTextButton(text=order.shipping_address),
+                copy_text=CopyTextButton(text=safe_address),
             ),
         ]
     )
@@ -143,12 +145,14 @@ def build_order_detail_keyboard(
     # 3. Tracking code row (Copy if exists, otherwise or in addition input/edit)
     track_row: list[InlineKeyboardButton] = []
     if order.tracking_code:
-        track_row.append(
-            InlineKeyboardButton(
-                "🚚 Copy Mã vận đơn",
-                copy_text=CopyTextButton(text=order.tracking_code),
+        safe_track = (order.tracking_code or "").strip()[:256]
+        if safe_track:
+            track_row.append(
+                InlineKeyboardButton(
+                    "🚚 Copy Mã vận đơn",
+                    copy_text=CopyTextButton(text=safe_track),
+                )
             )
-        )
     track_row.append(
         InlineKeyboardButton(
             "🚚 Nhập/Đổi mã" if order.tracking_code else "🚚 Nhập mã vận đơn",
