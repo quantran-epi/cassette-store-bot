@@ -48,12 +48,20 @@ async def init_db(db: aiosqlite.Connection) -> None:
             tracking_code TEXT,
             photo_file_ids TEXT NOT NULL DEFAULT '[]',
             raw_text TEXT NOT NULL DEFAULT '',
+            created_by_user_id INTEGER,
+            created_by_name TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
         );
         """
     )
+    async with db.execute("PRAGMA table_info(orders);") as cursor:
+        cols = {row["name"] for row in await cursor.fetchall()}
+        if "created_by_user_id" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN created_by_user_id INTEGER;")
+        if "created_by_name" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN created_by_name TEXT;")
     await db.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
@@ -67,6 +75,27 @@ async def init_db(db: aiosqlite.Connection) -> None:
     await db.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS order_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            user_id INTEGER,
+            user_name TEXT,
+            action TEXT NOT NULL CHECK (
+                action IN ('CREATE', 'MUTATE', 'STATUS_CHANGE', 'TRACKING_UPDATE')
+            ),
+            changes_json TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        );
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_order_history_order_id ON order_history(order_id);
         """
     )
     await db.execute(
