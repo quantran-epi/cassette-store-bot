@@ -1,54 +1,56 @@
 # Stack Research: Milestone v1.1
 
-**Domain:** Telegram Chatbot Management, Natural Language Mutation, Server Console CLI, RBAC & Automated Cloud Backup  
+**Domain:** Telegram Chatbot — NL Mutation, Telegram Admin Suite, In-App Log Viewer, Telegram DB Backup & Container Deployment (Docker / K8s)  
 **Researched:** 2026-10-25  
 **Confidence:** HIGH  
 
 ## Recommended Stack
 
-Stack additions for Milestone v1.1 build directly upon Milestone v1.0 baseline (`python-telegram-bot~=22.8`, `aiosqlite~=0.22.1`, `openai~=3.37.0`, `pydantic~=2.14.1`, `pydantic-settings~=2.16.1`, `httpx~=0.28.1`). Additions prioritize stdlib and existing dependencies first.
+Baseline v1.0 stack remains (`python-telegram-bot~=22.8`, `aiosqlite~=0.22.1`, `openai~=3.37.0`, `pydantic~=2.14.1`, `pydantic-settings~=2.16.1`). Additions focus strictly on containerization, Telegram-native administrative operations, automated backups, and log streaming.
 
 ### Core Technologies
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| **python-telegram-bot[job-queue]** | `~=22.8` | Scheduled recurring tasks (SQLite backup) | Official PTB extension bundling `APScheduler~=3.10.4`. Integrates directly into PTB `Application` lifespan; provides `run_daily` with timezone awareness (`ZoneInfo("Asia/Ho_Chi_Minh")`) for daily automated backups and dynamic control via `context.job_queue`. |
-| **prompt_toolkit** | `~=3.0.53` | Interactive server terminal console | Async-native terminal interface (`prompt_async()`) running concurrently in the same asyncio event loop as PTB. Built-in `patch_stdout` context manager isolates console input from background Telegram polling and LLM HTTP log streams. |
-| **SQLite3 VACUUM INTO** | Stdlib (`sqlite3 3.27+`) | Safe online database snapshot | Atomic point-in-time database snapshot executed via `aiosqlite`. Safely exports single consolidated `.db` file from active WAL mode without locking concurrent readers or writers; zero external packages. |
-| **httpx (GitHub REST API)** | `~=0.28.1` (Existing) | Cloud backup transport | Reuses already-installed async HTTP client to upload snapshots directly to GitHub repository via GitHub REST Contents API (`PUT /repos/{owner}/{repo}/contents/{path}`) or GitHub Releases API. Zero new dependencies, no Git CLI or SSH setup required. |
+| **python:3.12-slim** | `3.12-slim` (Debian Bookworm) | Container base image | Standard glibc runtime. Avoids musl compile overhead for `pydantic-core` (Rust wheels). Minimal image size (~150MB) with complete compatibility for `aiosqlite` threads. |
+| **python-telegram-bot[job-queue]** | `~=22.8` | Backup job scheduling | Official PTB extension bundling `APScheduler~=3.10.4`. Integrates directly into `ApplicationBuilder`. Provides `run_daily` with `ZoneInfo("Asia/Ho_Chi_Minh")`. Lifecycle-bound to bot polling. |
+| **SQLite3 VACUUM INTO** | Stdlib (`sqlite3 >= 3.27`) | Safe online database snapshot | Atomic point-in-time snapshot executed asynchronously via `aiosqlite`. Copies DB while WAL mode is active without locking readers or writers. Zero external dependencies. |
+| **gzip** | Stdlib | Snapshot compression | In-memory or stream compression of SQLite `.db` before Telegram upload. Compresses 10MB database to ~1-2MB. Zero external dependencies. |
+| **Docker Multi-Stage Build** | Dockerfile spec 1.6+ | Container packaging | Separates builder (`pip install` into venv/user) from runner image. Enforces non-root user (`uid 10001:10001`) and controls volume mount permissions for `/app/data`. |
+| **Kubernetes Manifests (RWO + Recreate)** | K8s API `apps/v1`, `v1` | Production orchestration | `Deployment` with `replicas: 1` and `strategy.type: Recreate`. Single `PersistentVolumeClaim` with `accessModes: [ReadWriteOnce]`. Prevents SQLite multi-writer corruption. |
 
-### Supporting Libraries
+### Supporting Libraries & Stdlib Modules
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| **zoneinfo** | Stdlib (`Python >= 3.9`) | Timezone math | Accurate scheduling of daily 02:00 AM VN time backup with PTB `run_daily`. |
-| **base64** | Stdlib | File payload encoding | Encoding SQLite snapshot bytes for GitHub REST API JSON payloads. |
-| **enum.StrEnum** | Stdlib (`Python >= 3.11`) | RBAC role definitions | Defining `UserRole.SUPER_ADMIN` and `UserRole.ADMIN` with type safety and SQLite string mapping. |
+| Library / Module | Version | Purpose | When to Use |
+|------------------|---------|---------|-------------|
+| **logging.Handler + collections.deque** | Stdlib | In-Telegram log viewer | In-memory ring buffer (`RingBufferLogHandler`, maxlen=200). Captures recent bot activity; displays in Telegram chat on-demand via HTML `<pre><code>`. Zero external log stack. |
+| **tempfile** | Stdlib | Temporary snapshot files | Generates isolated temporary files (`tempfile.NamedTemporaryFile`) for `VACUUM INTO` and gzip compression before sending document. |
+| **zoneinfo** | Stdlib (`Python >= 3.9`) | Timezone awareness | Accurate scheduling of daily 02:00 AM VN backup (`ZoneInfo("Asia/Ho_Chi_Minh")`). |
+| **enum.StrEnum** | Stdlib (`Python >= 3.11`) | RBAC role definitions | Typed admin role mapping: `SUPER_ADMIN = "super_admin"`, `ADMIN = "admin"`. |
 
 ### Development Tools
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| **pytest** & **pytest-asyncio** | Async unit and integration tests | Already installed; test RBAC filters, backup triggers, and mutation schemas. |
-| **ruff** | Linter & formatter | Already configured in `pyproject.toml`. |
+| **docker-compose** | v2.20+ | Local container testing | Runs container with `./data:/app/data` volume and local `.env`. |
+| **ruff** | `>=0.9.0` | Code style & linting | Already configured in `pyproject.toml`. |
+| **pytest** & **pytest-asyncio** | `>=8.3.0` | Test suite | Test RBAC decorators, mutation parser schemas, backup routines, and ring buffer handlers. |
 
 ---
 
 ## Installation
 
-```bash
-# Core additions for v1.1
-pip install "python-telegram-bot[job-queue]~=22.8" "prompt_toolkit~=3.0.53"
+### pyproject.toml Update
 
-# Existing core dependencies (unchanged)
-pip install "aiosqlite~=0.22.1" "openai~=3.37.0" "pydantic~=2.14.1" "pydantic-settings~=2.16.1"
-```
+Only 1 dependency addition required: `python-telegram-bot[job-queue]`. All other additions use Python stdlib or container runtime manifests.
 
-Updated `pyproject.toml` dependencies:
 ```toml
+[project]
+name = "cassette-store"
+version = "0.1.0"
+requires-python = ">=3.12"
 dependencies = [
     "python-telegram-bot[job-queue]~=22.8",
-    "prompt-toolkit~=3.0.53",
     "aiosqlite~=0.22.1",
     "pydantic~=2.14.1",
     "pydantic-settings~=2.16.1",
@@ -56,176 +58,242 @@ dependencies = [
 ]
 ```
 
+```bash
+# Install updated dependencies
+pip install "python-telegram-bot[job-queue]~=22.8"
+```
+
 ---
 
 ## Technical Implementations & Architectural Decisions
 
-### 1. Interactive Server Console alongside PTB
+### 1. Docker Multi-Stage Build (`Dockerfile`)
 
-#### Challenge
-Running PTB polling and an interactive terminal CLI in the same process causes two issues:
-1. `app.run_polling()` blocks the main thread.
-2. Background logs (Telegram updates, HTTP traffic) interleave and corrupt standard `input()` / `sys.stdin` lines.
+SQLite WAL mode requires container process to write to parent directory of database file (to create `-wal` and `-shm` lock files). Non-root user must own `/app/data`.
 
-#### Solution
-Run custom async lifecycle using `prompt_toolkit` with `patch_stdout`:
+```dockerfile
+# Stage 1: Build virtual environment
+FROM python:3.12-slim AS builder
 
-```python
-import asyncio
-from prompt_toolkit import PromptSession
-from prompt_toolkit.patch_stdout import patch_stdout
-from telegram.ext import Application
+WORKDIR /build
 
-async def console_loop(app: Application) -> None:
-    session = PromptSession()
-    with patch_stdout():
-        while True:
-            try:
-                cmd = await session.prompt_async("cassette-admin> ")
-                cmd = cmd.strip()
-                if not cmd:
-                    continue
-                if cmd == "exit":
-                    break
-                elif cmd == "backup":
-                    await trigger_manual_backup(app)
-                elif cmd == "status":
-                    await print_bot_status(app)
-            except (EOFError, KeyboardInterrupt):
-                break
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-async def run_bot_and_console(app: Application) -> None:
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --prefix=/install .
 
-    try:
-        await console_loop(app)
-    finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
+# Stage 2: Runtime
+FROM python:3.12-slim AS runner
+
+WORKDIR /app
+
+# Create non-root user
+RUN groupadd -g 10001 botuser && \
+    useradd -u 10001 -g botuser -s /bin/sh -m botuser
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Prepare app and data directories with permissions
+RUN mkdir -p /app/data && chown -R botuser:botuser /app
+
+COPY --chown=botuser:botuser . /app
+
+USER botuser
+
+VOLUME ["/app/data"]
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DB_PATH=/app/data/cassette_store.db
+
+CMD ["python", "-m", "src.main"]
 ```
 
-### 2. Safe Online SQLite Backup & GitHub Push
+### 2. Kubernetes Manifests: Single-Writer Safety
 
-#### Challenge
-Directly copying `cassette_store.db` under WAL mode misses uncommitted WAL frames or causes database corruption. Pushing via `git` CLI bloats git tree history with binary delta diffs.
+SQLite in WAL mode allows multiple readers within same OS process/threads, but only ONE writer process on same volume. Multiple container instances will corrupt database.
 
-#### Solution
-1. Use `VACUUM INTO` via `aiosqlite` to create an atomic, compacted single-file snapshot.
-2. Push snapshot via `httpx` (already in env) to GitHub REST API.
+#### Deployment Strategy: Recreate
+Default K8s strategy is `RollingUpdate`. RollingUpdate starts new Pod before terminating old Pod. If both attach to single ReadWriteOnce PVC or write to same SQLite DB, attachment fails or DB corrupts. `Recreate` is mandatory.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cassette-store-bot
+  labels:
+    app: cassette-store-bot
+spec:
+  replicas: 1  # STRICT: SQLite single-writer constraint
+  strategy:
+    type: Recreate  # Terminate old pod before mounting RWO PVC to new pod
+  selector:
+    matchLabels:
+      app: cassette-store-bot
+  template:
+    metadata:
+      labels:
+        app: cassette-store-bot
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: bot
+          image: cassette-store-bot:v1.1
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: cassette-store-config
+            - secretRef:
+                name: cassette-store-secret
+          volumeMounts:
+            - name: db-storage
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: db-storage
+          persistentVolumeClaim:
+            claimName: cassette-store-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cassette-store-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+### 3. Telegram Document Backup Mechanism
+
+No external APIs (no GitHub REST, no S3). Uses `aiosqlite` `VACUUM INTO` + stdlib `gzip` + `bot.send_document`.
 
 ```python
-import base64
-import datetime
+import gzip
+import os
+import tempfile
+from datetime import datetime
 from pathlib import Path
-import httpx
 import aiosqlite
+from telegram import Bot
 
-async def create_backup_snapshot(db: aiosqlite.Connection, temp_path: Path) -> Path:
-    if temp_path.exists():
-        temp_path.unlink()
-    # VACUUM INTO produces standalone DB with zero WAL dependencies
-    await db.execute("VACUUM INTO ?", (str(temp_path),))
-    return temp_path
+async def backup_sqlite_to_telegram(
+    db: aiosqlite.Connection,
+    bot: Bot,
+    super_admin_chat_id: int
+) -> None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        raw_db_path = Path(tmp_dir) / f"snapshot_{timestamp}.db"
+        gz_db_path = Path(tmp_dir) / f"cassette_backup_{timestamp}.sqlite3.gz"
 
-async def upload_backup_to_github(
-    file_path: Path,
-    github_token: str,
-    repo: str,
-    target_branch: str = "db-backup"
-) -> str:
-    content_bytes = file_path.read_bytes()
-    b64_content = base64.b64encode(content_bytes).decode("ascii")
-    
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    github_file_path = f"backups/cassette_store_{timestamp}.db"
-    
-    url = f"https://api.github.com/repos/{repo}/contents/{github_file_path}"
-    headers = {
-        "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-    payload = {
-        "message": f"automated backup {timestamp}",
-        "content": b64_content,
-        "branch": target_branch,
-    }
-    
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.put(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        return github_file_path
+        # 1. Atomic snapshot without locking active WAL connections
+        await db.execute("VACUUM INTO ?", (str(raw_db_path),))
+
+        # 2. Compress via stdlib gzip
+        with open(raw_db_path, "rb") as f_in, gzip.open(gz_db_path, "wb") as f_out:
+            while chunk := f_in.read(64 * 1024):
+                f_out.write(chunk)
+
+        # 3. Send document directly to Super Admin
+        caption = f"📦 *Sao lưu cơ sở dữ liệu tự động*\n📅 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\nKích thước: {os.path.getsize(gz_db_path) / 1024:.1f} KB"
+        with open(gz_db_path, "rb") as doc_file:
+            await bot.send_document(
+                chat_id=super_admin_chat_id,
+                document=doc_file,
+                filename=f"cassette_backup_{timestamp}.sqlite3.gz",
+                caption=caption,
+                parse_mode="Markdown"
+            )
 ```
 
-### 3. Periodic Background Backup (PTB JobQueue)
+### 4. Scheduling: PTB JobQueue vs Asyncio Task
 
-Configure daily scheduled job at 02:00 AM VN time (`Asia/Ho_Chi_Minh`):
+#### Primary Recommendation: PTB JobQueue (`python-telegram-bot[job-queue]`)
+Bundles `APScheduler`. Integrates natively with PTB `Application`:
 
 ```python
 import datetime
 from zoneinfo import ZoneInfo
 from telegram.ext import ApplicationBuilder, ContextTypes
 
-async def scheduled_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Trigger backup logic and notify super admin on failure
-    pass
+async def daily_backup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    db = context.bot_data["db"]
+    super_admin_id = context.bot_data["settings"].super_admin_ids[0]
+    await backup_sqlite_to_telegram(db, context.bot, super_admin_id)
 
-def setup_scheduler(app) -> None:
+def register_backup_schedule(application) -> None:
     vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
-    target_time = datetime.time(hour=2, minute=0, tzinfo=vn_tz)
-    app.job_queue.run_daily(
-        scheduled_backup_job,
-        time=target_time,
-        name="daily_github_backup"
+    backup_time = datetime.time(hour=2, minute=0, tzinfo=vn_tz)
+    application.job_queue.run_daily(
+        daily_backup_job,
+        time=backup_time,
+        name="daily_sqlite_backup"
     )
 ```
 
-### 4. RBAC Data Modeling & Access Control
+#### Minimal Alternative: Native Asyncio Task Loop (Zero Extra Dependencies)
+If `APScheduler` is disallowed, a 20-line native task loop runs directly in `post_init`:
 
-#### Schema & Roles
-Define roles using stdlib `enum.StrEnum`. Store bootstrap super admins in `.env` (`pydantic-settings`) and operators in SQLite table `admins`:
+```python
+import asyncio
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-```sql
-CREATE TABLE IF NOT EXISTS admins (
-    user_id INTEGER PRIMARY KEY,
-    username TEXT,
-    full_name TEXT,
-    role TEXT NOT NULL CHECK(role IN ('super_admin', 'admin')),
-    added_by INTEGER,
-    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-    FOREIGN KEY (added_by) REFERENCES admins(user_id)
-);
+async def asyncio_backup_runner(app) -> None:
+    vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    while True:
+        now = datetime.now(vn_tz)
+        target = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        sleep_seconds = (target - now).total_seconds()
+        await asyncio.sleep(sleep_seconds)
+        try:
+            db = app.bot_data["db"]
+            admin_id = app.bot_data["settings"].super_admin_ids[0]
+            await backup_sqlite_to_telegram(db, app.bot, admin_id)
+        except Exception as e:
+            logging.error(f"Scheduled backup failed: {e}")
 ```
 
-#### Authorization Decorator
+*Recommendation:* Use `python-telegram-bot[job-queue]`. It handles missed triggers, job inspection, manual re-scheduling, and graceful shutdown cleanly with 1 dependency declaration.
+
+### 5. In-Telegram Log Viewer (Memory Ring Buffer)
+
+Stdlib `logging.Handler` implementation with fixed memory ceiling:
+
 ```python
-from functools import wraps
-from enum import StrEnum
-from telegram import Update
-from telegram.ext import ContextTypes
+import collections
+import logging
 
-class UserRole(StrEnum):
-    SUPER_ADMIN = "super_admin"
-    ADMIN = "admin"
+class RingBufferLogHandler(logging.Handler):
+    def __init__(self, capacity: int = 200):
+        super().__init__()
+        self.buffer = collections.deque(maxlen=capacity)
 
-def require_role(min_role: UserRole):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-            user_id = update.effective_user.id
-            role = await get_user_role(user_id, context.bot_data)
-            if not role:
-                await update.effective_message.reply_text("⛔ Quyền truy cập bị từ chối.")
-                return
-            if min_role == UserRole.SUPER_ADMIN and role != UserRole.SUPER_ADMIN:
-                await update.effective_message.reply_text("⛔ Thao tác này chỉ dành riêng cho Super Admin.")
-                return
-            return await func(update, context, *args, **kwargs)
-        return wrapper
-    return decorator
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            self.buffer.append(msg)
+        except Exception:
+            self.handleError(record)
+
+    def get_recent_logs(self, limit: int = 25) -> list[str]:
+        return list(self.buffer)[-limit:]
 ```
 
 ---
@@ -234,12 +302,11 @@ def require_role(min_role: UserRole):
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| **prompt_toolkit** (`~=3.0.53`) | **asyncio.to_thread(input)** | When server console is simple read-only prompt and ALL logging is routed to file (`logging.FileHandler`), leaving stdout strictly empty. If logging touches stdout, prompt line breaks. |
-| **prompt_toolkit** | **aioconsole** | Never. `aioconsole` is unmaintained, buggy on Python 3.12+, and lacks stdout patching. |
-| **httpx GitHub API** | **Git CLI subprocess** (`asyncio.create_subprocess_exec`) | When server already has cloned git repo with SSH deploy keys configured and team insists on git commit history rather than REST API token. |
-| **httpx GitHub API** | **PyGithub** | Only if managing complex GitHub orgs/teams/repos. For uploading one backup file, PyGithub adds 20MB of transitive crypto dependencies for zero gain. |
-| **PTB[job-queue]** (`APScheduler`) | **asyncio.create_task loop** (`asyncio.sleep`) | When zero new dependencies are allowed. A 15-line custom `asyncio` sleep loop works for a single static timer, but lacks wall-clock DST alignment, pause/resume, and PTB context integration. |
-| **SQLite admins table + .env bootstrap** | **Casbin / Authlib** | Only if RBAC requires hierarchical attribute-based policies (ABAC) across hundreds of users. For 2 roles (Super Admin vs Admin), simple SQLite column + filter is cleanest. |
+| **python:3.12-slim** | **python:3.12-alpine** | Only if minimal disk space is strictly paramount (<50MB). Avoid on Python: Alpine uses `musl` libc, causing compilation issues with Rust wheels (`pydantic-core`) and potential DNS/threading latency. |
+| **PTB[job-queue]** | **asyncio.sleep loop** | When absolutely zero new pip packages are permitted. Native asyncio loop works for a single static schedule, but lacks job management, retry intervals, and pause/resume buttons. |
+| **Telegram Document Backup** | **GitHub REST API / AWS S3** | Only if long-term offsite multi-year archival is required by enterprise compliance. For a small shop, sending `.gz` directly to Telegram Super Admin is instant, free, encrypted, and accessible on phone. |
+| **Kubernetes Recreate Strategy** | **RollingUpdate Strategy** | Never with SQLite. RollingUpdate attempts to run 2 pods concurrently mounting the same volume, causing PVC lock failures or DB corruption. |
+| **In-Memory RingBuffer Log Handler** | **Prometheus + Grafana / Loki** | Only for high-scale microservice clusters. For single-bot Telegram operator, ring buffer viewed directly via `/logs` menu provides immediate operational visibility with zero infrastructure overhead. |
 
 ---
 
@@ -247,25 +314,27 @@ def require_role(min_role: UserRole):
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| **PyGithub** | Heavyweight synchronous package pulling `PyNaCl`, `cryptography`, `requests`. Blocks event loop. | Existing `httpx` async client + GitHub REST API. |
-| **aioconsole** | Deprecated, unmaintained, breaks terminal line on concurrent background logs. | `prompt_toolkit` with `patch_stdout`. |
-| **Celery / Redis / RQ** | Massive infrastructure overhead requiring Redis server and broker management for 1 daily task. | `python-telegram-bot[job-queue]` or native asyncio task. |
-| **cron daemon (OS-level crontab)** | Decouples backup logic from bot process, requires separate credentials configuration and manual Telegram error reporting pipes. | In-process PTB JobQueue / asyncio runner. |
-| **Direct SQLite file copy (`shutil.copy2`)** | In WAL mode, copying `.db` file while writes occur results in corrupt backups or missing transactions left in `.db-wal`. | SQLite `VACUUM INTO` via `aiosqlite`. |
-| **SQLAlchemy / Tortoise ORM** | Heavy abstraction layer for adding 1 single `admins` table. | Parameterized raw SQL via `aiosqlite`. |
+| **Alpine Linux base image (`python:3.12-alpine`)** | Lacks standard glibc. Fails to install pre-built manylinux wheels for `pydantic-core`; triggers slow in-container Rust/C compilation; causes subtle SQLite async worker thread crashes. | `python:3.12-slim`. |
+| **Multiple Kubernetes replicas (`replicas > 1`)** | SQLite does not support distributed multi-process concurrent writers across network mounts. Leads directly to `database is locked` errors and data corruption. | Single replica (`replicas: 1`) with `strategy: Recreate`. |
+| **Kubernetes RollingUpdate deployment** | Starts new Pod before terminating old Pod. Dual-attach conflict on ReadWriteOnce volume. | `strategy: type: Recreate`. |
+| **External database (PostgreSQL / MySQL)** | Massive infrastructure overhead, connection pooling maintenance, operational friction for single-store retail bot. | Embedded SQLite WAL mode. |
+| **Celery / Redis / RQ** | Requires separate broker service, worker daemon, and monitoring for a task that runs once every 24 hours. | `python-telegram-bot[job-queue]` or native asyncio task. |
+| **shutil.copyfile on live SQLite DB** | In WAL mode, copying the `.db` file while writes occur results in torn pages or missing uncommitted WAL data. | SQLite `VACUUM INTO` command via `aiosqlite`. |
+| **Terminal Console CLI (prompt_toolkit)** | Out of scope for milestone v1.1. Operator manages 100% via Telegram inline UI; interactive server terminal adds process interleaving bugs. | Telegram Admin Suite with RBAC. |
 
 ---
 
 ## Stack Patterns by Variant
 
-**If console runs in background server (systemd daemon / Docker without TTY):**
-- Run PTB with standard `app.run_polling()`.
-- Disable interactive `prompt_toolkit` console if `sys.stdin.isatty()` is False.
-- Rely on Telegram Admin commands for remote management.
+**If deployed on bare VPS / Single Host:**
+- Use `docker-compose.yml` with host volume `./data:/app/data`.
+- Simple `.env` file management.
+- Container restart policy: `restart: unless-stopped`.
 
-**If GitHub repository restricts large files (>100MB):**
-- Use GitHub Releases API via `httpx` instead of Contents API (`POST /repos/{owner}/{repo}/releases` followed by binary asset upload).
-- Or compress snapshot using stdlib `gzip` before uploading (`cassette_store_backup.db.gz`).
+**If deployed on Kubernetes cluster (K8s / K3s):**
+- Use provided manifests (`Deployment`, `PVC`, `ConfigMap`, `Secret`).
+- Ensure storage class supports `ReadWriteOnce`.
+- Enforce `replicas: 1` and `strategy: Recreate`.
 
 ---
 
@@ -273,15 +342,17 @@ def require_role(min_role: UserRole):
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| `python-telegram-bot[job-queue]==22.8` | `APScheduler~=3.10.4`, `pytz`, `httpx~=0.28.1` | Native extension for PTB v22.8. |
-| `prompt_toolkit==3.0.53` | `wcwidth`, `Python >= 3.8` | Stable async terminal support. |
-| `httpx==0.28.1` | `Python >= 3.8` | Official HTTP/2 & REST transport, compatible with GitHub API v2022-11-28. |
+| `python:3.12-slim` | Debian 12 (Bookworm), glibc 2.36 | Seamless compatibility with Pydantic v2 wheels and Python 3.12 async. |
+| `python-telegram-bot[job-queue]==22.8` | `APScheduler~=3.10.4`, `pytz`, `httpx~=0.28.1` | Native extension for PTB v22.8; runs cleanly in Python 3.12 event loop. |
+| `aiosqlite==0.22.1` | `sqlite3 >= 3.27` | Native support for `VACUUM INTO` statement. |
+| `Docker Engine >= 24.0` | Compose file v2 / multi-stage build | Supports non-root user volume ownership and BuildKit syntax. |
+| `Kubernetes >= 1.25` | `apps/v1`, `v1` | Supports standard `ReadWriteOnce` PVC and `Recreate` deployment strategy. |
 
 ---
 
 ## Sources
 
-- [PyPI - prompt_toolkit](https://pypi.org/project/prompt_toolkit/) — verified v3.0.53 release, `prompt_async` and `patch_stdout` support.
-- [PyPI - python-telegram-bot](https://pypi.org/project/python-telegram-bot/) — verified v22.8 optional `[job-queue]` extra and APScheduler integration.
-- [SQLite Official Documentation - VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — verified atomic online backup behavior in WAL mode without locking readers/writers.
-- [GitHub REST API Documentation - Repositories Contents](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents) — verified Base64 PUT endpoint and 100MB file limit.
+- [Docker Official Python Images](https://hub.docker.com/_/python) — verified `python:3.12-slim` specifications and glibc compatibility.
+- [PyPI - python-telegram-bot](https://pypi.org/project/python-telegram-bot/) — verified v22.8 `[job-queue]` extra with `APScheduler~=3.10.4`.
+- [SQLite Official Documentation - VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — verified atomic online backup behavior in active WAL mode.
+- [Kubernetes Official Docs - Deployments Strategy](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy) — verified `type: Recreate` for single-instance stateful workloads with RWO volume constraints.

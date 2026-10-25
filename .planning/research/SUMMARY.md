@@ -1,134 +1,136 @@
 # Project Research Summary
 
-**Project:** Cassette Store Telegram Chatbot (Milestone v1.1 NL Order Mutation, Console Admin, RBAC & GitHub Backup)  
-**Domain:** Telegram Retail Order Management Chatbot (Low-Tech Cassette Merchant)  
-**Researched:** 2026-10-25  
-**Confidence:** HIGH  
+**Project:** Cassette Store Telegram Chatbot (Milestone v1.1)
+**Domain:** Telegram Retail Order Management Chatbot (Low-Tech Cassette Merchant)
+**Researched:** 2026-10-25
+**Confidence:** HIGH
 
 ## Executive Summary
 
-Milestone v1.1 extends the validated v1.0 cassette store bot with natural language order mutation, a local server console, multi-tier RBAC, and automated GitHub backups. The target users remain elderly, low-tech shop operators who manage retail cassette orders via Telegram free-text and 1-tap touch buttons. Natural language order editing introduces high operational risk: speech-to-text slips or ambiguous phrasing can silently overwrite addresses, corrupt prices, or cancel active orders. Experts mitigate this by combining a deterministic 3-way intent router (separating Ingest, Search, and Mutation) with a mandatory 2-phase visual diff preview card (`Before ➡️ After`) before any SQLite update commits.
+Milestone v1.1 upgrades the Cassette Store Telegram Chatbot from a text-ingestion prototype into an autonomous, phone-administered, and containerized retail management system. The core product serves an elderly, low-tech Vietnamese cassette merchant who operates entirely via Telegram on mobile. The system replaces server-side SSH, terminal commands, and complex web dashboards with native Telegram interfaces: 1-tap inline keyboards, conversational natural language order edits, mobile admin controls, and direct database backup delivery.
 
-The administration architecture decouples local host maintenance from remote Telegram operations. A server console CLI runs concurrently with Telegram polling in the Python asyncio loop, providing server status, diagnostics, whitelist administration, and instant backup triggers without Telegram dependencies. Access control upgrades from a static `.env` whitelist to a two-tier dynamic model (`SUPER_ADMIN` vs `ADMIN`) anchored by an immutable root Super Admin ID in configuration.
+The recommended architectural approach builds strictly on the validated v1.0 foundation (python-telegram-bot~=22.8, aiosqlite~=0.22.1, openai~=3.37.0, pydantic~=2.14.1). Natural language order mutation implements a deterministic 3-way intent router (heuristic keyword cascade + structured LLM classification) paired with a mandatory human-in-the-loop Before ➡️ After visual diff preview card (120-second TTL). Administration uses dynamic two-tier RBAC (SUPER_ADMIN vs ADMIN) anchored by an immutable root ID in .env. Automated backups use SQLite native atomic VACUUM INTO command and standard library gzip to stream compressed .sqlite3.gz archives directly into the Super Admin private Telegram chat, eliminating third-party cloud storage or GitHub API dependencies.
 
-Database protection relies on atomic, zero-infrastructure online backups. In SQLite WAL mode, raw file copying leads to corrupted snapshots. The recommended approach executes atomic `VACUUM INTO` snapshots, compresses them via Python stdlib `gzip` (75–85% reduction), and commits `.db.gz` archives directly to a private GitHub repository via `httpx` async calls to the GitHub REST API. This eliminates local Git CLI processes, SSH key friction, and binary tree bloat while providing both scheduled (daily 02:00 AM VN time) and manual backup triggers.
+The critical risks in this milestone center on data integrity and concurrency: multi-pod writes corrupting single-file SQLite databases in Kubernetes, live file copy corrupting active WAL transactions, and natural language speech-to-text slips executing destructive blind updates. These are mitigated by enforcing Kubernetes strategy.type: Recreate with single-replica local block storage (ReadWriteOnce), non-blocking VACUUM INTO point-in-time snapshots, optimistic timestamp locking on order updates, and non-root multi-stage Docker containers with explicit Vietnam timezone (Asia/Ho_Chi_Minh) configuration.
 
 ## Key Findings
 
 ### Recommended Stack
 
-Milestone v1.1 builds upon the existing v1.0 foundation (`python-telegram-bot~=22.8`, `aiosqlite~=0.22.1`, `openai~=3.37.0`, `pydantic~=2.14.1`, `pydantic-settings~=2.16.1`, `httpx~=0.28.1`). It minimizes new third-party packages by leveraging Python standard libraries (`gzip`, `base64`, `enum.StrEnum`, `zoneinfo`) and existing HTTP clients.
+Milestone v1.1 retains the core v1.0 stack and adds exactly one new Python dependency (python-telegram-bot[job-queue]), leveraging Python standard library modules and container manifests for all remaining capabilities. See .planning/research/STACK.md for full specifications.
 
 **Core technologies:**
-- `python-telegram-bot[job-queue]~=22.8`: APScheduler-backed scheduled tasks inside PTB runtime — drives daily 02:00 AM VN time backups with timezone awareness.
-- `prompt_toolkit~=3.0.53` (or `asyncio.to_thread(sys.stdin.readline)`): Non-blocking terminal input — handles server console input without stalling the asyncio event loop.
-- `SQLite3 VACUUM INTO` (Stdlib): Point-in-time atomic online backup via `aiosqlite` — creates standalone, clean `.db` snapshot from live WAL database with zero lock contention.
-- `httpx` (GitHub REST API): Existing async HTTP client — pushes base64-encoded compressed backups directly to GitHub Contents API (`PUT /repos/{owner}/{repo}/contents/{path}`) with zero Git CLI or SSH setup.
+- python-telegram-bot[job-queue]~=22.8: Bundles APScheduler~=3.10.4 for automated daily database backups at 02:00 AM VN time natively inside the bot polling lifecycle.
+- SQLite3 VACUUM INTO (Stdlib): Atomic, point-in-time database snapshot while WAL mode is active without locking concurrent readers or writers; zero external dependencies.
+- gzip & tempfile (Stdlib): In-memory and streaming compression reducing SQLite databases by 75–85% prior to Telegram document upload.
+- Docker Multi-Stage Build (python:3.12-slim): Non-root user (appuser UID 10001) container packaging with standard glibc for Pydantic Rust wheels and /app/data volume permissions.
+- Kubernetes Manifests (RWO + Recreate): Single-replica deployment strategy preventing dual-pod SQLite write-lock corruption and Telegram polling conflict errors.
+- logging.Handler + collections.deque (Stdlib): Fixed-size in-memory ring buffer (1000 lines) powering on-demand /logs inspection in Telegram with zero log infrastructure overhead.
 
 ### Expected Features
 
-Milestone v1.1 introduces four operational pillars to support multi-operator daily workflows.
+Milestone v1.1 delivers high-leverage operational features tailored for low-tech elderly merchants while rejecting complex sysadmin anti-features. See .planning/research/FEATURES.md for detailed landscape.
 
 **Must have (table stakes):**
-- 3-Way Intent Disambiguation: Route incoming text cleanly between Search, Mutate, and New Ingest without collisions.
-- 2-Phase Mutation Preview & Diff: HTML card with bold/strikethrough changes and 1-tap `[✅ Xác nhận sửa]` / `[❌ Huỷ]` buttons (120s TTL draft).
-- Core Field Mutations: Update status (8 enum values), tracking code, notes, COD/total amount, recipient phone, and shipping address.
-- Multi-Match Disambiguation: Inline list picker when a mutation target matches multiple orders.
-- Super Admin vs Admin RBAC: Dynamic `admin_users` table with immutable `.env` Super Admin anchor and `@require_role` gate.
-- Server Interactive Console: Terminal management CLI with status, RBAC management, diagnostics, and manual backup.
-- Telegram `/admin` Control Dashboard: Mobile management card for status, reports, backup trigger, and admin delegation.
-- Atomic SQLite WAL Snapshot & GitHub REST Backup: Safe snapshotting, gzip compression, and automated daily + manual cloud uploads.
+- 3-Way Intent Routing: Classifies free-text messages into New Order, Search, or Mutate via fast regex verb filter + LLM structured fallback.
+- Before ➡️ After Visual Diff Card: Destructive mutations previewed with high-contrast old vs new values, 120s TTL, and 1-tap confirm/cancel buttons.
+- Core Field Mutations: Status update (8 states), tracking code, notes, COD/total recalculation, and customer phone/address updates with optimistic locking.
+- Two-Tier RBAC & Gate: SQLite admin_users table with SUPER_ADMIN and ADMIN roles, anchored by immutable TELEGRAM_SUPER_ADMIN_ID in .env.
+- Telegram Admin Suite: Mobile dashboard (/admin) for whitelist management, 1-tap 9router LLM model switching, and system metrics.
+- In-App Log Viewer: Protected /logs command returning recent log lines wrapped in HTML <pre> tags.
+- Atomic Telegram Backup: Non-blocking VACUUM INTO + gzip snapshot sent directly as .sqlite3.gz to Super Admin DM via scheduled daily job and manual /backup.
+- Production Containerization: Multi-stage Dockerfile, Docker Compose with named volume, and Kubernetes manifests (PVC + Recreate Deployment).
 
-**Should have (competitive differentiators):**
-- Elderly-Friendly Visual Diff Card: Visual "Before ➡️ After" lines with clear change indicators remove technology fear.
-- Ambiguity Fallback to 1-Tap Action Pills: If user says "sửa đơn 12" without specifying a field, bot renders 1-tap buttons for all editable fields.
-- Zero-Git-CLI GitHub REST Backup: Pure HTTPS API upload requiring no Git binary or SSH keys on the host.
-- Safe Admin Delegation with Protection Anchor: Immutable Super Admin check prevents self-demotion or bot lockout.
+**Should have (differentiators):**
+- Elderly-Friendly High-Contrast Diff Card: Changes highlighted with emojis, strikethroughs, and bold text; unchanged fields suppressed.
+- Ambiguity Fallback Action Pills: Incomplete edit requests prompt 1-tap buttons ([📦 Đổi trạng thái], [🚚 Gán mã vận đơn], [💰 Sửa COD], etc.).
+- Multi-Match Order Disambiguation Picker: Matching multiple orders renders 1-tap selection keyboard showing ID, name, items, and status badge.
+- Zero-Third-Party Telegram Document Delivery: Unlimited, free, encrypted offsite backups delivered to owner phone without AWS S3 or GitHub PATs.
+- Self-Healing Root Super Admin: Root admin is immutable in code and automatically restored in the database upon startup.
 
-**Defer (v2+):**
-- Voice Note Mutation via Whisper (v1.1.x / v2).
-- Automated Database Restore Wizard (v2+).
-- Web-based SaaS Admin Dashboard (Anti-feature: violates zero-maintenance, low-footprint architecture).
-- Direct mutation without confirmation (Anti-feature: fatal for low-tech elderly users).
+**Defer (v2+ / Anti-Features):**
+- Terminal Console CLI (prompt_toolkit): Excluded; merchant operates 100% on mobile Telegram.
+- GitHub Contents API Backup: Excluded; token rotation and repo bloat avoided via Telegram native document delivery.
+- Web-Based Admin Dashboard (FastAPI/React): Excluded; eliminates port exposure, SSL certs, and web auth maintenance.
+- Direct NL Mutation Without Confirmation: Excluded; fatal for low-tech elderly users vulnerable to voice-to-text noise.
+- Multi-Replica Kubernetes Scaling: Excluded; SQLite is single-node, single-writer.
 
 ### Architecture Approach
 
-The architecture maintains a layered, single-process asyncio model. Telegram long-polling and the Server Console run concurrently under explicit lifecycle control in `main.py`. Incoming messages pass through a Group -1 dynamic RBAC security gate before hitting the 3-Way Intent Router. Database mutations require a 2-phase confirmation loop backed by an in-memory draft cache. Backups are completely decoupled: a standalone backup service handles SQLite `VACUUM INTO`, gzip compression, and GitHub REST uploads, callable by the PTB JobQueue scheduler, Telegram `/admin`, or Console CLI.
+The architecture adopts a 4-layer modular structure integrating Telegram Bot handlers, core application domain services, SQLite persistence, and container runtime boundaries. Free-text messages pass through a Group -1 security gate checking an in-memory RBAC cache before reaching the 3-Way Intent Router. NL mutations generate temporary in-memory drafts that require 1-tap Telegram callback confirmation before executing parameterized atomic SQL updates. See .planning/research/ARCHITECTURE.md for component diagrams and data flows.
 
 **Major components:**
-1. **Interactive Server Console (`src/console/`):** Reads stdin asynchronously via worker thread; auto-detects headless environments via `sys.stdin.isatty()`.
-2. **3-Way Intent Router (`src/services/router.py`):** Deterministic heuristic and verb classifier preventing mutation collisions with ingest or search.
-3. **NL Order Mutation Service (`src/services/order_mutation.py`):** Target order resolver + 9router LLM structured delta extractor (`OrderMutationDelta`).
-4. **RBAC Security Gate (`src/bot/rbac.py`):** Two-tier role verification (`SUPER_ADMIN` vs `ADMIN`), in-memory cache, and `@require_role` decorators for commands and callbacks.
-5. **GitHub Backup Service & Scheduler (`src/services/backup.py`, `src/services/scheduler.py`):** Transaction-safe online snapshotter, gzip encoder, and async REST uploader with daily JobQueue scheduling.
+1. 3-Way Intent Router (src/services/router.py): 3-tier cascade (active conversation state -> regex prefix heuristic -> LLM structured classification) preventing misrouted orders or false mutations.
+2. NL Order Mutation Service (src/services/order_mutation.py): Resolves candidate orders, extracts mutation deltas via 9router LLM, formats visual diff preview cards, and enforces optimistic concurrency locks on database writes.
+3. RBAC & Admin Suite (src/bot/rbac.py & src/bot/handlers/admin.py): @require_role decorator, dynamic admin whitelist management, runtime LLM model switching, and ring buffer log tailing.
+4. Telegram Backup Engine (src/services/backup.py): Standalone snapshot service running VACUUM INTO + gzip compression, scheduled via PTB JobQueue at 02:00 AM VN time and triggered manually via /backup.
+5. Container & Process Lifecycle (Dockerfile, k8s/, main.py): Single-replica Recreate deployment, /app/data directory mount, non-root user execution, and SIGTERM trap ensuring PRAGMA wal_checkpoint(TRUNCATE).
 
 ### Critical Pitfalls
 
-1. **Event Loop Stalls & Headless CPU Spin from Terminal Console:** Synchronous `input()` freezes Telegram polling and timers; running without a TTY spins at 100% CPU on EOF.  
-   *Prevention:* Check `sys.stdin.isatty()` on startup; use `asyncio.to_thread(sys.stdin.readline)` or `prompt_toolkit` with clean EOF handling.
-2. **Intent Collisions & Silent Data Overwrites in NL Mutation:** Free-text edits misclassified as new orders, or vice versa, causing data corruption without confirmation.  
-   *Prevention:* Deterministic 3-way intent router; mandatory 2-phase Before/After diff card with explicit button confirmation; short-lived draft TTL (120s).
-3. **SQLite WAL Backup Corruption & Git Binary Bloat:** Direct OS file copy misses active WAL/SHM frames; git commits bloat repository size.  
-   *Prevention:* SQLite `VACUUM INTO` atomic snapshot; in-memory gzip compression; upload via GitHub REST Contents API to a dedicated private backup repo.
-4. **Broken Role Boundaries & Callback Privilege Escalation:** Securing `/admin` slash command but neglecting inline callback queries allows secondary admins to trigger restricted actions.  
-   *Prevention:* Enforce `@require_role` decorator on both command handlers AND callback query handlers; lock root Super Admin ID in `.env`.
-5. **Replay Attacks & Race Conditions on Confirmation Callbacks:** Double-tapping `[Xác nhận sửa]` applies stale changes or crashes Telegram callback payload limits.  
-   *Prevention:* Immediate `query.answer()`; short draft IDs (8 chars); single-use token deletion; optimistic concurrency check in SQL `UPDATE`.
+See .planning/research/PITFALLS.md for root-cause analyses and recovery strategies.
+
+1. **Multi-Replica & RollingUpdate SQLite Corruption:** Standard K8s RollingUpdate spawns overlapping pods attaching to the same SQLite file, deadlocking writes and corrupting database headers.
+   *Prevention:* Enforce replicas: 1 and strategy.type: Recreate in Kubernetes; use local block storage with ReadWriteOnce (RWO).
+2. **Live File Copy Corruption & 50MB Backup Ceiling:** Copying active WAL files produces torn pages; uncompressed databases eventually exceed Telegram 50MB upload limit.
+   *Prevention:* Mandatory VACUUM INTO atomic snapshot; stdlib gzip compression (>75% size reduction); proactive 48MB size guard before bot.send_document.
+3. **Destructive Blind Updates & Intent Collisions:** LLMs misinterpret queries or voice-to-text typos, overwriting customer addresses or zeroing COD without operator review.
+   *Prevention:* Deterministic 3-way intent router; mandatory 2-phase Before ➡️ After visual diff preview card with 120s TTL; multi-match disambiguation keyboards.
+4. **Stale Diff Race Conditions in Multi-Operator Teams:** Operator A confirms a stale mutation after Operator B already updated or cancelled the order.
+   *Prevention:* Optimistic concurrency check comparing order.updated_at on update; immediate inline keyboard button stripping on first tap.
+5. **RBAC Privilege Escalation & Admin Lockout:** Replaying callback query data bypasses command-level role gates; clearing DB locks owner out.
+   *Prevention:* Centralized @require_role decorating both command and callback handlers; immutable root TELEGRAM_SUPER_ADMIN_ID in .env with startup self-healing.
+6. **Container Root Execution, UTC Drift & Unhandled SIGTERM:** Containers running as root cause host permission conflicts; UTC default shifts order dates by 7 hours; unhandled SIGTERM causes abrupt SIGKILL and uncheckpointed WAL state.
+   *Prevention:* Non-root appuser (UID 10001); install tzdata and enforce TZ=Asia/Ho_Chi_Minh; exec form CMD ["python", "-m", "src.main"] with graceful WAL checkpoint shutdown trap.
 
 ---
 
 ## Implications for Roadmap
 
-Milestone v1.1 builds upon the completed v1.0 foundation (Phases 01–04). The suggested 5-phase structure groups components by architectural dependency: security and storage first, followed by concurrent host infrastructure, complex natural language mutation, and unified Telegram administration.
+Based on research dependencies and architectural layering, Milestone v1.1 maps cleanly into 4 sequential phases:
 
-### Phase 05: RBAC & Dynamic Access Control
-**Rationale:** Security foundation must precede administrative actions and order mutations. Upgrading the security gate from static `.env` to a dynamic database table enables role verification across both Telegram and Console layers.  
-**Delivers:** `admin_users` table schema, Super Admin `.env` bootstrap on startup, in-memory role cache in `bot_data`, `@require_role` decorators, and updated Group -1 whitelist gate.  
-**Addresses:** Super Admin vs Admin role separation, safe admin delegation foundation.  
-**Avoids:** Broken role boundaries, callback privilege escalation, Super Admin lockout (Pitfall 5).
+### Phase 1: Foundation, Dynamic RBAC & Telegram Admin Suite
+**Rationale:** Administration and access control must be established first. Dynamic RBAC (admin_users table and in-memory cache) upgrades the Group -1 security gate, provides the foundation for /admin controls, and secures sensitive commands (/backup, /logs) needed by subsequent phases.
+**Delivers:** SQLite admin_users table & migration, src/bot/rbac.py (@require_role, Role enum, root admin anchor), dynamic Group -1 security gate, /admin interactive keyboard menu (whitelist CRUD, LLM model switcher), and in-memory ring buffer log handler (/logs).
+**Addresses:** RBAC Persistence & Gate, Telegram Whitelist Management, LLM Model Switching, In-App Log Viewer.
+**Avoids:** Pitfall 5 (RBAC privilege escalation & root Super Admin database lockout).
 
-### Phase 06: Database Backup Engine & GitHub REST Integration
-**Rationale:** Data protection must be operational before introducing destructive order mutation capabilities. As an isolated service, backup can be built and tested completely independently of UI handlers.  
-**Delivers:** SQLite `VACUUM INTO` snapshot runner, in-memory gzip compression pipeline, async GitHub REST API client via `httpx`, PTB JobQueue daily scheduler (02:00 AM VN time), and backup notification cards.  
-**Addresses:** Atomic SQLite WAL snapshotting, periodic and manual GitHub backups, backup integrity receipt.  
-**Avoids:** Corrupted WAL backups, Git CLI subprocess crashes, binary repo bloat, PII exposure (Pitfall 3 & Pitfall 4).
+### Phase 2: Telegram Database Backup Engine & Scheduled Tasks
+**Rationale:** Backup infrastructure must be operational before introducing natural language order mutation (which performs destructive database writes). Backups require the RBAC Super Admin gate from Phase 1.
+**Delivers:** src/services/backup.py (VACUUM INTO + gzip compression + 48MB size check), manual /backup command delivering .sqlite3.gz to Super Admin DM, PTB JobQueue daily scheduled backup at 02:00 AM VN time, and /admin backup trigger integration.
+**Uses:** python-telegram-bot[job-queue]~=22.8, SQLite VACUUM INTO, Python stdlib gzip, tempfile, and zoneinfo.
+**Avoids:** Pitfall 2 (Live database snapshot corruption & Telegram 50MB backup failures) and PII leakage.
 
-### Phase 07: Interactive Server Console App & Concurrency Lifecycle
-**Rationale:** Host-level operator tooling requires refactoring `main.py` from `app.run_polling()` to explicit async application lifecycle management (`initialize()`, `start()`, `updater.start_polling()`). Establishing non-blocking terminal I/O ensures server stability.  
-**Delivers:** Decoupled CLI runner in `src/console/`, non-blocking stdin reader with `asyncio.to_thread`, TTY auto-detection (`sys.stdin.isatty()`) for headless environments, and interactive commands (status, RBAC whitelist, manual backup, order inspect).  
-**Addresses:** Terminal interactive console app, server maintenance without Telegram dependency.  
-**Avoids:** Event loop stalls, 100% CPU infinite loop in headless/daemon mode, signal clashes on `Ctrl+C` (Pitfall 1).
+### Phase 3: 3-Way Intent Router & Natural Language Order Mutation
+**Rationale:** Core feature milestone requiring Phase 1 user identity context, Phase 2 backup safety net, and v1.0 search/extraction engines. Combines intent routing, delta extraction, and ergonomic visual confirmation.
+**Delivers:** OrderMutationDelta Pydantic schemas, src/services/router.py (3-way classifier cascade), multi-match order disambiguation picker, high-contrast Before ➡️ After visual diff formatter (120s TTL), mutation confirmation callback handlers (mut:*), and atomic apply_order_mutation database transaction with optimistic locking.
+**Addresses:** 3-Way Intent Routing, NL Order Mutation, Visual Diff Cards, Ambiguity Action Pills, Core Field Mutations.
+**Avoids:** Pitfall 3 (Intent collision & destructive blind updates) and Pitfall 4 (Stale diffs & race conditions).
 
-### Phase 08: 3-Way Intent Router & NL Order Mutation Pipeline
-**Rationale:** The highest user-value and highest complexity feature of v1.1. Builds on top of Phase 02 LLM gateway, Phase 03 order actions, and Phase 04 search.  
-**Delivers:** 3-way intent router (Mutation vs Search vs Ingest), Order Target Resolver, LLM delta extractor (`OrderMutationDelta` Pydantic schema), 2-phase Before/After visual diff card, 1-tap confirmation/cancel callbacks with 120s TTL draft, multi-match disambiguation keyboard, and field-specific atomic SQL updates.  
-**Addresses:** NL intent disambiguation, 2-phase diff preview, core field mutations, status target suggestions, ambiguity fallbacks.  
-**Avoids:** Intent collisions, silent data overwrites, double-tap callback replays, 64-byte callback overflow (Pitfall 2 & Pitfall 6).
+### Phase 4: Containerization, Kubernetes Manifests & Production Deployment
+**Rationale:** Packages the complete application into production-ready deployment artifacts with persistent volume guarantees, timezone correctness, and process termination safety.
+**Delivers:** Multi-stage Dockerfile (python:3.12-slim, non-root user UID 10001, tzdata Asia/Ho_Chi_Minh), docker-compose.yml with named /app/data volume, Kubernetes manifests (deployment.yaml with strategy: Recreate and replicas: 1, pvc.yaml RWO, configmap.yaml, secret.yaml), Docker Hub publishing documentation, and SIGTERM graceful shutdown handler with PRAGMA wal_checkpoint(TRUNCATE).
+**Addresses:** Containerization, Kubernetes Deployment, Production Operations.
+**Avoids:** Pitfall 1 (Multi-replica & network storage SQLite corruption) and Pitfall 6 (Root execution, UTC timezone drift & unhandled SIGTERM).
 
-### Phase 09: Telegram Admin Suite & Operational Management
-**Rationale:** Final integration phase bringing together RBAC, backup triggers, and order summaries into an ergonomic mobile control center for shop owners on Telegram.  
-**Delivers:** `/admin` command handler and interactive control card, revenue/order statistics cards, 1-tap manual backup trigger with live progress notifications, and Super Admin user delegation flow (add/remove Admin with numeric ID input).  
-**Addresses:** Telegram `/admin` command & control card, mobile admin delegation.  
-**Avoids:** Secondary admin privilege escalation, accidental self-demotion.
+---
 
 ### Phase Ordering Rationale
 
-- **Phase 05 (RBAC) precedes Phase 07 & 09:** Both Console and Telegram `/admin` handlers require the `Role` enum, `admin_users` table, and `@require_role` decorators to function.
-- **Phase 06 (Backup Engine) precedes Phase 08 (Mutation):** Safe automated backup guarantees that if any unintended mutation occurs during early operational use, a point-in-time snapshot exists on GitHub.
-- **Phase 07 (Console) decouples server operations early:** Refactoring the application lifecycle in `main.py` allows background tasks (scheduler, polling, console) to run stably together before adding more Telegram handlers.
-- **Phase 08 (Mutation) is isolated after infrastructure:** Mutation touches LLM prompts, candidate lookup, and 2-phase UI. Isolating it ensures focused testing of Vietnamese regex/intent heuristics without distraction from server administration logic.
-- **Phase 09 (Telegram Admin) finishes milestone:** Wires together previously tested services (RBAC, Backup, Statistics) into the user-facing Telegram UI.
+- **RBAC before Backup & Mutation:** Backups contain the entire SQLite database with customer PII; mutation allows altering financial and status data. Both must be strictly protected by the RBAC gate and root Super Admin anchor.
+- **Backup before Mutation:** Destructive updates should never be introduced into a live store system without an automated, verified, and on-demand backup mechanism already active.
+- **Mutation before Containerization:** Application logic and service boundaries must be completely finalized and unit-tested before packaging into Docker containers and Kubernetes manifests.
+- **Containerization last:** Encapsulates the entire verified system, binds persistent volume storage, and guarantees production runtime invariants (non-root, timezone, single replica).
 
 ### Research Flags
 
-**Phases needing deeper research / evaluation during planning:**
-- **Phase 08 (NL Order Mutation Pipeline):** Requires careful prompt engineering and test phrase matrix (30+ Vietnamese queries) to calibrate the 3-way intent router boundary against Search and Ingest.
-- **Phase 06 (GitHub Backup Engine):** Verify GitHub Personal Access Token scopes and test SHA handling when committing to existing repository paths.
+**Phases likely needing deeper research during planning:**
+- **Phase 3 (3-Way Intent Router & NL Mutation):** Needs detailed prompt engineering and Vietnamese regex pattern tuning to ensure zero intent collision between casual search queries, voice-to-text transcripts, and mutation verbs.
 
 **Phases with standard patterns (skip research-phase):**
-- **Phase 05 (RBAC):** Standard SQLite table + Python decorator pattern.
-- **Phase 07 (Server Console):** Standard `asyncio.to_thread` terminal prompt loop with `isatty()` guard.
-- **Phase 09 (Telegram Admin Suite):** Standard PTB `InlineKeyboardMarkup` and `ConversationHandler` patterns already established in v1.0.
+- **Phase 1 (RBAC & Admin Suite):** Standard Python decorator pattern, SQLite CRUD table, and PTB inline callback menus.
+- **Phase 2 (Telegram Backup Engine):** Standard SQLite VACUUM INTO + stdlib gzip + PTB JobQueue documentation.
+- **Phase 4 (Containerization & Deployment):** Established multi-stage Docker build, Docker Compose, and Kubernetes single-pod Recreate deployment patterns.
 
 ---
 
@@ -136,32 +138,34 @@ Milestone v1.1 builds upon the completed v1.0 foundation (Phases 01–04). The s
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Minimal new dependencies (`prompt_toolkit`, PTB `job-queue`); stdlib `sqlite3 VACUUM INTO`, `gzip`, `zoneinfo`, and existing `httpx` verified via PyPI and official documentation. |
-| Features | HIGH | Concrete specifications derived from elderly user domain constraints, Vietnamese retail workflows, and v1.0 operational lessons. |
-| Architecture | HIGH | Concurrency lifecycle, 3-way intent routing, atomic SQLite backup, and RBAC hierarchy validated against PTB v20+ and SQLite 3.27+ specifications. |
-| Pitfalls | HIGH | Critical failure modes (WAL copy corruption, event loop stalls, headless CPU spin, callback escalation, intent collisions) explicitly identified with concrete prevention strategies. |
+| Stack | HIGH | Verified PTB v22.8 [job-queue] extra with APScheduler~=3.10.4, SQLite VACUUM INTO spec, Python stdlib gzip, and Debian python:3.12-slim glibc compatibility. |
+| Features | HIGH | Requirements directly derived from operator low-tech constraints, anti-features explicitly mapped, and UI card/button workflows established in v1.0. |
+| Architecture | HIGH | Clean 4-layer decoupling; intent router separated from Telegram handlers; stateless callbacks with in-memory TTL drafts; single-writer SQLite WAL lifecycle. |
+| Pitfalls | HIGH | Multi-replica SQLite corruption, live file copy failure, UTC timezone drift, and stale diff race conditions thoroughly documented with concrete code mitigations. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **GitHub Personal Access Token Scope:** Ensure operator configures a fine-grained PAT restricted solely to the backup repository with `contents:write` permission. Document clearly in setup guide.
-- **Vietnamese LLM Verb Drift:** Monitor 9router performance across different base models to verify that Vietnamese mutation terms (e.g., "gán mã", "bom hàng", "chuyển khoản rồi") consistently parse into the correct `OrderMutationDelta` schema.
+- **Vietnamese Voice-to-Text Mutation Noise:** Low-tech merchants frequently use voice-to-text dictation on Telegram which may omit punctuation or garble phonetically similar numbers (e.g. "bốn" vs "bốn mươi").
+  *Handling during planning/execution:* Include diverse Vietnamese colloquial test cases in Phase 3 test suite; prompt LLM mutation extractor with few-shot examples of conversational shop slang.
+- **In-Memory Draft Eviction Under High Concurrency:** If multiple admins initiate unconfirmed mutations simultaneously, memory usage could grow if TTL cleanups fail.
+  *Handling during planning/execution:* Implement deterministic eviction helper clearing expired drafts (time.time() > expires_at) whenever a new mutation draft is registered.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [python-telegram-bot Documentation](https://docs.python-telegram-bot.org/) — verified v22.8 `Application` manual lifecycle, JobQueue integration, and CallbackQuery mechanics.
-- [SQLite Official Documentation - VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — verified atomic online backup behavior in WAL mode without locking readers or writers.
-- [GitHub REST API Documentation - Create or Update File Contents](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents) — verified Base64 PUT endpoint, 100MB payload limits, and SHA overwrite semantics.
-- [Python asyncio Documentation - Running in Threads](https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread) — verified non-blocking standard input reading.
+- python-telegram-bot Official Documentation & PyPI: Verified v22.8 release, [job-queue] extension, and ApplicationBuilder lifecycle hooks.
+- SQLite Official Documentation: Verified VACUUM INTO atomic snapshot behavior in active WAL mode and locking mechanics.
+- Telegram Bot API Documentation: Verified sendDocument limits (50MB for bots), inline button callback specifications, and error hierarchies.
+- Docker & Kubernetes Official Documentation: Verified multi-stage Dockerfile best practices, non-root user configuration, and strategy.type: Recreate for single-replica stateful storage.
 
 ### Secondary (MEDIUM confidence)
-- [PyPI - prompt_toolkit](https://pypi.org/project/prompt_toolkit/) — verified v3.0.53 release, `prompt_async` and `patch_stdout` support for terminal consoles.
-- Cassette Store Bot v1.0 Production Architecture & Milestone v1.1 Specifications.
+- APScheduler 3.x Documentation: Verified run_daily timezone scheduling with ZoneInfo("Asia/Ho_Chi_Minh").
+- OpenAI Python SDK Documentation: Verified structured outputs parsing and custom base_url routing for 9router.
 
 ---
-*Research completed: 2026-10-25*  
+*Research completed: 2026-10-25*
 *Ready for roadmap: yes*
