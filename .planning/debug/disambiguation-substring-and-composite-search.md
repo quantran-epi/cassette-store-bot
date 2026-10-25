@@ -1,8 +1,8 @@
 ---
-status: investigating
+status: resolved
 trigger: "Tạo 2 đơn cùng tên khách Bác Ba, nhắn đổi sđt khách Bác Ba thành 0988776655. Tìm 'anh hà' dính 'thanh'. 'anh tuấn gia lâm' không tìm ra."
 created: 2026-10-25T00:00:00Z
-updated: 2026-10-25T19:00:00Z
+updated: 2026-10-25T19:55:00Z
 ---
 
 ## Current Focus
@@ -85,4 +85,10 @@ fix: |
        `' ' || unaccent(customer_name) || ' ' LIKE '% ha %'` hoặc đăng ký hàm regex/word-match trên SQLite connection để so khớp chính xác từ nguyên vẹn `\bha\b`.
      - Multi-field composite search: Tách token (tuan, gia lam), tìm đồng thời trên cả `customer_name` và `shipping_address` (hoặc chuỗi ghép `customer_name || ' ' || shipping_address`), đảm bảo tất cả các thành phần định danh đều xuất hiện trong đơn hàng.
 verification: Đã kiểm chứng qua SQLite unit test mô phỏng và đối chiếu code giữa 2 module.
-files_changed: []
+files_changed:
+  - src/db/connection.py
+  - src/db/orders.py
+  - src/services/mutation_extractor.py
+  - src/bot/handlers/mutation.py
+  - tests/test_mutation_search_general.py
+
