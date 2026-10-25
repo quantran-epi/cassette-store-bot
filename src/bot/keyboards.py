@@ -2,6 +2,7 @@ import html
 import re
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from telegram import (
     CopyTextButton,
@@ -12,6 +13,7 @@ from telegram import (
 )
 
 from src.bot.security import UserRole
+from src.models.customer import Customer
 from src.models.order import Order, OrderStatus
 
 # Timezone Vietnam UTC+7
@@ -79,7 +81,10 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def render_order_detail_card(order: Order) -> str:
+def render_order_detail_card(
+    order: Order,
+    reminders: Any = None,
+) -> str:
     """Format elderly-friendly HTML order detail card with mono copy fields."""
     status_label = STATUS_NAMES.get(order.status, order.status.value)
     total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
@@ -92,6 +97,26 @@ def render_order_detail_card(order: Order) -> str:
     )
     photo_count = len(order.photo_file_ids)
     photo_str = f"{photo_count} ảnh" if photo_count > 0 else "Không có"
+    notes_line = f"📝 <b>GHI CHÚ:</b> {html.escape(order.notes)}\n" if order.notes else ""
+
+    # Reminder display
+    reminder_line = ""
+    if reminders:
+        r_list = [reminders] if not isinstance(reminders, (list, tuple)) else reminders
+        r_strs = []
+        for r in r_list:
+            if hasattr(r, "remind_at") and hasattr(r, "reminder_text"):
+                r_strs.append(
+                    f"<code>{r.remind_at}</code> ({html.escape(r.reminder_text)})"
+                )
+            elif isinstance(r, dict):
+                r_strs.append(
+                    f"<code>{r.get('remind_at')}</code> ({html.escape(str(r.get('reminder_text') or ''))})"
+                )
+            else:
+                r_strs.append(html.escape(str(r)))
+        if r_strs:
+            reminder_line = f"⏰ <b>LỊCH NHẮC:</b> {', '.join(r_strs)}\n"
 
     vn_created_at = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
     created_str = (
@@ -102,22 +127,24 @@ def render_order_detail_card(order: Order) -> str:
     created_line = ""
     if created_str:
         creator_tag = f" (bởi {html.escape(order.created_by_name)})" if order.created_by_name else ""
-        created_line = f"🕒 <b>Thời gian:</b> {created_str}{creator_tag}\n"
+        created_line = f"🕒 <b>THỜI GIAN TẠO:</b> {created_str}{creator_tag}\n"
     elif order.created_by_name:
-        created_line = f"🕒 <b>Người tạo:</b> {html.escape(order.created_by_name)}\n"
+        created_line = f"🕒 <b>NGƯỜI TẠO:</b> {html.escape(order.created_by_name)}\n"
 
     return (
         f"📦 <b>CHI TIẾT ĐƠN HÀNG #{order.id}</b>\n"
-        f"Trạng thái: <b>{status_label}</b>\n"
+        f"🔄 <b>TRẠNG THÁI:</b> <b>{status_label}</b>\n"
         f"{DIVIDER}\n"
-        f"👤 <b>Khách:</b> {html.escape(order.customer_name)}\n"
+        f"👤 <b>KHÁCH:</b> {html.escape(order.customer_name)}\n"
         f"📞 <b>SĐT:</b> <code>{html.escape(order.customer_phone)}</code> <i>(chạm để copy)</i>\n"
-        f"📍 <b>Địa chỉ:</b> <code>{html.escape(order.shipping_address)}</code>\n"
-        f"📼 <b>Băng:</b> {html.escape(order.items_text)}\n"
-        f"💰 <b>Tổng tiền:</b> {total_fmt}\n"
-        f"💵 <b>Tiền COD thu:</b> {cod_fmt}\n"
-        f"🚚 <b>Mã vận đơn:</b> {tracking_str}\n"
-        f"📷 <b>Ảnh đính kèm:</b> {photo_str}\n"
+        f"📍 <b>ĐỊA CHỈ:</b> <code>{html.escape(order.shipping_address)}</code>\n"
+        f"📼 <b>BĂNG CASSETTE:</b> {html.escape(order.items_text)}\n"
+        f"💰 <b>TỔNG TIỀN:</b> <b>{total_fmt}</b>\n"
+        f"💵 <b>TIỀN COD THU:</b> <b>{cod_fmt}</b>\n"
+        f"🚚 <b>MÃ VẬN ĐƠN:</b> {tracking_str}\n"
+        f"📷 <b>ẢNH ĐÍNH KÈM:</b> {photo_str}\n"
+        f"{notes_line}"
+        f"{reminder_line}"
         f"{created_line}"
         f"{DIVIDER}"
     )
@@ -128,6 +155,7 @@ def build_order_detail_keyboard(
     date_str: str,
     page: int,
     back_callback_data: str | None = None,
+    has_reminder: bool = False,
 ) -> InlineKeyboardMarkup:
     """Build multi-row inline keyboard with 1-tap CopyTextButtons and actions."""
     buttons: list[list[InlineKeyboardButton]] = []
@@ -196,7 +224,18 @@ def build_order_detail_keyboard(
     )
     buttons.append(photo_row)
 
-    # 5. Change status menu & Back navigation
+    # 5. Reminder row
+    remind_label = "⏰ Sửa/Xem lịch nhắc" if has_reminder else "⏰ Thêm nhắc lịch"
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                remind_label,
+                callback_data=f"ord_act:remind:{order.id}",
+            )
+        ]
+    )
+
+    # 6. Change status menu & Back navigation
     back_cb = back_callback_data or f"ord_bk:{date_str}:{page}"
     buttons.append(
         [
@@ -260,6 +299,26 @@ def build_date_picker_keyboard(
     return InlineKeyboardMarkup(keyboard)
 
 
+def format_order_item_summary(order: Order) -> str:
+    """Format single order summary block for multi-order lists with high contrast and uppercase labels."""
+    status_label = STATUS_NAMES.get(
+        order.status,
+        order.status.value if hasattr(order.status, "value") else str(order.status),
+    )
+    total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
+    cust_name = html.escape(order.customer_name)
+    phone = f"<code>{html.escape(order.customer_phone)}</code>" if order.customer_phone else "<i>(Chưa có SĐT)</i>"
+    addr = html.escape(order.shipping_address) if order.shipping_address else "<i>(Chưa có Đ/C)</i>"
+    items_line = f"\n   📼 <b>BĂNG:</b> {html.escape(order.items_text)}" if order.items_text else ""
+    return (
+        f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        f"   📞 <b>SĐT:</b> {phone}\n"
+        f"   📍 <b>Đ/C:</b> {addr}"
+        f"{items_line}\n"
+        f"   💰 <b>TIỀN:</b> <b>{total_fmt}</b> (<i>{status_label}</i>)"
+    )
+
+
 def render_order_list_card(
     orders: Sequence[Order],
     date_str: str,
@@ -287,19 +346,7 @@ def render_order_list_card(
         DIVIDER,
     ]
 
-    order_blocks = []
-    for order in orders:
-        status_label = STATUS_NAMES.get(order.status, order.status.value)
-        total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
-        cust_name = html.escape(order.customer_name)
-        addr = html.escape(order.shipping_address) if order.shipping_address else "<i>Chưa có Đ/C</i>"
-        block = (
-            f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
-            f"   📍 {addr}\n"
-            f"   💰 {total_fmt} | {status_label}"
-        )
-        order_blocks.append(block)
-
+    order_blocks = [format_order_item_summary(order) for order in orders]
     if order_blocks:
         lines.append("\n\n".join(order_blocks))
 
@@ -404,22 +451,31 @@ def build_status_selection_keyboard(
 
 def render_search_single_order_card(order: Order, query: str) -> str:
     """Format single order confirmation preview card per D-08."""
-    status_label = STATUS_NAMES.get(order.status, order.status.value)
+    status_label = STATUS_NAMES.get(
+        order.status,
+        order.status.value if hasattr(order.status, "value") else str(order.status),
+    )
     total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
     cust_name = html.escape(order.customer_name)
-    phone = html.escape(order.customer_phone)
-    items = html.escape(order.items_text)
+    phone_display = (
+        f"<code>{html.escape(order.customer_phone)}</code>"
+        if order.customer_phone
+        else "<i>Chưa có SĐT</i>"
+    )
+    addr = html.escape(order.shipping_address) if order.shipping_address else "<i>Chưa có Đ/C</i>"
+    items = html.escape(order.items_text) if order.items_text else "<i>(Chưa có)</i>"
     esc_query = html.escape(query.strip())
 
     return (
         f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n"
         f"<i>(Tìm theo: '{esc_query}')</i>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
-        f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
-        f"📼 <b>Băng:</b> {items}\n"
-        f"💰 <b>Tổng tiền:</b> {total_fmt} | <b>Trạng thái:</b> {status_label}\n"
-        f"────────────────────\n"
+        f"📞 <b>SĐT:</b> {phone_display}\n"
+        f"📍 <b>ĐỊA CHỈ:</b> {addr}\n"
+        f"📼 <b>BĂNG CASSETTE:</b> {items}\n"
+        f"💰 <b>TỔNG TIỀN:</b> <b>{total_fmt}</b> | 🔄 <b>TRẠNG THÁI:</b> <b>{status_label}</b>\n"
+        f"{DIVIDER}\n"
         f"Có phải bác muốn xem đơn này không?"
     )
 
@@ -493,19 +549,14 @@ def render_search_multi_card(
         "🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
         f"<i>(Tìm theo: '{esc_query}')</i>",
         f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
-        "────────────────────",
+        DIVIDER,
     ]
 
-    for order in orders:
-        status_label = STATUS_NAMES.get(order.status, order.status.value)
-        total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
-        cust_name = html.escape(order.customer_name)
-        items = html.escape(order.items_text)
-        lines.append(f"📦 <b>Đơn #{order.id}</b> - {cust_name}")
-        lines.append(f"   📼 {items}")
-        lines.append(f"   💰 {total_fmt} | {status_label}")
+    order_blocks = [format_order_item_summary(order) for order in orders]
+    if order_blocks:
+        lines.append("\n\n".join(order_blocks))
 
-    lines.append("────────────────────")
+    lines.append(DIVIDER)
     lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
     return "\n".join(lines)
 
@@ -583,27 +634,38 @@ def build_search_prompt_keyboard() -> InlineKeyboardMarkup:
 
 def build_admin_main_keyboard(
     user_role: UserRole = UserRole.ADMIN,
+    maintenance_mode: bool = False,
 ) -> InlineKeyboardMarkup:
     """Build 2-column admin suite navigation grid per D-03 and UI-SPEC."""
-    return InlineKeyboardMarkup(
+    rows: list[list[InlineKeyboardButton]] = [
         [
+            InlineKeyboardButton("👥 Quản lý Whitelist", callback_data="adm:wl:list:1"),
+            InlineKeyboardButton("🤖 Đổi Model LLM", callback_data="adm:mdl:menu"),
+        ],
+        [
+            InlineKeyboardButton("📜 Xem Logs", callback_data="adm:log:view:25:all"),
+            InlineKeyboardButton("💾 Sao lưu DB", callback_data="adm:bkp:trigger"),
+        ],
+        [
+            InlineKeyboardButton("⏰ Đặt giờ sao lưu", callback_data="adm:bkp:menu"),
+            InlineKeyboardButton("🔄 Làm mới", callback_data="adm:dash:refresh"),
+        ],
+    ]
+
+    if user_role == UserRole.SUPER_ADMIN:
+        maint_label = "🚧 Tắt bảo trì (Đang dừng)" if maintenance_mode else "🟢 Bật bảo trì (Tạm dừng chat)"
+        rows.append(
             [
-                InlineKeyboardButton("👥 Quản lý Whitelist", callback_data="adm:wl:list:1"),
-                InlineKeyboardButton("🤖 Đổi Model LLM", callback_data="adm:mdl:menu"),
-            ],
-            [
-                InlineKeyboardButton("📜 Xem Logs", callback_data="adm:log:view:25:all"),
-                InlineKeyboardButton("💾 Sao lưu DB", callback_data="adm:bkp:trigger"),
-            ],
-            [
-                InlineKeyboardButton("⏰ Đặt giờ sao lưu", callback_data="adm:bkp:menu"),
-                InlineKeyboardButton("🔄 Làm mới", callback_data="adm:dash:refresh"),
-            ],
-            [
-                InlineKeyboardButton("❌ Đóng menu", callback_data="adm:dash:close"),
-            ],
+                InlineKeyboardButton(maint_label, callback_data="adm:maint:toggle"),
+            ]
+        )
+
+    rows.append(
+        [
+            InlineKeyboardButton("❌ Đóng menu", callback_data="adm:dash:close"),
         ]
     )
+    return InlineKeyboardMarkup(rows)
 
 
 def build_whitelist_keyboard(
@@ -934,7 +996,7 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
                 pass
         old_lbl = STATUS_NAMES.get(order.status, str(order.status.value if hasattr(order.status, "value") else order.status))
         new_lbl = STATUS_NAMES.get(new_status, str(new_status.value if hasattr(new_status, "value") else new_status))
-        diff_lines.append(f"🔄 <b>Trạng thái:</b> {old_lbl} ➡️ <b>{new_lbl}</b>")
+        diff_lines.append(f"🔄 <b>TRẠNG THÁI:</b> {old_lbl} ➡️ <b>{new_lbl}</b>")
 
     # 2. Phone
     new_phone = delta_dict.get("customer_phone") or delta_dict.get("new_customer_phone")
@@ -948,7 +1010,7 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
     if new_addr and new_addr != order.shipping_address:
         old_a = html.escape(order.shipping_address or "[Chưa có]")
         new_a = html.escape(str(new_addr))
-        diff_lines.append(f"📍 <b>Địa chỉ:</b>\n   [Cũ]: {old_a}\n   ➡️ [Mới]: <b>{new_a}</b>")
+        diff_lines.append(f"📍 <b>ĐỊA CHỈ:</b>\n   [Cũ]: {old_a}\n   ➡️ [Mới]: <b>{new_a}</b>")
 
     # 4. Total Amount
     new_total = delta_dict.get("total_amount")
@@ -957,7 +1019,7 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
     if new_total is not None and new_total != order.total_amount:
         old_t = f"{order.total_amount:,} đ".replace(",", ".")
         new_t = f"{int(new_total):,} đ".replace(",", ".")
-        diff_lines.append(f"💰 <b>Tổng tiền:</b> {old_t} ➡️ <b>{new_t}</b>")
+        diff_lines.append(f"💰 <b>TỔNG TIỀN:</b> {old_t} ➡️ <b>{new_t}</b>")
 
     # 5. COD Amount
     new_cod = delta_dict.get("cod_amount")
@@ -966,26 +1028,26 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
     if new_cod is not None and new_cod != order.cod_amount:
         old_c = f"{order.cod_amount:,} đ".replace(",", ".")
         new_c = f"{int(new_cod):,} đ".replace(",", ".")
-        diff_lines.append(f"💵 <b>Tiền COD:</b> {old_c} ➡️ <b>{new_c}</b>")
+        diff_lines.append(f"💵 <b>TIỀN COD THU:</b> {old_c} ➡️ <b>{new_c}</b>")
 
     # 6. Tracking Code
     new_track = delta_dict.get("tracking_code") or delta_dict.get("new_tracking_code")
     if new_track and new_track != order.tracking_code:
         old_tr = html.escape(order.tracking_code or "(Chưa có)")
         new_tr = html.escape(str(new_track))
-        diff_lines.append(f"🚚 <b>Mã vận đơn:</b> <code>{old_tr}</code> ➡️ <code>{new_tr}</code>")
+        diff_lines.append(f"🚚 <b>MÃ VẬN ĐƠN:</b> <code>{old_tr}</code> ➡️ <code>{new_tr}</code>")
 
     # 7. Items Text
     new_items = delta_dict.get("items_text") or delta_dict.get("new_items_text")
     if new_items and new_items != order.items_text:
         old_it = html.escape(order.items_text or "(Chưa có)")
         new_it = html.escape(str(new_items))
-        diff_lines.append(f"📼 <b>Băng:</b> {old_it} ➡️ <b>{new_it}</b>")
+        diff_lines.append(f"📼 <b>BĂNG CASSETTE:</b> {old_it} ➡️ <b>{new_it}</b>")
 
     # 8. Notes
     new_notes = delta_dict.get("notes") or delta_dict.get("new_notes")
     if new_notes:
-        diff_lines.append(f"📝 <b>Ghi chú mới:</b> {html.escape(str(new_notes))}")
+        diff_lines.append(f"📝 <b>GHI CHÚ MỚI:</b> {html.escape(str(new_notes))}")
 
     # Fallback if no specific diff lines
     diff_text = "\n\n".join(diff_lines) if diff_lines else "<i>Không phát hiện thay đổi cụ thể.</i>"
@@ -993,7 +1055,7 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
     cust_name = html.escape(order.customer_name or "[Khách]")
     return (
         f"📝 <b>XÁC NHẬN SỬA ĐƠN HÀNG #{order.id}</b>\n"
-        f"👤 <b>Khách:</b> {cust_name}\n"
+        f"👤 <b>KHÁCH:</b> {cust_name}\n"
         f"{DIVIDER}\n"
         f"<b>Các nội dung thay đổi:</b>\n\n"
         f"{diff_text}\n"
@@ -1012,6 +1074,25 @@ def build_mutation_confirm_keyboard(draft_id: str) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def render_mutation_disambiguation_card(
+    orders: Sequence[Order], keyword: str | None
+) -> str:
+    """Render disambiguation list card for multiple matched orders in mutation."""
+    kw_display = html.escape(keyword or "khách")
+    lines = [
+        "🔍 <b>CHỌN ĐƠN HÀNG CẦN SỬA</b>",
+        f"<i>(Tìm thấy {len(orders)} đơn hàng của '{kw_display}')</i>",
+        DIVIDER,
+    ]
+    order_blocks = [format_order_item_summary(order) for order in orders]
+    if order_blocks:
+        lines.append("\n\n".join(order_blocks))
+
+    lines.append(DIVIDER)
+    lines.append("Bác bấm chọn đúng đơn cần sửa bên dưới nhé:")
+    return "\n".join(lines)
 
 
 def build_mutation_disambiguation_keyboard(
@@ -1062,6 +1143,124 @@ def build_mutation_status_keyboard(
         ]
     )
     return InlineKeyboardMarkup(buttons)
+
+
+def render_customer_detail_card(
+    customer: Customer,
+    stats: dict,
+    orders: Sequence[Order],
+    page: int,
+    total_pages: int,
+    draft_id: str | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Render customer profile and paginated order history card with navigation keyboard."""
+    cust_name = html.escape(customer.name or "Khách hàng")
+    phones_str = (
+        ", ".join(f"<code>{html.escape(p)}</code>" for p in customer.phones)
+        if customer.phones
+        else "<i>Chưa có</i>"
+    )
+
+    if customer.addresses:
+        addr_lines = "\n".join(
+            f"  {idx + 1}. {html.escape(a)}" for idx, a in enumerate(customer.addresses)
+        )
+        addr_block = f"📍 <b>Địa chỉ ({len(customer.addresses)}):</b>\n{addr_lines}"
+    else:
+        addr_block = "📍 <b>Địa chỉ:</b> <i>Chưa có</i>"
+
+    total_orders = stats.get("total_orders", 0)
+    spent_str = f"{stats.get('total_spent', 0):,} đ".replace(",", ".")
+    bom_count = stats.get("bom_count", 0)
+    warning_line = (
+        f"\n⚠️ <b>CẢNH BÁO: Khách từng có {bom_count} đơn BOM HÀNG!</b>"
+        if bom_count > 0
+        else ""
+    )
+
+    notes_line = (
+        f"\n📝 <b>Ghi chú:</b> {html.escape(customer.notes)}"
+        if customer.notes
+        else ""
+    )
+
+    order_blocks: list[str] = []
+    for o in orders:
+        st_name = STATUS_NAMES.get(
+            o.status,
+            o.status.value if hasattr(o.status, "value") else str(o.status),
+        )
+        tot = f"{o.total_amount:,} đ".replace(",", ".")
+        cod = f"{o.cod_amount:,} đ".replace(",", ".")
+        items = html.escape(o.items_text or "(Chưa có băng)")
+        created_str = ""
+        if o.created_at:
+            vn_dt = to_vn_datetime(o.created_at) if isinstance(o.created_at, datetime) else None
+            created_str = f" ({vn_dt.strftime('%d/%m/%Y')})" if vn_dt else ""
+
+        order_blocks.append(
+            f"• <b>#DH{o.id}</b>{created_str} - {st_name}\n"
+            f"  📼 {items}\n"
+            f"  💰 {tot} (COD: {cod})"
+        )
+
+    if order_blocks:
+        history_content = "\n\n".join(order_blocks)
+    else:
+        history_content = "<i>(Chưa có đơn hàng nào)</i>"
+
+    text = (
+        f"👤 <b>HỒ SƠ KHÁCH HÀNG: {cust_name.upper()}</b>\n"
+        f"📞 <b>SĐT:</b> {phones_str}\n"
+        f"{addr_block}\n"
+        f"📊 <b>Thống kê:</b> {total_orders} đơn | Đã chi: {spent_str}"
+        f"{warning_line}"
+        f"{notes_line}\n"
+        f"{DIVIDER}\n"
+        f"📦 <b>LỊCH SỬ ĐƠN HÀNG (Trang {page}/{total_pages}):</b>\n\n"
+        f"{history_content}\n"
+        f"{DIVIDER}\n"
+        f"Bác bấm nút bên dưới để xem thêm hoặc quay lại:"
+    )
+
+    keyboard: list[list[InlineKeyboardButton]] = []
+    safe_draft_id = draft_id or "00000000"
+
+    # Pagination row
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "⬅️ Trước", callback_data=f"ord:cs:{safe_draft_id}:{page - 1}"
+                )
+            )
+        nav_row.append(
+            InlineKeyboardButton(
+                f"Trang {page}/{total_pages}",
+                callback_data=f"ord:noop:{safe_draft_id}",
+            )
+        )
+        if page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "Sau ➡️", callback_data=f"ord:cs:{safe_draft_id}:{page + 1}"
+                )
+            )
+        keyboard.append(nav_row)
+
+    # Back to draft preview button
+    if draft_id:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "◀️ Quay lại đơn đang tạo", callback_data=f"ord:bk:{draft_id}"
+                )
+            ]
+        )
+
+    return text, InlineKeyboardMarkup(keyboard)
+
 
 
 

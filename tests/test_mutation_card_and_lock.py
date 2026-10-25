@@ -1,8 +1,9 @@
-import html
 import pytest
+
 from src.bot.keyboards import (
     DIVIDER,
     render_mutation_diff_card,
+    render_mutation_disambiguation_card,
     render_order_detail_card,
     render_order_list_card,
 )
@@ -43,6 +44,42 @@ def test_render_order_list_card_spacing():
     assert "📦 <b>Đơn #2</b> - Khách B" in card
     # Double newline check between end of order 1 block and order 2 header
     assert "\n\n📦 <b>Đơn #2</b>" in card
+
+
+def test_render_mutation_disambiguation_card():
+    """Verify mutation disambiguation list renders full order info separated by empty lines."""
+    orders = [
+        Order(
+            id=12,
+            customer_name="Bác Tuấn",
+            customer_phone="0912345678",
+            shipping_address="123 Lê Duẩn, Hà Nội",
+            items_text="Tuấn Vũ 1",
+            total_amount=350000,
+            status=OrderStatus.CHO_LAM,
+        ),
+        Order(
+            id=15,
+            customer_name="Bác Tuấn",
+            customer_phone="0988776655",
+            shipping_address="Cầu Giấy, Hà Nội",
+            items_text="Chế Linh",
+            total_amount=500000,
+            status=OrderStatus.DA_GIAO,
+        ),
+    ]
+    card = render_mutation_disambiguation_card(orders, keyword="Bác Tuấn")
+    assert "CHỌN ĐƠN HÀNG CẦN SỬA" in card
+    assert "Bác Tuấn" in card
+    assert "Đơn #12" in card
+    assert "0912345678" in card
+    assert "123 Lê Duẩn, Hà Nội" in card
+    assert "350.000 đ" in card
+    assert "Đơn #15" in card
+    assert "0988776655" in card
+    assert "Cầu Giấy, Hà Nội" in card
+    assert "500.000 đ" in card
+    assert "\n\n📦 <b>Đơn #15</b>" in card
 
 
 def test_render_order_detail_card_with_creator():
@@ -99,23 +136,23 @@ def test_render_mutation_diff_card_only_changed_fields():
     assert "hết hạn sau 120s" in card
 
     # Changed fields
-    assert "Trạng thái:" in card
+    assert "TRẠNG THÁI:" in card or "Trạng thái:" in card
     assert "Chờ làm" in card
     assert "➡️" in card
     assert "Đang làm" in card
 
-    assert "Địa chỉ:" in card
+    assert "ĐỊA CHỈ:" in card or "Địa chỉ:" in card
     assert "123 Lê Lợi, Q1, TP.HCM" in card
     assert "456 Nguyễn Huệ, Q1, TP.HCM" in card
 
-    assert "Tiền COD:" in card
+    assert "TIỀN COD" in card or "Tiền COD:" in card
     assert "250.000 đ" in card
     assert "300.000 đ" in card
 
     # Unchanged fields should not appear
     assert "SĐT:" not in card
-    assert "Băng:" not in card
-    assert "Mã vận đơn:" not in card
+    assert "BĂNG" not in card and "Băng:" not in card
+    assert "MÃ VẬN ĐƠN:" not in card and "Mã vận đơn:" not in card
 
 
 def test_render_mutation_diff_card_html_escaping():
@@ -259,7 +296,6 @@ async def test_mutate_order_with_lock_conflict():
 @pytest.mark.asyncio
 async def test_mutate_order_with_lock_datetime_string_normalization():
     """Verify mutate_order_with_lock handles datetime object vs string without false conflict."""
-    from datetime import datetime
     from src.db.connection import get_db_connection
     from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
     from src.db.schema import init_db
@@ -393,7 +429,7 @@ async def test_mutate_order_with_lock_consecutive_mutations():
 async def test_mutate_order_with_lock_microsecond_vs_millisecond_normalization():
     """Verify 6-digit microsecond string matches 3-digit SQLite timestamp without conflict."""
     from src.db.connection import get_db_connection
-    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.orders import create_order, mutate_order_with_lock
     from src.db.schema import init_db
 
     async with get_db_connection(":memory:") as db:

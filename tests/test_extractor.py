@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from openai import BadRequestError
+
 import httpx
+import pytest
+from openai import BadRequestError
 
 from src.models.extractor import ExtractedOrder
 from src.services.extractor import extract_order_from_text
@@ -158,7 +159,7 @@ async def test_llm_extractor_both_tiers_fail_returns_none():
     """If both Tier 1 and Tier 2 fail and no phone in text, returns None safely."""
     mock_client = MagicMock()
     request = httpx.Request("POST", "https://api.9router.com/v1/chat/completions")
-    response = httpx.Response(500, request=request)
+    httpx.Response(500, request=request)
     mock_client.beta.chat.completions.parse = AsyncMock(side_effect=Exception("Network error"))
     mock_client.chat.completions.create = AsyncMock(side_effect=Exception("Connection refused"))
 

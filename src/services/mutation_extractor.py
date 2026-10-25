@@ -1,5 +1,6 @@
 import logging
 import re
+
 from openai import AsyncOpenAI, BadRequestError
 
 from src.models.mutation import OrderMutationDelta

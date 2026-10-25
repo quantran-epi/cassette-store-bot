@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from telegram import (
     Chat,
-    CopyTextButton,
     InlineKeyboardMarkup,
     Message,
     ReplyKeyboardMarkup,
@@ -294,7 +293,6 @@ async def test_start_command_sends_reply_keyboard():
 async def test_handle_menu_reply_today_orders(test_db):
     """Clicking '📦 Đơn hôm nay' returns order list for today in Vietnam timezone."""
     from src.db.orders import create_order
-    from src.bot.keyboards import TZ_VN
 
     order = Order(
         customer_name="Khách Hôm Nay",
@@ -370,9 +368,10 @@ async def test_handle_menu_reply_other_buttons():
 @pytest.mark.asyncio
 async def test_handle_order_nav_callback_flow(test_db):
     """Test date selection, pagination, detail card view, and back navigation."""
-    from src.db.orders import create_order
     from datetime import datetime
+
     from src.bot.keyboards import TZ_VN
+    from src.db.orders import create_order
 
     today_str = datetime.now(TZ_VN).strftime("%Y-%m-%d")
 
@@ -544,6 +543,7 @@ async def test_order_status_sensitive_requires_confirmation(test_db):
 async def test_order_status_bad_request_ignored(test_db):
     """BadRequest with 'Message is not modified' is caught safely without raising."""
     from telegram.error import BadRequest
+
     from src.db.orders import create_order
 
     order = Order(
@@ -615,6 +615,7 @@ async def test_order_action_track_state_and_cancel():
 async def test_handle_action_state_text_tracking_updates_db(test_db):
     """Sending text while in await_tracking updates DB tracking_code and clears state."""
     import time
+
     from src.db.orders import create_order, get_order_by_id
 
     oid = await create_order(
@@ -660,6 +661,7 @@ async def test_handle_action_state_text_tracking_updates_db(test_db):
 async def test_handle_text_order_bypasses_llm_when_action_state_active(test_db):
     """handle_text_order intercepts text when action_state is active without calling LLM."""
     import time
+
     from src.bot.handlers.ingest import handle_text_order
     from src.db.orders import create_order, get_order_by_id
 
@@ -761,7 +763,9 @@ async def test_handle_order_action_view_photos(test_db):
 async def test_handle_action_state_photo_appends_photos(test_db):
     """Sending photo while in await_photo appends photo file_id to order in DB."""
     import time
+
     from telegram import PhotoSize
+
     from src.db.orders import create_order, get_order_by_id
 
     oid = await create_order(

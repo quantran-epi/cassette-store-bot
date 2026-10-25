@@ -157,7 +157,7 @@ async def test_order_callback_confirm_saves_to_db(test_db):
     query.edit_message_text.assert_awaited_once()
     success_msg = query.edit_message_text.call_args[0][0]
     assert "ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG" in success_msg
-    assert "Mã đơn:" in success_msg
+    assert "MÃ ĐƠN:" in success_msg or "Mã đơn:" in success_msg
 
     # Verify created in SQLite with CHO_LAM status
     orders = await list_orders_by_status(test_db, OrderStatus.CHO_LAM)
@@ -788,3 +788,225 @@ async def test_single_photo_without_media_group_retains_behavior(test_db):
     assert len(pending) == 1
     draft = list(pending.values())[0]
     assert draft["photo_file_ids"] == ["single_photo_1"]
+
+
+@pytest.mark.asyncio
+async def test_returning_customer_name_autofill_and_preview_card(test_db):
+    """When returning customer order has no name in message, name is auto-filled from DB."""
+    from src.bot.handlers.ingest import process_extracted_order
+
+    # Pre-create customer in DB
+    cust_id = await create_customer(
+        test_db,
+        Customer(
+            name="Bác Ba Phi",
+            phones=["0918889999"],
+            addresses=["Ấp 4, Cà Mau"],
+        ),
+    )
+
+    update = MagicMock(spec=Update)
+    message = MagicMock()
+    message.reply_text = AsyncMock()
+    update.message = message
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    context.application.bot_data = {"app_context": app_context}
+
+    # Order has no customer_name
+    extracted = ExtractedOrder(
+        customer_name=None,
+        customer_phone="0918889999",
+        shipping_address=None,
+        items_text="3 cuốn Tân cổ",
+        total_amount=300000,
+        cod_amount=300000,
+    )
+
+    await process_extracted_order(update, context, extracted, raw_text="0918889999 3 cuốn Tân cổ")
+
+    message.reply_text.assert_awaited_once()
+    call_kwargs = message.reply_text.call_args[1]
+    preview_text = call_kwargs["text"]
+
+    # Verify customer name was auto-filled from DB instead of "[Chưa có]"
+    assert "Bác Ba Phi" in preview_text
+    assert "[Chưa có]" not in preview_text
+    assert "Ấp 4, Cà Mau" in preview_text
+    assert "0918889999" in preview_text
+    assert "3 cuốn Tân cổ" in preview_text
+    assert "300.000 đ" in preview_text
+
+    # Check pending order draft data
+    pending = context.user_data.get("pending_orders", {})
+    assert len(pending) == 1
+    draft = list(pending.values())[0]
+    assert draft["customer_name"] == "Bác Ba Phi"
+    assert draft["customer_id"] == cust_id
+
+
+@pytest.mark.asyncio
+async def test_preview_card_multi_address_radio_and_customer_detail_nav(test_db):
+    """Multi-address customer gets radio buttons (🔘 / ⚪), customer detail button, and back button navigation."""
+    cust_id = await create_customer(
+        test_db,
+        Customer(
+            name="Nguyễn Văn A",
+            phones=["0901234567"],
+            addresses=["123 Lê Lợi, Q1", "456 Nguyễn Trãi, Q5"],
+        ),
+    )
+    # Create 6 orders for pagination test (page size = 5 -> 2 pages)
+    for i in range(6):
+        await create_order(
+            test_db,
+            Order(
+                customer_id=cust_id,
+                customer_name="Nguyễn Văn A",
+                customer_phone="0901234567",
+                shipping_address="123 Lê Lợi, Q1",
+                items_text=f"Băng số {i + 1}",
+                total_amount=150000,
+                cod_amount=150000,
+                status=OrderStatus.DA_GIAO,
+            ),
+        )
+
+    draft_id = "abcd9999"
+    draft_data = {
+        "draft_id": draft_id,
+        "customer_id": cust_id,
+        "customer_name": "Nguyễn Văn A",
+        "customer_phone": "0901234567",
+        "shipping_address": "123 Lê Lợi, Q1",
+        "available_addresses": ["123 Lê Lợi, Q1", "456 Nguyễn Trãi, Q5"],
+        "items_text": "2 băng mới",
+        "total_amount": 200000,
+        "cod_amount": 200000,
+        "deposit_amount": 0,
+        "payment_method": "COD",
+        "notes": "",
+        "photo_file_ids": [],
+        "stats": {"total_orders": 6, "total_spent": 900000, "bom_count": 0},
+    }
+
+    # 1. Test preview card rendering with radio buttons and customer detail button
+    text, markup = render_preview_card(draft_data, draft_data["stats"])
+    assert "Nguyễn Văn A" in text
+    assert "0901234567" in text
+    assert "123 Lê Lợi, Q1" in text
+    assert "2 băng mới" in text
+    assert "200.000 đ" in text
+
+    buttons = [btn for row in markup.inline_keyboard for btn in row]
+    btn_texts = [b.text for b in buttons]
+
+    # Verify radio buttons
+    assert any("🔘" in t and "123 Lê Lợi" in t for t in btn_texts)
+    assert any("⚪" in t and "456 Nguyễn Trãi" in t for t in btn_texts)
+
+    # Verify customer detail button
+    cust_btn = next((b for b in buttons if b.callback_data.startswith("ord:cs:")), None)
+    assert cust_btn is not None
+    assert "Chi tiết khách (6 đơn)" in cust_btn.text
+    assert cust_btn.callback_data == f"ord:cs:{draft_id}:1"
+
+    # 2. Test clicking customer detail button (ord:cs:<draft_id>:1)
+    update = MagicMock(spec=Update)
+    query = MagicMock()
+    query.data = f"ord:cs:{draft_id}:1"
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update.callback_query = query
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {"pending_orders": {draft_id: draft_data}}
+    app_context = MagicMock()
+    app_context.db = test_db
+    context.application.bot_data = {"app_context": app_context}
+
+    await handle_order_callback(update, context)
+
+    query.edit_message_text.assert_awaited_once()
+    cust_view_text = query.edit_message_text.call_args[1]["text"]
+    cust_view_markup = query.edit_message_text.call_args[1]["reply_markup"]
+
+    assert "HỒ SƠ KHÁCH HÀNG: NGUYỄN VĂN A" in cust_view_text
+    assert "Trang 1/2" in cust_view_text
+    assert "6 đơn | Đã chi: 900.000 đ" in cust_view_text
+
+    cust_view_btns = [btn for row in cust_view_markup.inline_keyboard for btn in row]
+    # Check pagination: should have Next page button and Back button
+    next_btn = next((b for b in cust_view_btns if b.callback_data == f"ord:cs:{draft_id}:2"), None)
+    back_btn = next((b for b in cust_view_btns if b.callback_data == f"ord:bk:{draft_id}"), None)
+    assert next_btn is not None
+    assert back_btn is not None
+    assert "Quay lại" in back_btn.text
+
+    # 3. Test clicking back button (ord:bk:<draft_id>)
+    query.edit_message_text.reset_mock()
+    query.data = f"ord:bk:{draft_id}"
+    await handle_order_callback(update, context)
+
+    query.edit_message_text.assert_awaited_once()
+    back_text = query.edit_message_text.call_args[1]["text"]
+    assert "ĐƠN HÀNG MỚI (Xem trước)" in back_text
+    assert "Nguyễn Văn A" in back_text
+    assert "2 băng mới" in back_text
+
+
+@pytest.mark.asyncio
+async def test_order_mutation_auto_appends_new_address_to_customer(test_db):
+    """When mutating order to change shipping_address, customer profile is automatically updated with new address."""
+    from src.db.customers import get_customer_by_id
+    from src.db.orders import mutate_order_with_lock
+
+    cust_id = await create_customer(
+        test_db,
+        Customer(
+            name="Chị Lan",
+            phones=["0933221100"],
+            addresses=["10 Phố Huế, Hà Nội"],
+        ),
+    )
+    order_id = await create_order(
+        test_db,
+        Order(
+            customer_id=cust_id,
+            customer_name="Chị Lan",
+            customer_phone="0933221100",
+            shipping_address="10 Phố Huế, Hà Nội",
+            items_text="1 băng Cẩm Ly",
+            total_amount=120000,
+            cod_amount=120000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+
+    # Fetch initial order to get timestamp
+    from src.db.orders import get_order_by_id
+
+    order = await get_order_by_id(test_db, order_id)
+    assert order is not None
+
+    # Mutate shipping_address to a new address
+    success, changes, fresh = await mutate_order_with_lock(
+        db=test_db,
+        order_id=order_id,
+        expected_updated_at=order.updated_at.isoformat() if order.updated_at else None,
+        delta_dict={"shipping_address": "25 Bà Triệu, Hà Nội"},
+        user_name="Admin",
+    )
+    assert success is True
+    assert fresh.shipping_address == "25 Bà Triệu, Hà Nội"
+
+    # Customer profile should now contain both addresses
+    cust = await get_customer_by_id(test_db, cust_id)
+    assert cust is not None
+    assert len(cust.addresses) == 2
+    assert "10 Phố Huế, Hà Nội" in cust.addresses
+    assert "25 Bà Triệu, Hà Nội" in cust.addresses
+

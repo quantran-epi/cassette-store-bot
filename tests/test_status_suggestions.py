@@ -1,4 +1,3 @@
-import pytest
 from src.bot.keyboards import (
     build_mutation_confirm_keyboard,
     build_mutation_disambiguation_keyboard,

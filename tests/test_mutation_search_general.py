@@ -1,4 +1,5 @@
 import pytest
+
 from src.db.connection import get_db_connection, sqlite_word_match
 from src.db.orders import create_order, find_orders_for_mutation
 from src.db.schema import init_db
@@ -178,7 +179,9 @@ def test_mutation_system_prompt_captures_composite_keywords():
 async def test_mutation_handler_text_to_sql_fallback():
     """Verify handle_mutation_flow invokes Text-to-SQL fallback when token match returns empty."""
     from unittest.mock import AsyncMock, MagicMock, patch
+
     from telegram import Message, Update
+
     from src.bot.handlers.mutation import handle_mutation_flow
     from src.models.mutation import OrderMutationDelta
 

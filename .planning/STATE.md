@@ -82,3 +82,11 @@ Recent decisions affecting current work:
 - [Phase 06 P02]: Model switcher starts with empty default list, dynamically appends probed models, and protects active model from deletion
 - [Phase 06 P02]: Whitelist user display names can be edited interactively via 60s TTL prompt
 - [Phase 06 P01]: Hot backup via VACUUM INTO ? guarantees zero lockups and clean WAL checkpoint snapshot
+
+### Quick Tasks Completed
+
+| Date | Task Slug | Description | Status |
+|------|-----------|-------------|--------|
+| 2026-10-25 | `order-notes-maintenance-notifications-reminders` | Order notes to orders table, Super Admin maintenance mode + broadcast, lifecycle event broadcasts, NL reminders system | Complete ✓ |
+| 2026-10-25 | `261025-vo9-fix-reminder-weekday-parsing-and-enhance` | Fix reminder weekday parsing on Sundays and enhance high-contrast uppercase labels across all order cards | Complete ✓ |
+

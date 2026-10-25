@@ -46,23 +46,34 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
 
     deposit_info = f" (đã cọc {deposit:,} đ)".replace(",", ".") if deposit > 0 else ""
 
-    address_label = "📍 <b>Địa chỉ:</b>"
+    address_label = "📍 <b>ĐỊA CHỈ:</b>"
     if draft.get("address_auto_filled"):
-        address_label = "📍 <b>Địa chỉ</b> <i>(tự lấy từ đơn trước)</i>:"
+        address_label = "📍 <b>ĐỊA CHỈ</b> <i>(tự lấy từ đơn trước)</i>:"
 
     photo_tag = ""
     photos = draft.get("photo_file_ids") or []
     if photos:
-        photo_tag = f"\n📷 <b>Ảnh đính kèm:</b> {len(photos)} ảnh"
+        photo_tag = f"\n📷 <b>ẢNH ĐÍNH KÈM:</b> {len(photos)} ảnh"
+
+    notes_tag = ""
+    if draft.get("notes"):
+        notes_tag = f"\n📝 <b>GHI CHÚ:</b> {html.escape(draft['notes'])}"
+
+    reminder_tag = ""
+    if draft.get("reminder_at"):
+        r_note = html.escape(draft.get("reminder_note") or "Yêu cầu nhắc việc")
+        reminder_tag = f"\n⏰ <b>LỊCH NHẮC:</b> {draft['reminder_at']} (<i>{r_note}</i>)"
 
     text = (
         f"📦 <b>ĐƠN HÀNG MỚI (Xem trước)</b>\n"
-        f"👤 <b>Khách:</b> {name}{history_tag}\n"
+        f"👤 <b>KHÁCH:</b> {name}{history_tag}\n"
         f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
         f"{address_label} {html.escape(address_val)}\n"
-        f"📼 <b>Băng cassette:</b> {items}\n"
-        f"💰 <b>Tổng tiền:</b> {total}\n"
-        f"💵 <b>Tiền COD thu:</b> {cod}{deposit_info}"
+        f"📼 <b>BĂNG CASSETTE:</b> {items}\n"
+        f"💰 <b>TỔNG TIỀN:</b> <b>{total}</b>\n"
+        f"💵 <b>TIỀN COD THU:</b> <b>{cod}</b>{deposit_info}"
+        f"{notes_tag}"
+        f"{reminder_tag}"
         f"{photo_tag}"
         f"{warning_tag}\n"
         f"────────────────────\n"
@@ -74,13 +85,30 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
 
     # Optional address picker buttons for returning customer with multiple addresses
     available_addresses = draft.get("available_addresses") or []
+    current_addr = (draft.get("shipping_address") or "").strip()
     if len(available_addresses) >= 2:
         for idx, addr in enumerate(available_addresses):
-            short_addr = (addr[:18] + "...") if len(addr) > 18 else addr
-            btn_text = f"📍 Đổi: {short_addr}"
+            short_addr = (addr[:22] + "...") if len(addr) > 22 else addr
+            if addr.strip() == current_addr:
+                btn_text = f"🔘 {short_addr}"
+            else:
+                btn_text = f"⚪ {short_addr}"
             keyboard.append(
                 [InlineKeyboardButton(btn_text, callback_data=f"ord:ad:{draft_id}:{idx}")]
             )
+
+    # Customer detail & order history button
+    customer_id = draft.get("customer_id")
+    if customer_id:
+        total_orders = stats.get("total_orders", 0) if stats else 0
+        btn_text = (
+            f"👤 Chi tiết khách ({total_orders} đơn)"
+            if total_orders > 0
+            else "👤 Chi tiết khách hàng"
+        )
+        keyboard.append(
+            [InlineKeyboardButton(btn_text, callback_data=f"ord:cs:{draft_id}:1")]
+        )
 
     keyboard.append(
         [
@@ -111,6 +139,7 @@ async def process_extracted_order(
     db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
 
     stats = None
+    customer_id = None
     address_auto_filled = False
     available_addresses: list[str] = []
 
@@ -120,20 +149,31 @@ async def process_extracted_order(
             if active_db:
                 customer = await get_customer_by_phone(active_db, extracted.customer_phone)
                 if customer and customer.id:
+                    customer_id = customer.id
                     stats = await get_customer_order_stats(active_db, customer.id)
+                    # Auto-fill customer name if missing from extracted order
+                    if not extracted.customer_name and customer.name:
+                        extracted.customer_name = customer.name
+
                     if not extracted.shipping_address:
                         if len(customer.addresses) == 1:
                             extracted.shipping_address = customer.addresses[0]
                             address_auto_filled = True
                         elif len(customer.addresses) >= 2:
                             extracted.shipping_address = customer.addresses[-1]
+                            address_auto_filled = True
                             available_addresses = list(customer.addresses)
+                    elif len(customer.addresses) >= 1:
+                        available_addresses = list(customer.addresses)
+                        if extracted.shipping_address not in available_addresses:
+                            available_addresses.append(extracted.shipping_address)
     except Exception as e:
         logger.warning("Customer history lookup failed: %s", e)
 
     draft_id = uuid.uuid4().hex[:8]
     draft_data = {
         "draft_id": draft_id,
+        "customer_id": customer_id,
         "customer_name": extracted.customer_name,
         "customer_phone": extracted.customer_phone,
         "shipping_address": extracted.shipping_address,
@@ -143,6 +183,8 @@ async def process_extracted_order(
         "deposit_amount": extracted.deposit_amount,
         "payment_method": extracted.payment_method,
         "notes": extracted.notes,
+        "reminder_at": getattr(extracted, "reminder_at", None),
+        "reminder_note": getattr(extracted, "reminder_note", None),
         "raw_text": raw_text,
         "photo_file_ids": photo_file_ids or [],
         "address_auto_filled": address_auto_filled,

@@ -1,12 +1,14 @@
 import html
 import json
 import logging
+import math
 import re
 import time
 from contextlib import nullcontext
 from datetime import datetime
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.ingest import render_preview_card
@@ -16,20 +18,30 @@ from src.bot.handlers.mutation import (
 )
 from src.bot.keyboards import (
     DIVIDER,
-    STATUS_NAMES,
     build_order_detail_keyboard,
+    render_customer_detail_card,
     render_order_detail_card,
     to_vn_datetime,
 )
 from src.db.connection import get_db_connection
-from src.db.customers import add_address, create_customer, get_customer_by_phone
-from src.db.orders import create_order, mutate_order_with_lock
+from src.db.customers import (
+    add_address,
+    create_customer,
+    get_customer_by_id,
+    get_customer_by_phone,
+)
+from src.db.orders import (
+    count_orders_by_customer_id,
+    create_order,
+    get_orders_by_customer_id,
+    mutate_order_with_lock,
+)
 from src.models.customer import Customer
 from src.models.order import Order, OrderStatus
 
 logger = logging.getLogger(__name__)
 
-CALLBACK_PATTERN = re.compile(r"^ord:(cf|ca|ad):([a-f0-9]{8})(?::(\d+))?$")
+CALLBACK_PATTERN = re.compile(r"^ord:(cf|ca|ad|cs|bk|noop):([a-f0-9]{8})(?::(\d+))?$")
 MUTATION_CALLBACK_PATTERN = re.compile(
     r"^ord_mut_(cf|ca|sel|st):([a-f0-9]{8})(?::(.*))?$"
 )
@@ -58,6 +70,11 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     action, draft_id = match.group(1), match.group(2)
+
+    # Passive pagination indicator button is a no-op (even if draft is expired)
+    if action == "noop":
+        return
+
     pending_orders = context.user_data.get("pending_orders", {})
 
     if draft_id not in pending_orders:
@@ -65,6 +82,77 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     draft = pending_orders[draft_id]
+
+    # Handle back to order preview (ord:bk:<draft_id>)
+    if action == "bk":
+        stats = draft.get("stats")
+        preview_text, reply_markup = render_preview_card(draft, stats)
+        try:
+            await query.edit_message_text(
+                text=preview_text,
+                reply_markup=reply_markup,
+                parse_mode="HTML",
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    # Handle customer detail and order history view with paging (ord:cs:<draft_id>:<page>)
+    if action == "cs":
+        page_str = match.group(3)
+        page = int(page_str) if page_str and page_str.isdigit() else 1
+        customer_id = draft.get("customer_id")
+        stats = draft.get("stats") or {}
+        back_kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("◀️ Quay lại đơn đang tạo", callback_data=f"ord:bk:{draft_id}")]]
+        )
+
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db or not customer_id:
+                await query.edit_message_text(
+                    "⚠️ Không tìm thấy thông tin khách hàng.",
+                    reply_markup=back_kb,
+                )
+                return
+
+            customer = await get_customer_by_id(active_db, customer_id)
+            if not customer:
+                await query.edit_message_text(
+                    "⚠️ Không tìm thấy hồ sơ khách hàng.",
+                    reply_markup=back_kb,
+                )
+                return
+
+            total_orders = await count_orders_by_customer_id(active_db, customer_id)
+            limit = 5
+            total_pages = max(1, math.ceil(total_orders / limit))
+            page = max(1, min(page, total_pages))
+            offset = (page - 1) * limit
+
+            orders = await get_orders_by_customer_id(
+                active_db, customer_id, limit=limit, offset=offset
+            )
+
+        cust_text, cust_markup = render_customer_detail_card(
+            customer=customer,
+            stats=stats,
+            orders=orders,
+            page=page,
+            total_pages=total_pages,
+            draft_id=draft_id,
+        )
+        try:
+            await query.edit_message_text(
+                text=cust_text,
+                reply_markup=cust_markup,
+                parse_mode="HTML",
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
 
     # Handle address selection (ord:ad:<draft_id>:<index>)
     if action == "ad":
@@ -79,11 +167,15 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         stats = draft.get("stats")
         preview_text, reply_markup = render_preview_card(draft, stats)
-        await query.edit_message_text(
-            text=preview_text,
-            reply_markup=reply_markup,
-            parse_mode="HTML",
-        )
+        try:
+            await query.edit_message_text(
+                text=preview_text,
+                reply_markup=reply_markup,
+                parse_mode="HTML",
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
         return
 
     # Handle cancellation (0 DB writes)
@@ -119,7 +211,7 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     name=name,
                     phones=[phone],
                     addresses=addresses,
-                    notes=draft.get("notes") or "",
+                    notes="",
                 )
                 cust_id = await create_customer(active_db, new_customer)
                 customer = new_customer
@@ -134,9 +226,10 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
             creator_name = str(eff_user.full_name) if eff_user and isinstance(eff_user.full_name, str) else None
 
             # Create Order
+            final_name = name or customer.name
             new_order = Order(
                 customer_id=customer.id,
-                customer_name=customer.name,
+                customer_name=final_name,
                 customer_phone=phone,
                 shipping_address=address,
                 items_text=draft.get("items_text") or "",
@@ -146,27 +239,84 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 status=OrderStatus.CHO_LAM,
                 photo_file_ids=draft.get("photo_file_ids") or [],
                 raw_text=draft.get("raw_text") or "",
+                notes=draft.get("notes") or "",
                 created_by_user_id=creator_id,
                 created_by_name=creator_name,
             )
             order_id = await create_order(active_db, new_order)
+            new_order.id = order_id
+
+            # Save reminder if extracted in draft
+            reminder_tag = ""
+            if draft.get("reminder_at"):
+                from src.db.reminders import create_reminder
+                from src.models.reminder import Reminder, ReminderStatus
+
+                rem = Reminder(
+                    id=None,
+                    order_id=order_id,
+                    remind_at=draft["reminder_at"],
+                    reminder_text=draft.get("reminder_note") or draft.get("notes") or "Yêu cầu giao hàng / nhắc việc",
+                    status=ReminderStatus.PENDING,
+                    created_by_user_id=creator_id,
+                )
+                await create_reminder(active_db, rem)
+                reminder_tag = f"\n⏰ <b>Lịch nhắc:</b> {draft['reminder_at']} - {html.escape(rem.reminder_text)}"
+
+            # Broadcast new order to all whitelist users
+            from src.services.notifications import (
+                broadcast_to_whitelist,
+                build_order_view_button,
+                format_order_created_broadcast,
+            )
+
+            whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+            b_msg = format_order_created_broadcast(new_order)
+            await broadcast_to_whitelist(
+                context.bot,
+                whitelist_ids,
+                b_msg,
+                reply_markup=build_order_view_button(order_id),
+                exclude_user_id=creator_id,
+            )
 
             photo_tag = ""
             if new_order.photo_file_ids:
-                photo_tag = f"\n📷 <b>Ảnh đính kèm:</b> {len(new_order.photo_file_ids)} ảnh"
+                photo_tag = f"\n📷 <b>ẢNH ĐÍNH KÈM:</b> {len(new_order.photo_file_ids)} ảnh"
+
+            notes_tag = ""
+            if new_order.notes:
+                notes_tag = f"\n📝 <b>GHI CHÚ:</b> {html.escape(new_order.notes)}"
 
             success_card = (
                 f"✅ <b>ĐÃ LƯU ĐƠN HÀNG THÀNH CÔNG</b>\n"
-                f"📦 <b>Mã đơn:</b> <code>#{order_id}</code>\n"
-                f"👤 <b>Khách:</b> {html.escape(customer.name)}\n"
+                f"📦 <b>MÃ ĐƠN:</b> <code>#{order_id}</code>\n"
+                f"👤 <b>KHÁCH:</b> {html.escape(final_name)}\n"
                 f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
-                f"💰 <b>Tổng tiền:</b> {new_order.total_amount:,} đ\n"
-                f"💵 <b>Tiền COD thu:</b> {new_order.cod_amount:,} đ"
+                f"💰 <b>TỔNG TIỀN:</b> <b>{new_order.total_amount:,} đ</b>\n"
+                f"💵 <b>TIỀN COD THU:</b> <b>{new_order.cod_amount:,} đ</b>"
+                f"{notes_tag}"
+                f"{reminder_tag}"
                 f"{photo_tag}\n"
-                f"<i>Trạng thái: Chờ làm</i>"
+                f"🔄 <b>TRẠNG THÁI:</b> <i>Chờ làm</i>"
             ).replace(",", ".")
 
-            await query.edit_message_text(success_card, parse_mode="HTML")
+            success_kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "⏰ Thêm nhắc lịch", callback_data=f"ord_act:remind:{order_id}"
+                        ),
+                        InlineKeyboardButton(
+                            "📦 Xem chi tiết", callback_data=f"ord_v:{order_id}"
+                        ),
+                    ]
+                ]
+            )
+
+            await query.edit_message_text(
+                success_card, reply_markup=success_kb, parse_mode="HTML"
+            )
 
 
 async def handle_mutation_callback(
@@ -315,6 +465,31 @@ async def handle_mutation_callback(
 
         # Success: edit message in-place to Updated Order Card per D-14
         if fresh_order:
+            new_st = delta_dict.get("status")
+            if new_st in (OrderStatus.DA_DONG_GOI, OrderStatus.DA_TAO_DON):
+                from src.services.notifications import (
+                    broadcast_to_whitelist,
+                    build_order_view_button,
+                    format_order_packed_broadcast,
+                    format_order_shipping_label_broadcast,
+                )
+
+                whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+                if new_st == OrderStatus.DA_DONG_GOI:
+                    b_msg = format_order_packed_broadcast(fresh_order, operator_name=user_name)
+                else:
+                    b_msg = format_order_shipping_label_broadcast(fresh_order, operator_name=user_name)
+                order_view_btn = (
+                    build_order_view_button(fresh_order.id) if fresh_order.id else None
+                )
+                await broadcast_to_whitelist(
+                    context.bot,
+                    whitelist_ids,
+                    b_msg,
+                    reply_markup=order_view_btn,
+                    exclude_user_id=user_id,
+                )
+
             vn_dt = to_vn_datetime(fresh_order.created_at) if isinstance(fresh_order.created_at, datetime) else None
             today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
             card_body = render_order_detail_card(fresh_order)

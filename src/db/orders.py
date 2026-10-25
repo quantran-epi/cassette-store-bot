@@ -280,6 +280,35 @@ async def get_customer_order_stats(
         }
 
 
+async def get_orders_by_customer_id(
+    db: aiosqlite.Connection,
+    customer_id: int,
+    limit: int = 5,
+    offset: int = 0,
+) -> Sequence[Order]:
+    """Retrieve orders for a customer ordered by created_at DESC, id DESC with pagination."""
+    query = """
+        SELECT * FROM orders
+        WHERE customer_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+    """
+    async with db.execute(query, (customer_id, limit, offset)) as cursor:
+        rows = await cursor.fetchall()
+        return [_row_to_order(row) for row in rows]
+
+
+async def count_orders_by_customer_id(
+    db: aiosqlite.Connection,
+    customer_id: int,
+) -> int:
+    """Count total orders for a customer."""
+    query = "SELECT COUNT(*) FROM orders WHERE customer_id = ?"
+    async with db.execute(query, (customer_id,)) as cursor:
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+
 async def record_order_history(
     db: aiosqlite.Connection,
     order_id: int,
@@ -537,6 +566,14 @@ async def mutate_order_with_lock(
     )
     await db.commit()
 
+    # If shipping_address changed, add new address to customer address list
+    if "shipping_address" in changes and row["customer_id"]:
+        new_addr = changes["shipping_address"].get("new")
+        if new_addr and isinstance(new_addr, str):
+            from src.db.customers import add_address
+
+            await add_address(db, row["customer_id"], new_addr)
+
     fresh_order = await get_order_by_id(db, order_id)
     return True, changes, fresh_order
 
@@ -546,11 +583,12 @@ __all__ = [
     "get_order_by_id",
     "update_order_status",
     "update_order_tracking",
-    "update_order_fields",
     "list_orders_by_date",
     "count_orders_by_date",
     "list_orders_by_status",
     "get_customer_order_stats",
+    "get_orders_by_customer_id",
+    "count_orders_by_customer_id",
     "record_order_history",
     "find_orders_by_multi_token",
     "find_orders_for_mutation",

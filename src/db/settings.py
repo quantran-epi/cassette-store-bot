@@ -50,3 +50,20 @@ async def set_json_setting(
     """Serialize and insert/update JSON setting."""
     encoded = json.dumps(value, ensure_ascii=False)
     await set_setting(db, key, encoded, description=description)
+
+
+async def get_maintenance_mode(db: aiosqlite.Connection) -> bool:
+    """Check if maintenance mode is enabled."""
+    val = await get_setting(db, "maintenance_mode", default="false")
+    return (val or "").strip().lower() == "true"
+
+
+async def set_maintenance_mode(db: aiosqlite.Connection, enabled: bool) -> None:
+    """Set maintenance mode state."""
+    await set_setting(
+        db,
+        "maintenance_mode",
+        "true" if enabled else "false",
+        description="Bot maintenance mode toggle (pauses chat for non-super-admins)",
+    )
+

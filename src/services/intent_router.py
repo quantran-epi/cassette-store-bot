@@ -1,5 +1,6 @@
 import logging
 import re
+
 from openai import AsyncOpenAI
 
 from src.models.mutation import IntentType

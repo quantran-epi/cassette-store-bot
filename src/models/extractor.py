@@ -1,4 +1,5 @@
 import re
+
 from pydantic import BaseModel, Field, field_validator
 
 # Vietnamese mobile numbers: 10 digits starting with 03, 05, 07, 08, 09
@@ -17,6 +18,14 @@ class ExtractedOrder(BaseModel):
     deposit_amount: int = Field(default=0, ge=0, description="Số tiền khách đã chuyển khoản đặt cọc trước")
     payment_method: str = Field(default="COD", description="Hình thức thanh toán: COD hoặc CHUYEN_KHOAN")
     notes: str = Field(default="", description="Ghi chú thêm về đơn hàng hoặc yêu cầu của khách")
+    reminder_at: str | None = Field(
+        default=None,
+        description="Thời gian nhắc việc dạng ISO 'YYYY-MM-DD HH:MM' nếu khách yêu cầu ngày giờ cụ thể (VD: thứ 2 tuần sau, mai giao...)",
+    )
+    reminder_note: str | None = Field(
+        default=None,
+        description="Nội dung cụ thể cần nhắc lịch (VD: 'Gửi hàng cho khách', 'Giao sau 17h')",
+    )
 
     @field_validator("customer_phone", mode="before")
     @classmethod

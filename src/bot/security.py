@@ -24,6 +24,10 @@ ROLE_HIERARCHY: dict[UserRole, int] = {
 
 def get_user_role(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> UserRole:
     """Resolve user role from bot_data cache with fallback to STAFF."""
+    settings = context.bot_data.get("settings")
+    super_admin_id = getattr(settings, "telegram_super_admin_id", None)
+    if super_admin_id is not None and user_id == super_admin_id:
+        return UserRole.SUPER_ADMIN
     admin_roles: dict[int, UserRole] = context.bot_data.get("admin_roles", {})
     return admin_roles.get(user_id, UserRole.STAFF)
 
@@ -99,3 +103,45 @@ async def whitelist_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
 
         raise ApplicationHandlerStop()
+
+    # Enforce maintenance mode right after whitelist check
+    await maintenance_gate(update, context)
+
+
+async def maintenance_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Maintenance mode gate running at group -1 right after whitelist_gate.
+
+    When maintenance mode is active:
+    - SUPER_ADMIN users bypass and can use the bot normally.
+    - Other users (ADMIN, STAFF, etc.) are notified that bot is in maintenance mode,
+      and ApplicationHandlerStop is raised to halt execution.
+    """
+    is_maintenance: bool = context.bot_data.get("maintenance_mode", False)
+    if not is_maintenance:
+        return
+
+    user = update.effective_user
+    if user is None:
+        raise ApplicationHandlerStop()
+
+    user_role = get_user_role(context, user.id)
+    if user_role == UserRole.SUPER_ADMIN:
+        return
+
+    # Non-super-admin blocked during maintenance
+    maint_text = (
+        "🚧 <b>Hệ thống đang bảo trì</b>\n"
+        "Hiện tại bot đang tạm dừng để bảo trì hệ thống. Vui lòng quay lại sau!"
+    )
+    if update.callback_query:
+        await update.callback_query.answer(
+            "🚧 Bot đang tạm dừng để bảo trì. Vui lòng quay lại sau!",
+            show_alert=True,
+        )
+    elif update.effective_message:
+        await update.effective_message.reply_text(
+            maint_text,
+            parse_mode="HTML",
+        )
+
+    raise ApplicationHandlerStop()

@@ -6,6 +6,7 @@
 *.db
 *.db-wal
 *.db-shm
+backups/
 
 # Python bytecode & caches
 __pycache__/

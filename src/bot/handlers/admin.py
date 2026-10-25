@@ -97,6 +97,8 @@ async def render_dashboard_card(
         today_order_count = await count_orders_by_date(active_db, today_vn) if active_db else 0
 
     role_badge = "👑" if user_role == UserRole.SUPER_ADMIN else ("🛡️" if user_role == UserRole.ADMIN else "👤")
+    is_maint = context.bot_data.get("maintenance_mode", False)
+    maint_badge = "🚧 <b>BẢO TRÌ (Tạm dừng chat)</b>" if is_maint else "🟢 <b>Bình thường</b>"
 
     return (
         f"🛠️ <b>BẢNG ĐIỀU KHIỂN QUẢN TRỊ</b>\n"
@@ -105,6 +107,7 @@ async def render_dashboard_card(
         f"💾 <b>Database:</b> SQLite WAL (DB: {db_size_mb:.2f} MB | WAL: {wal_size_mb:.2f} MB)\n"
         f"🤖 <b>Model LLM:</b> <code>{html.escape(active_model_id)}</code> (Trạng thái: ✅ Hoạt động)\n"
         f"📦 <b>Đơn hôm nay:</b> {today_order_count} đơn hàng\n"
+        f"⚙️ <b>Chế độ bảo trì:</b> {maint_badge}\n"
         f"────────────────────\n"
         f"Vai trò của bạn: {role_badge} <b>{user_role.value}</b>"
     )
@@ -118,8 +121,9 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     user_role = get_user_role(context, user.id)
+    is_maint = context.bot_data.get("maintenance_mode", False)
     card_text = await render_dashboard_card(context, user_role)
-    keyboard = build_admin_main_keyboard(user_role)
+    keyboard = build_admin_main_keyboard(user_role, maintenance_mode=is_maint)
 
     await update.effective_message.reply_text(
         card_text,
@@ -154,8 +158,49 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         if data == "adm:dash:refresh":
             await query.answer("Đã làm mới dữ liệu")
+            is_maint = context.bot_data.get("maintenance_mode", False)
             card_text = await render_dashboard_card(context, user_role)
-            keyboard = build_admin_main_keyboard(user_role)
+            keyboard = build_admin_main_keyboard(user_role, maintenance_mode=is_maint)
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
+
+        if data == "adm:maint:toggle":
+            if user_role != UserRole.SUPER_ADMIN:
+                await query.answer("⛔ Chỉ Super Admin mới có quyền bật/tắt bảo trì!", show_alert=True)
+                return
+
+            current_mode = context.bot_data.get("maintenance_mode", False)
+            new_mode = not current_mode
+            context.bot_data["maintenance_mode"] = new_mode
+
+            if db:
+                from src.db.settings import set_maintenance_mode
+                await set_maintenance_mode(db, new_mode)
+
+            from src.services.notifications import (
+                broadcast_to_whitelist,
+                format_maintenance_broadcast,
+            )
+
+            whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+            b_text = format_maintenance_broadcast(new_mode)
+            await broadcast_to_whitelist(
+                context.bot, whitelist_ids, b_text, exclude_user_id=user.id
+            )
+
+            toast = (
+                "Đã BẬT bảo trì và thông báo tới toàn bộ người dùng!"
+                if new_mode
+                else "Đã TẮT bảo trì và thông báo tới toàn bộ người dùng!"
+            )
+            await query.answer(toast, show_alert=True)
+
+            card_text = await render_dashboard_card(context, user_role, db=db)
+            keyboard = build_admin_main_keyboard(user_role, maintenance_mode=new_mode)
             try:
                 await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
             except BadRequest as e:

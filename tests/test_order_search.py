@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -111,6 +112,7 @@ def test_is_search_intent_conversational_questions():
 def test_generate_sql_from_query_prompt():
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     from src.services.order_search import build_text_to_sql_prompt
 
     fixed_time = datetime(2026, 10, 25, 9, 30, 0, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
@@ -126,6 +128,7 @@ def test_generate_sql_from_query_prompt():
 @pytest.mark.asyncio
 async def test_execute_search_query_success(test_db):
     from unittest.mock import AsyncMock, MagicMock
+
     from src.services.order_search import execute_natural_language_search
 
     # Seed an order in test_db
@@ -159,7 +162,7 @@ async def test_execute_search_query_success(test_db):
 @pytest.mark.asyncio
 async def test_execute_search_query_retry_1shot(test_db):
     from unittest.mock import AsyncMock, MagicMock
-    import sqlite3
+
     from src.services.order_search import execute_natural_language_search
 
     # Seed an order in test_db
@@ -253,6 +256,7 @@ def test_classify_search_result_aggregate_scalar():
 @pytest.mark.asyncio
 async def test_summarize_aggregate_result():
     from unittest.mock import AsyncMock, MagicMock
+
     from src.services.order_search import summarize_aggregate_result
 
     mock_client = AsyncMock()
@@ -284,6 +288,7 @@ async def test_summarize_aggregate_result():
 @pytest.mark.asyncio
 async def test_run_order_search_end_to_end(test_db):
     from unittest.mock import AsyncMock, MagicMock
+
     from src.services.order_search import SearchResultType, run_order_search
 
     # Seed an order
@@ -335,6 +340,7 @@ def test_render_search_single_order_card():
     assert "Đơn #77" in card
     assert "Bác Tuấn" in card
     assert "<code>0903123456</code>" in card
+    assert "123 Lê Duẩn, Hà Nội" in card
     assert "2 cuốn Tuấn Vũ" in card
     assert "200.000 đ" in card
     assert "⏳ Chờ làm" in card
@@ -408,8 +414,15 @@ def test_render_search_multi_card():
     assert "Trang 1/2" in card
     assert "Đơn #1" in card
     assert "Khách A" in card
+    assert "0901" in card
+    assert "HN" in card
+    assert "150.000 đ" in card
     assert "Đơn #2" in card
     assert "Khách B" in card
+    assert "0902" in card
+    assert "HCM" in card
+    assert "250.000 đ" in card
+    assert "\n\n📦 <b>Đơn #2</b>" in card
 
     kb = build_search_multi_keyboard(orders=orders, search_id="s123", page=1, total_pages=2)
     flat_btns = [btn for row in kb.inline_keyboard for btn in row]
@@ -424,8 +437,10 @@ def test_render_search_multi_card():
 async def test_handle_search_menu_click():
     import time
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import Message, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.search import handle_search_menu_reply
 
     message = MagicMock(spec=Message)
@@ -450,8 +465,10 @@ async def test_handle_search_menu_click():
 @pytest.mark.asyncio
 async def test_handle_search_cancel():
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import CallbackQuery, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.search import handle_search_cancel_callback
 
     query = MagicMock(spec=CallbackQuery)
@@ -475,8 +492,10 @@ async def test_handle_search_cancel():
 async def test_search_routing_in_ingest(test_db):
     import time
     from unittest.mock import AsyncMock, MagicMock, patch
+
     from telegram import Message, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.ingest import handle_text_order
 
     message = MagicMock(spec=Message)
@@ -504,8 +523,10 @@ async def test_search_routing_in_ingest(test_db):
 @pytest.mark.asyncio
 async def test_help_command_registration():
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import Message, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.base import help_command
 
     message = MagicMock(spec=Message)
@@ -525,10 +546,12 @@ async def test_help_command_registration():
 @pytest.mark.asyncio
 async def test_search_callback_pagination():
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import CallbackQuery, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.search import handle_search_callback
-    from src.models.order import Order, OrderStatus
+    from src.models.order import Order
     from src.services.order_search import SearchResult, SearchResultType
 
     orders = [
@@ -598,8 +621,10 @@ def test_order_detail_keyboard_custom_back():
 @pytest.mark.asyncio
 async def test_search_view_order_detail_and_back_to_results(test_db):
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import CallbackQuery, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.search import handle_search_callback
     from src.db.orders import create_order
     from src.models.order import Order, OrderStatus
@@ -688,8 +713,10 @@ async def test_search_view_order_detail_and_back_to_results(test_db):
 async def test_process_search_query_without_bot_data_db(tmp_path):
     """Verify process_search_query acquires connection via _get_active_db_context when bot_data['db'] is None per G-04-3."""
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import Message, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.search import process_search_query
     from src.db.connection import get_db_connection
     from src.db.orders import create_order
@@ -780,8 +807,10 @@ async def test_process_search_query_uses_active_model_id():
 async def test_handle_search_callback_detail_without_bot_data_db(tmp_path):
     """Verify handle_search_callback sch_v acquires connection dynamically when bot_data['db'] is None per G-04-3."""
     from unittest.mock import AsyncMock, MagicMock
+
     from telegram import CallbackQuery, Update
     from telegram.ext import ContextTypes
+
     from src.bot.handlers.search import handle_search_callback
     from src.db.connection import get_db_connection
     from src.db.orders import create_order

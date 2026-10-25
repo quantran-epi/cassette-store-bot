@@ -164,9 +164,10 @@ def test_build_application_registers_gate_at_group_minus_one():
 async def test_build_application_startup_db_sync(tmp_path):
     """Startup sync must load admin roles and settings from SQLite."""
     import aiosqlite
+
+    from src.bot.app import startup_sync
     from src.db.schema import init_db
     from src.db.settings import set_setting
-    from src.bot.app import startup_sync
 
     db_path = str(tmp_path / "app_test.db")
     async with aiosqlite.connect(db_path) as db:
@@ -196,6 +197,7 @@ async def test_startup_sync_fallback_logs_exception_on_failure(caplog):
     """Startup sync fallback must log an exception if DB connection fails."""
     import logging
     from unittest.mock import MagicMock, patch
+
     from src.bot.app import startup_sync
 
     app = MagicMock()

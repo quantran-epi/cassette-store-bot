@@ -28,15 +28,25 @@ from src.models.order import OrderStatus
 logger = logging.getLogger(__name__)
 
 STATUS_CALLBACK_PATTERN = re.compile(r"^ord_st(_menu|_cf)?:(\d+)(?::([A-Z_]+))?$")
-ACTION_CALLBACK_PATTERN = re.compile(r"^ord_act:(track|add_photo|view_photo|cancel)(?::(\d+))?$")
+ACTION_CALLBACK_PATTERN = re.compile(
+    r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel)(?::(\d+))?$"
+)
 SENSITIVE_STATUSES = {OrderStatus.BOM_HANG, OrderStatus.HUY_DON}
 
 
 def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
     """Resolve active database connection or create context connection."""
-    app_context = context.application.bot_data.get("app_context")
-    db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
-    settings = context.application.bot_data.get("settings")
+    bot_data = getattr(context, "bot_data", None)
+    if not isinstance(bot_data, dict) and hasattr(context, "application"):
+        app_bot_data = getattr(context.application, "bot_data", None)
+        if isinstance(app_bot_data, dict):
+            bot_data = app_bot_data
+    if not isinstance(bot_data, dict):
+        bot_data = {}
+
+    app_context = bot_data.get("app_context")
+    db = getattr(app_context, "db", None) if app_context else bot_data.get("db")
+    settings = bot_data.get("settings")
     db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
     return nullcontext(db) if db else get_db_connection(db_path)
 
@@ -65,11 +75,16 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
             if not order:
                 await query.edit_message_text("⚠️ Đơn hàng không tồn tại.")
                 return
-            card_text = render_order_detail_card(order)
+            from src.db.reminders import get_reminders_by_order_id
+
+            reminders = await get_reminders_by_order_id(active_db, order_id)
+            card_text = render_order_detail_card(order, reminders=reminders)
             # Default to today's list back navigation in Vietnam local time
             vn_dt = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
             today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
-            keyboard = build_order_detail_keyboard(order, date_str=today_str, page=1)
+            keyboard = build_order_detail_keyboard(
+                order, date_str=today_str, page=1, has_reminder=bool(reminders)
+            )
             try:
                 await query.edit_message_text(
                     text=card_text,
@@ -185,10 +200,41 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
 
         updated_order = await get_order_by_id(active_db, order_id)
         if updated_order:
-            card_text = render_order_detail_card(updated_order)
+            if target_status in (OrderStatus.DA_DONG_GOI, OrderStatus.DA_TAO_DON):
+                from src.services.notifications import (
+                    broadcast_to_whitelist,
+                    build_order_view_button,
+                    format_order_packed_broadcast,
+                    format_order_shipping_label_broadcast,
+                )
+
+                whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+                op_name = user.full_name if user else None
+                if target_status == OrderStatus.DA_DONG_GOI:
+                    b_msg = format_order_packed_broadcast(updated_order, operator_name=op_name)
+                else:
+                    b_msg = format_order_shipping_label_broadcast(updated_order, operator_name=op_name)
+                op_uid = user.id if user else None
+                order_view_btn = (
+                    build_order_view_button(updated_order.id) if updated_order.id else None
+                )
+                await broadcast_to_whitelist(
+                    context.bot,
+                    whitelist_ids,
+                    b_msg,
+                    reply_markup=order_view_btn,
+                    exclude_user_id=op_uid,
+                )
+
+            from src.db.reminders import get_reminders_by_order_id
+
+            reminders = await get_reminders_by_order_id(active_db, order_id)
+            card_text = render_order_detail_card(updated_order, reminders=reminders)
             vn_dt = to_vn_datetime(updated_order.created_at) if isinstance(updated_order.created_at, datetime) else None
             today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
-            keyboard = build_order_detail_keyboard(updated_order, date_str=today_str, page=1)
+            keyboard = build_order_detail_keyboard(
+                updated_order, date_str=today_str, page=1, has_reminder=bool(reminders)
+            )
             try:
                 await query.edit_message_text(
                     text=card_text,
@@ -324,6 +370,102 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                         await context.bot.send_media_group(chat_id=chat_id, media=media)
         return
 
+    # 4. Reminder input prompt
+    if action_type == "remind":
+        await query.answer()
+        context.user_data["action_state"] = {
+            "action": "await_reminder",
+            "order_id": order_id,
+            "expires_at": time.time() + 180,
+        }
+
+        db_ctx = _get_active_db_context(context)
+        existing_rems = []
+        async with db_ctx as active_db:
+            if active_db:
+                from src.db.reminders import get_reminders_by_order_id
+
+                existing_rems = await get_reminders_by_order_id(active_db, order_id)
+
+        chat_id = (
+            update.effective_chat.id
+            if update.effective_chat
+            else (query.message.chat_id if query.message else None)
+        )
+
+        buttons = []
+        if existing_rems:
+            r = existing_rems[0]
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        "🗑️ Huỷ lịch nhắc này",
+                        callback_data=f"ord_act:remind_del:{order_id}",
+                    )
+                ]
+            )
+            prompt_text = (
+                f"⏰ <b>LỊCH NHẮC ĐƠN HÀNG #{order_id}</b>\n"
+                f"────────────────────\n"
+                f"🕒 <b>ĐANG HẸN:</b> <code>{r.remind_at}</code>\n"
+                f"📝 <b>NỘI DUNG:</b> {html.escape(r.reminder_text)}\n"
+                f"────────────────────\n"
+                f"Bác gửi tin nhắn thời gian mới nếu muốn đổi lịch hẹn, hoặc bấm nút dưới:"
+            )
+        else:
+            prompt_text = (
+                f"⏰ <b>ĐẶT LỊCH NHẮC VIỆC - ĐƠN #{order_id}</b>\n"
+                f"────────────────────\n"
+                f"Đơn này hiện chưa có lịch nhắc nào.\n"
+                f"Bác hãy nhập thời gian và yêu cầu bằng tiếng Việt tự nhiên nhé.\n"
+                f"Ví dụ:\n"
+                f"• <i>\"Thứ 2 tuần sau 9h gửi hàng\"</i>\n"
+                f"• <i>\"Chiều mai 15h gọi lại khách\"</i>\n"
+                f"• <i>\"Ngày 28/10 đóng gói giao đi\"</i>\n\n"
+                f"<i>(Bác gửi tin nhắn trực tiếp hoặc bấm Huỷ bên dưới)</i>"
+            )
+
+        buttons.append(
+            [InlineKeyboardButton("❌ Huỷ bỏ", callback_data="ord_act:cancel")]
+        )
+        remind_kb = InlineKeyboardMarkup(buttons)
+
+        if chat_id:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=prompt_text,
+                reply_markup=remind_kb,
+                parse_mode="HTML",
+            )
+        return
+
+    if action_type == "remind_del":
+        await query.answer("Đã huỷ lịch nhắc!")
+        context.user_data.pop("action_state", None)
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if active_db:
+                from src.db.reminders import cancel_reminders_by_order_id
+
+                await cancel_reminders_by_order_id(active_db, order_id)
+
+        back_kb = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
+        )
+        chat_id = (
+            update.effective_chat.id
+            if update.effective_chat
+            else (query.message.chat_id if query.message else None)
+        )
+        if chat_id:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🗑️ <b>ĐÃ HUỶ LỊCH NHẮC ĐƠN #{order_id}!</b>",
+                reply_markup=back_kb,
+                parse_mode="HTML",
+            )
+        return
+
 
 async def handle_action_state_text(
     update: Update, context: ContextTypes.DEFAULT_TYPE, state: dict
@@ -368,8 +510,6 @@ async def handle_action_state_text(
                 )
                 back_kb = None
                 if order:
-                    vn_dt = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
-                    today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
                     back_kb = InlineKeyboardMarkup(
                         [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
                     )
@@ -380,6 +520,66 @@ async def handle_action_state_text(
                 )
             else:
                 await update.message.reply_text("⚠️ Không tìm thấy đơn hàng để cập nhật mã vận đơn.")
+            return True
+
+    if action == "await_reminder" and order_id and update.message and update.message.text:
+        text = update.message.text.strip()
+        if not text:
+            await update.message.reply_text("Nội dung nhắc việc không được để trống. Bác gửi lại nhé!")
+            return True
+
+        from src.db.reminders import create_reminder
+        from src.models.reminder import Reminder, ReminderStatus
+        from src.services.extractor import extract_reminder_from_text
+
+        bot_data = getattr(context, "bot_data", None)
+        if not isinstance(bot_data, dict) and hasattr(context, "application"):
+            bot_data = getattr(context.application, "bot_data", {})
+        if not isinstance(bot_data, dict):
+            bot_data = {}
+
+        client = bot_data.get("openai_client")
+        model_id = bot_data.get("active_model_id") or "gpt-4o-mini"
+
+        remind_at, reminder_note = await extract_reminder_from_text(client, model_id, text)
+        if not remind_at:
+            await update.message.reply_text(
+                "Chưa nhận diện được ngày giờ cụ thể. Bác vui lòng nhập rõ hơn (Ví dụ: 'Thứ 2 tuần sau 9h gửi hàng') nhé!"
+            )
+            return True
+
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await update.message.reply_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return True
+
+            user = update.effective_user
+            rem = Reminder(
+                id=None,
+                order_id=order_id,
+                remind_at=remind_at,
+                reminder_text=reminder_note,
+                status=ReminderStatus.PENDING,
+                created_by_user_id=user.id if user else None,
+            )
+            await create_reminder(active_db, rem)
+            context.user_data.pop("action_state", None)
+
+            back_kb = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
+            )
+            await update.message.reply_text(
+                f"✅ <b>ĐÃ ĐẶT LỊCH NHẮC THÀNH CÔNG!</b>\n"
+                f"────────────────────\n"
+                f"📦 <b>MÃ ĐƠN:</b> <code>#{order_id}</code>\n"
+                f"⏰ <b>THỜI GIAN NHẮC:</b> <code>{remind_at}</code>\n"
+                f"📝 <b>NỘI DUNG:</b> {html.escape(reminder_note)}\n"
+                f"────────────────────\n"
+                f"<i>Đến hạn hệ thống sẽ tự động phát thông báo tới tất cả người dùng!</i>",
+                reply_markup=back_kb,
+                parse_mode="HTML",
+            )
             return True
 
     return False

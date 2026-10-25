@@ -122,4 +122,29 @@ async def init_db(db: aiosqlite.Connection) -> None:
         );
         """
     )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            remind_at TIMESTAMP NOT NULL,
+            reminder_text TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT', 'CANCELLED')),
+            created_by_user_id INTEGER,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            sent_at TIMESTAMP,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        );
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_reminders_status_remind_at ON reminders(status, remind_at);
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_reminders_order_id ON reminders(order_id);
+        """
+    )
     await db.commit()

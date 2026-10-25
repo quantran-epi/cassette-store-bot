@@ -2,15 +2,12 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from telegram import CallbackQuery, Chat, Message, Update, User
-from telegram.ext import ContextTypes
+from telegram import CallbackQuery, Message, Update
 
 from src.bot.handlers.callbacks import handle_mutation_callback
 from src.bot.handlers.ingest import handle_text_order
 from src.bot.handlers.mutation import (
     handle_mutation_flow,
-    handle_mutation_selection,
-    handle_status_suggestion_selection,
 )
 from src.db.connection import get_db_connection
 from src.db.orders import create_order, get_order_by_id
@@ -61,7 +58,7 @@ async def test_mutation_flow_fast_path_status(mock_context):
         call_args = update.message.reply_text.call_args[0]
         card_text = call_args[0]
         assert f"XÁC NHẬN SỬA ĐƠN HÀNG #{oid}" in card_text
-        assert "Trạng thái:" in card_text
+        assert "TRẠNG THÁI:" in card_text or "Trạng thái:" in card_text
         assert "Đã huỷ đơn" in card_text
 
         # Check pending mutation draft stored with 120s TTL
@@ -116,7 +113,7 @@ async def test_mutation_flow_disambiguation_multi_orders(mock_context):
     """Test disambiguation keyboard when multiple active orders match (D-08)."""
     async with get_db_connection(":memory:") as db:
         await init_db(db)
-        oid1 = await create_order(
+        await create_order(
             db,
             Order(
                 customer_name="Nguyễn Văn A",
@@ -126,7 +123,7 @@ async def test_mutation_flow_disambiguation_multi_orders(mock_context):
                 status=OrderStatus.CHO_LAM,
             ),
         )
-        oid2 = await create_order(
+        await create_order(
             db,
             Order(
                 customer_name="Nguyễn Văn A",
@@ -251,7 +248,7 @@ async def test_mutation_callback_conflict_handling(mock_context):
             status=OrderStatus.CHO_LAM,
         )
         oid = await create_order(db, order)
-        original = await get_order_by_id(db, oid)
+        await get_order_by_id(db, oid)
         mock_context.application.bot_data["db"] = db
 
         # Stale draft with non-matching updated_at

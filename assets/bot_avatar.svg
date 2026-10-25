@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2c1a0e"/>
+      <stop offset="70%" stop-color="#190e06"/>
+      <stop offset="100%" stop-color="#0a0502"/>
+    </radialGradient>
+
+    <!-- Cassette Shell Gradient -->
+    <linearGradient id="shellGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#364045"/>
+      <stop offset="100%" stop-color="#20272a"/>
+    </linearGradient>
+
+    <!-- Sticker Label Gradient -->
+    <linearGradient id="labelGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fdf6e7"/>
+      <stop offset="100%" stop-color="#ede0c4"/>
+    </linearGradient>
+
+    <!-- Metallic Gold Accent -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8b86d"/>
+      <stop offset="50%" stop-color="#cf943c"/>
+      <stop offset="100%" stop-color="#996515"/>
+    </linearGradient>
+
+    <!-- Spool Wheel Shadow -->
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Circular Avatar Background -->
+  <circle cx="256" cy="256" r="240" fill="url(#bgGrad)"/>
+  <circle cx="256" cy="256" r="236" fill="none" stroke="url(#goldGrad)" stroke-width="4" opacity="0.85"/>
+  <circle cx="256" cy="256" r="226" fill="none" stroke="#cf943c" stroke-width="1" stroke-dasharray="4,6" opacity="0.4"/>
+
+  <!-- Cassette Tape Group with Shadow -->
+  <g filter="url(#dropShadow)">
+    <!-- Main Shell -->
+    <rect x="86" y="151" width="340" height="210" rx="18" fill="url(#shellGrad)" stroke="#4a555b" stroke-width="2.5"/>
+    <rect x="92" y="157" width="328" height="198" rx="14" fill="none" stroke="#161c1e" stroke-width="1.5" opacity="0.7"/>
+
+    <!-- Bottom Trapezoid Region -->
+    <path d="M 146 361 L 166 313 L 346 313 L 366 361 Z" fill="#1b2124" stroke="#2d3539" stroke-width="1.5"/>
+    <circle cx="176" cy="337" r="7" fill="#0d1012"/>
+    <circle cx="336" cy="337" r="7" fill="#0d1012"/>
+    <circle cx="256" cy="337" r="5" fill="#0d1012"/>
+
+    <!-- Screw Accents on 4 Corners -->
+    <circle cx="104" cy="169" r="3.5" fill="#5c6970"/>
+    <circle cx="408" cy="169" r="3.5" fill="#5c6970"/>
+    <circle cx="104" cy="343" r="3.5" fill="#5c6970"/>
+    <circle cx="408" cy="343" r="3.5" fill="#5c6970"/>
+
+    <!-- Label Sticker -->
+    <rect x="106" y="167" width="300" height="126" rx="10" fill="url(#labelGrad)" stroke="#d3c5a3" stroke-width="1"/>
+
+    <!-- Vintage Retro Sport Stripes on Label -->
+    <rect x="116" y="179" width="280" height="10" rx="2" fill="#d64529"/>
+    <rect x="116" y="191" width="280" height="6" rx="2" fill="#ee962d"/>
+    <rect x="116" y="199" width="280" height="3" rx="1" fill="#4a7c59"/>
+
+    <!-- Cassette Brand / Text -->
+    <text x="126" y="217" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="12" fill="#202528" letter-spacing="1.5">CASSETTE STORE</text>
+    <text x="360" y="217" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="11" fill="#d64529">C-90</text>
+    <text x="126" y="228" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="500" font-size="8" fill="#7a6e5d">PREMIUM HIGH FIDELITY</text>
+
+    <!-- Center Tape Window Cutout -->
+    <rect x="168" y="225" width="176" height="60" rx="8" fill="#181513" stroke="#9e8f73" stroke-width="1.5"/>
+    <rect x="172" y="229" width="168" height="52" rx="6" fill="#0d0b0a"/>
+
+    <!-- Center Tape Bridge / Gauge lines -->
+    <line x1="244" y1="245" x2="244" y2="265" stroke="#4a4239" stroke-width="1.5"/>
+    <line x1="250" y1="248" x2="250" y2="262" stroke="#4a4239" stroke-width="1"/>
+    <line x1="256" y1="243" x2="256" y2="267" stroke="#8c7d6b" stroke-width="1.5"/>
+    <line x1="262" y1="248" x2="262" y2="262" stroke="#4a4239" stroke-width="1"/>
+    <line x1="268" y1="245" x2="268" y2="265" stroke="#4a4239" stroke-width="1.5"/>
+
+    <!-- Left Tape Reel / Spool -->
+    <g transform="translate(210, 255)">
+      <circle cx="0" cy="0" r="22" fill="#faf8f5" stroke="#d5d0c6" stroke-width="1"/>
+      <circle cx="0" cy="0" r="14" fill="#1a1816"/>
+      <!-- 6 Cog Teeth -->
+      <circle cx="0" cy="-10.5" r="3.2" fill="#faf8f5"/>
+      <circle cx="9.1" cy="-5.2" r="3.2" fill="#faf8f5"/>
+      <circle cx="9.1" cy="5.2" r="3.2" fill="#faf8f5"/>
+      <circle cx="0" cy="10.5" r="3.2" fill="#faf8f5"/>
+      <circle cx="-9.1" cy="5.2" r="3.2" fill="#faf8f5"/>
+      <circle cx="-9.1" cy="-5.2" r="3.2" fill="#faf8f5"/>
+      <!-- Inner hole -->
+      <circle cx="0" cy="0" r="5.5" fill="#0d0b0a"/>
+    </g>
+
+    <!-- Right Tape Reel / Spool -->
+    <g transform="translate(302, 255)">
+      <circle cx="0" cy="0" r="22" fill="#faf8f5" stroke="#d5d0c6" stroke-width="1"/>
+      <circle cx="0" cy="0" r="14" fill="#1a1816"/>
+      <!-- 6 Cog Teeth -->
+      <circle cx="0" cy="-10.5" r="3.2" fill="#faf8f5"/>
+      <circle cx="9.1" cy="-5.2" r="3.2" fill="#faf8f5"/>
+      <circle cx="9.1" cy="5.2" r="3.2" fill="#faf8f5"/>
+      <circle cx="0" cy="10.5" r="3.2" fill="#faf8f5"/>
+      <circle cx="-9.1" cy="5.2" r="3.2" fill="#faf8f5"/>
+      <circle cx="-9.1" cy="-5.2" r="3.2" fill="#faf8f5"/>
+      <!-- Inner hole -->
+      <circle cx="0" cy="0" r="5.5" fill="#0d0b0a"/>
+    </g>
+  </g>
+</svg>

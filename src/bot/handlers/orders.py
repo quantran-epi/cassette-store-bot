@@ -1,7 +1,7 @@
 import logging
 import re
 from contextlib import nullcontext
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from math import ceil
 
 from telegram import Update
@@ -18,6 +18,7 @@ from src.bot.keyboards import (
 )
 from src.db.connection import get_db_connection
 from src.db.orders import count_orders_by_date, get_order_by_id, list_orders_by_date
+from src.db.reminders import get_reminders_by_order_id
 
 logger = logging.getLogger(__name__)
 
@@ -232,8 +233,11 @@ async def handle_order_nav_callback(update: Update, context: ContextTypes.DEFAUL
                         raise
                 return
 
-            card_text = render_order_detail_card(order)
-            keyboard = build_order_detail_keyboard(order, date_str=date_str, page=page)
+            reminders = await get_reminders_by_order_id(active_db, order_id)
+            card_text = render_order_detail_card(order, reminders=reminders)
+            keyboard = build_order_detail_keyboard(
+                order, date_str=date_str, page=page, has_reminder=bool(reminders)
+            )
 
             try:
                 await query.edit_message_text(

@@ -15,10 +15,10 @@ from src.bot.keyboards import (
     build_mutation_disambiguation_keyboard,
     build_mutation_status_keyboard,
     render_mutation_diff_card,
+    render_mutation_disambiguation_card,
 )
 from src.db.connection import get_db_connection
 from src.db.orders import ACTIVE_MUTATION_STATUSES, find_orders_for_mutation, get_order_by_id
-from src.models.mutation import OrderMutationDelta
 from src.models.order import Order, OrderStatus
 from src.services.intent_router import extract_order_id_from_reply, parse_fast_path_status
 from src.services.mutation_extractor import extract_mutation_delta
@@ -195,13 +195,7 @@ async def handle_mutation_flow(
             "expires_at": time.time() + 120,
             "matched_order_ids": [o.id for o in matches],
         }
-        kw_display = html.escape(delta.target_customer_keyword or "khách")
-        dis_text = (
-            f"🔍 <b>CHỌN ĐƠN HÀNG CẦN SỬA</b>\n"
-            f"<i>(Tìm thấy {len(matches)} đơn hàng của '{kw_display}')</i>\n"
-            f"{DIVIDER}\n"
-            f"Bác bấm chọn đúng đơn cần sửa bên dưới nhé:"
-        )
+        dis_text = render_mutation_disambiguation_card(matches, delta.target_customer_keyword)
         kb = build_mutation_disambiguation_keyboard(matches, draft_id)
         await update.message.reply_text(dis_text, reply_markup=kb, parse_mode="HTML")
         return

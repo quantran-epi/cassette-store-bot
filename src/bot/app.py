@@ -35,10 +35,11 @@ from src.bot.logging_handler import RingBufferLogHandler
 from src.bot.security import UserRole, whitelist_gate
 from src.config import Settings
 from src.db.admin import list_admin_users, sync_root_super_admin
-from src.db.settings import get_setting
+from src.db.settings import get_maintenance_mode, get_setting
 
 VN_TZ = zoneinfo.ZoneInfo("Asia/Ho_Chi_Minh")
 JOB_BACKUP_NAME = "daily_database_backup"
+JOB_REMINDER_NAME = "check_due_reminders"
 
 
 async def daily_backup_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,6 +126,64 @@ def schedule_daily_backup(app: Application, time_str: str = "02:00") -> None:
     )
 
 
+async def reminder_checker_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Scan and broadcast due reminders periodically."""
+    db = context.bot_data.get("db")
+    settings = context.bot_data.get("settings")
+    whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+    if not db and not settings:
+        return
+
+    from src.db.reminders import get_due_reminders, mark_reminder_sent
+    from src.services.notifications import (
+        broadcast_to_whitelist,
+        build_order_view_button,
+        format_reminder_broadcast,
+    )
+
+    async def _process(conn: aiosqlite.Connection) -> None:
+        due = await get_due_reminders(conn)
+        for r in due:
+            rid = r["reminder_id"]
+            oid = r.get("order_id")
+            msg = format_reminder_broadcast(r)
+            view_btn = build_order_view_button(oid) if oid else None
+            await broadcast_to_whitelist(
+                context.bot, whitelist_ids, msg, reply_markup=view_btn
+            )
+            await mark_reminder_sent(conn, rid)
+
+    if db is not None:
+        try:
+            await _process(db)
+        except Exception:
+            logging.getLogger(__name__).exception("Error in reminder checker job")
+    else:
+        from src.db.connection import get_db_connection
+
+        try:
+            async with get_db_connection(settings.sqlite_db_path) as conn:
+                await _process(conn)
+        except Exception:
+            logging.getLogger(__name__).exception("Error in reminder checker job")
+
+
+def schedule_reminder_checker(app: Application) -> None:
+    """Schedule repeating reminder checker in JobQueue every 30 seconds."""
+    jq = getattr(app, "job_queue", None)
+    if not jq:
+        return
+    for job in jq.get_jobs_by_name(JOB_REMINDER_NAME):
+        job.schedule_removal()
+    jq.run_repeating(
+        reminder_checker_job_callback,
+        interval=30,
+        first=5,
+        name=JOB_REMINDER_NAME,
+    )
+
+
+
 
 @dataclass
 class AppContext:
@@ -151,8 +210,12 @@ async def _do_sync(app: Application, db: aiosqlite.Connection, settings: Setting
     if active_model:
         app.bot_data["active_model_id"] = active_model
 
+    maint_mode = await get_maintenance_mode(db)
+    app.bot_data["maintenance_mode"] = maint_mode
+
     backup_time = await get_setting(db, "backup_schedule_time", default="02:00")
     schedule_daily_backup(app, backup_time or "02:00")
+    schedule_reminder_checker(app)
 
 
 async def startup_sync(app: Application) -> None:
@@ -202,6 +265,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.bot_data["settings"] = settings
     app.bot_data["whitelist_user_ids"] = set(settings.telegram_whitelist_user_ids)
     app.bot_data["admin_roles"] = {}
+    app.bot_data["maintenance_mode"] = False
     app.bot_data["active_model_id"] = settings.nine_router_model_id
     app.bot_data["start_time"] = time.time()
     app.bot_data["log_handler"] = log_handler
@@ -274,7 +338,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         CallbackQueryHandler(
             handle_order_action_callback,
-            pattern=r"^ord_act:(track|add_photo|view_photo|cancel)(:\d+)?$",
+            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel)(:\d+)?$",
         ),
         group=0,
     )
@@ -297,7 +361,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
         group=0,
     )
     app.add_handler(
-        CallbackQueryHandler(handle_order_callback, pattern=r"^ord:(cf|ca|ad):"),
+        CallbackQueryHandler(handle_order_callback, pattern=r"^ord:(cf|ca|ad|cs|bk|noop):"),
         group=0,
     )
     app.add_handler(
