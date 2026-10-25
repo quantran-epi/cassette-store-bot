@@ -262,6 +262,28 @@ async def test_admin_callback_model_switch_failure():
 
 
 @pytest.mark.asyncio
+async def test_admin_handlers_resolve_db_when_bot_data_db_is_none():
+    update = make_mock_update(user_id=123456, text="/admin")
+    context = make_mock_context(user_role=UserRole.ADMIN)
+    context.bot_data["db"] = None
+
+    mock_db = MagicMock()
+    with patch("src.bot.handlers.admin.get_db_connection") as mock_get_conn:
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__.return_value = mock_db
+        mock_ctx.__aexit__.return_value = None
+        mock_get_conn.return_value = mock_ctx
+
+        with patch("src.bot.handlers.admin.count_orders_by_date", new=AsyncMock(return_value=12)):
+            with patch("os.path.exists", return_value=True), patch("os.path.getsize", return_value=1024 * 1024):
+                await admin_command(update, context)
+
+        mock_get_conn.assert_called_once_with("test.db")
+        rendered_text = update.effective_message.reply_text.call_args[0][0]
+        assert "12 đơn hàng" in rendered_text
+
+
+@pytest.mark.asyncio
 async def test_logs_command_and_callback():
     update = make_mock_update(user_id=999999, text="/logs")
     context = make_mock_context(user_role=UserRole.SUPER_ADMIN)
