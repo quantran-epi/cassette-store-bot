@@ -1,8 +1,11 @@
 import html
+import logging
 import os
+import re
 import time
 from contextlib import nullcontext
 from datetime import datetime
+
 import aiosqlite
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
@@ -11,6 +14,7 @@ from telegram.ext import ContextTypes
 from src.bot.keyboards import (
     TZ_VN,
     build_admin_main_keyboard,
+    build_backup_schedule_keyboard,
     build_model_switcher_keyboard,
     build_whitelist_confirm_delete_keyboard,
     build_whitelist_keyboard,
@@ -25,8 +29,10 @@ from src.db.admin import (
 )
 from src.db.connection import get_db_connection
 from src.db.orders import count_orders_by_date
-from src.db.settings import get_json_setting, set_json_setting, set_setting
+from src.db.settings import get_json_setting, get_setting, set_json_setting, set_setting
 from src.services.llm_probe import probe_model_reachability
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODELS = ["gpt-4o-mini", "gpt-4o", "claude-3-5-haiku", "gemini-1.5-flash"]
 
@@ -156,7 +162,130 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         if data == "adm:bkp:trigger":
-            await query.answer("💾 Chức năng sao lưu DB sẽ khả dụng trong Phase 6.", show_alert=True)
+            if user_role != UserRole.SUPER_ADMIN:
+                await query.answer("⚠️ Chỉ Super Admin mới có quyền sao lưu DB!", show_alert=True)
+                return
+
+            await query.answer()
+            try:
+                await query.edit_message_text(
+                    "⏳ <b>Đang tạo snapshot và nén dữ liệu cơ sở dữ liệu...</b>",
+                    parse_mode="HTML",
+                )
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+
+            from src.services.backup import execute_backup, send_backup_document
+
+            try:
+                stats = await execute_backup(db)
+                if stats["is_oversized"]:
+                    await query.edit_message_text(
+                        f"⚠️ <b>CẢNH BÁO DUNG LƯỢNG VƯỢT QUÁ 48MB</b>\n"
+                        f"File nén: <code>{stats['gz_size'] / (1024*1024):.2f} MB</code> (Giới hạn Telegram: 50MB)\n"
+                        f"Đường dẫn file trên server: <code>{stats['gz_path']}</code>",
+                        parse_mode="HTML",
+                    )
+                    return
+
+                reduction = (1 - (stats["gz_size"] / max(stats["raw_size"], 1))) * 100
+                caption = (
+                    f"💾 <b>BẢN SAO LƯU HỆ THỐNG</b>\n"
+                    f"────────────────────\n"
+                    f"⏱️ <b>Thời gian:</b> {stats['timestamp_str']} (UTC+7)\n"
+                    f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024*1024):.2f} MB ➔ {stats['gz_size'] / (1024*1024):.2f} MB (Giảm {reduction:.1f}%)\n"
+                    f"📊 <b>Dữ liệu:</b> {stats['order_count']} đơn hàng | {stats['customer_count']} khách hàng\n"
+                    f"────────────────────"
+                )
+
+                sent = await send_backup_document(
+                    bot=context.bot,
+                    chat_id=user.id,
+                    file_path=stats["gz_path"],
+                    caption=caption,
+                )
+
+                if sent:
+                    await query.edit_message_text("✅ Đã tạo và gửi bản sao lưu thành công!")
+                else:
+                    await query.edit_message_text(
+                        f"❌ Lỗi gửi file qua Telegram sau 3 lần thử.\n"
+                        f"Bản sao lưu đã được giữ lại trên máy chủ: <code>{stats['gz_path']}</code>",
+                        parse_mode="HTML",
+                    )
+            except Exception as e:
+                logger.exception("Manual backup failed: %s", e)
+                await query.edit_message_text(f"❌ Quá trình sao lưu thất bại: {html.escape(str(e))}")
+            return
+
+        if data == "adm:bkp:menu":
+            await query.answer()
+            current_time = await get_setting(db, "backup_schedule_time", default="02:00") or "02:00"
+            card_text = (
+                f"⏰ <b>ĐẶT GIỜ SAO LƯU TỰ ĐỘNG</b>\n"
+                f"────────────────────\n"
+                f"Giờ sao lưu hiện tại: <code>{current_time}</code> (UTC+7)\n\n"
+                f"<i>Chọn một trong các mốc giờ bên dưới hoặc nhập giờ tuỳ ý:</i>"
+            )
+            keyboard = build_backup_schedule_keyboard(current_time)
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
+
+        if data.startswith("adm:bkp:set:"):
+            if user_role != UserRole.SUPER_ADMIN:
+                await query.answer("⚠️ Chỉ Super Admin mới có quyền đổi giờ sao lưu!", show_alert=True)
+                return
+
+            new_time = data.split("adm:bkp:set:")[1]
+            await set_setting(db, "backup_schedule_time", new_time, description="Daily backup schedule time")
+            from src.bot.app import schedule_daily_backup
+
+            schedule_daily_backup(context.application, new_time)
+            await query.answer(f"✅ Đã đặt lịch sao lưu vào lúc {new_time} hàng ngày", show_alert=True)
+
+            card_text = (
+                f"⏰ <b>ĐẶT GIỜ SAO LƯU TỰ ĐỘNG</b>\n"
+                f"────────────────────\n"
+                f"Giờ sao lưu hiện tại: <code>{new_time}</code> (UTC+7)\n\n"
+                f"<i>Chọn một trong các mốc giờ bên dưới hoặc nhập giờ tuỳ ý:</i>"
+            )
+            keyboard = build_backup_schedule_keyboard(new_time)
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
+
+        if data == "adm:bkp:custom_prompt":
+            if user_role != UserRole.SUPER_ADMIN:
+                await query.answer("⚠️ Chỉ Super Admin mới có quyền đổi giờ sao lưu!", show_alert=True)
+                return
+
+            await query.answer()
+            context.user_data["action_state"] = {
+                "action": "await_backup_time",
+                "expires_at": time.time() + 60,
+            }
+            card_text = (
+                "✏️ <b>NHẬP GIỜ SAO LƯU MỚI</b>\n"
+                "────────────────────\n"
+                "Vui lòng gửi tin nhắn chứa giờ sao lưu định dạng <code>HH:MM</code> (VD: <code>03:30</code>).\n\n"
+                "⏳ <i>Hết hạn sau 60 giây.</i>"
+            )
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("❌ Huỷ", callback_data="adm:bkp:menu")]]
+            )
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
             return
 
         if data == "adm:noop":
@@ -331,10 +460,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "expires_at": time.time() + 60,
             }
             card_text = (
-                f"➕ <b>THÊM TÀI KHOẢN VÀO WHITELIST</b>\n"
-                f"────────────────────\n"
-                f"Vui lòng gửi tin nhắn chứa <b>Telegram User ID</b> của người dùng (và tuỳ chọn Tên, ví dụ: <code>123456789 Nguyen Van A</code>).\n\n"
-                f"⏳ <i>Hết hạn sau 60 giây.</i>"
+                "➕ <b>THÊM TÀI KHOẢN VÀO WHITELIST</b>\n"
+                "────────────────────\n"
+                "Vui lòng gửi tin nhắn chứa <b>Telegram User ID</b> của người dùng (và tuỳ chọn Tên, ví dụ: <code>123456789 Nguyen Van A</code>).\n\n"
+                "⏳ <i>Hết hạn sau 60 giây.</i>"
             )
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("❌ Huỷ", callback_data="adm:wl:add_cancel")]]
@@ -491,10 +620,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "expires_at": time.time() + 60,
             }
             card_text = (
-                f"✏️ <b>NHẬP TÊN MODEL LLM MỚI</b>\n"
-                f"────────────────────\n"
-                f"Vui lòng gửi tin nhắn chứa tên model (Model ID) từ 9router (VD: <code>meta-llama/llama-3.3-70b-instruct</code>).\n\n"
-                f"⏳ <i>Hết hạn sau 60 giây.</i>"
+                "✏️ <b>NHẬP TÊN MODEL LLM MỚI</b>\n"
+                "────────────────────\n"
+                "Vui lòng gửi tin nhắn chứa tên model (Model ID) từ 9router (VD: <code>meta-llama/llama-3.3-70b-instruct</code>).\n\n"
+                "⏳ <i>Hết hạn sau 60 giây.</i>"
             )
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("❌ Huỷ", callback_data="adm:mdl:input_cancel")]]
@@ -650,6 +779,31 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
             await update.effective_message.reply_text(
                 card_text, reply_markup=keyboard, parse_mode="HTML"
             )
+        return True
+
+    if action == "await_backup_time":
+        if not re.match(r"^([01]\d|2[0-3]):([0-5]\d)$", raw_text):
+            await update.effective_message.reply_text(
+                "⚠️ <b>Định dạng giờ không hợp lệ</b>\n"
+                "Vui lòng nhập giờ định dạng <code>HH:MM</code> từ <code>00:00</code> đến <code>23:59</code> (VD: <code>03:30</code>).\n"
+                "Vui lòng thử lại hoặc bấm [❌ Huỷ].",
+                parse_mode="HTML",
+            )
+            return True
+
+        context.user_data.pop("action_state", None)
+        async with _get_active_db_context(context) as db:
+            if db:
+                await set_setting(db, "backup_schedule_time", raw_text, description="Daily backup schedule time")
+
+        from src.bot.app import schedule_daily_backup
+
+        schedule_daily_backup(context.application, raw_text)
+        await update.effective_message.reply_text(
+            f"✅ <b>Đã cập nhật giờ sao lưu tự động thành công!</b>\n"
+            f"Hệ thống sẽ thực hiện sao lưu vào lúc <code>{raw_text}</code> (UTC+7) hàng ngày.",
+            parse_mode="HTML",
+        )
         return True
 
     return False

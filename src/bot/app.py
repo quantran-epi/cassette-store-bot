@@ -20,6 +20,7 @@ from telegram.ext import (
 )
 
 from src.bot.handlers.admin import admin_command, handle_admin_callback
+from src.bot.handlers.backup import backup_command
 from src.bot.handlers.base import help_command, ping_command, start_command
 from src.bot.handlers.callbacks import handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
@@ -233,6 +234,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     # Register admin commands at group 0
     app.add_handler(CommandHandler("admin", admin_command), group=0)
     app.add_handler(CommandHandler("logs", logs_command), group=0)
+    app.add_handler(CommandHandler("backup", backup_command), group=0)
 
     # Register main menu Reply Keyboard handler (MUST be registered before LLM text ingestion)
     app.add_handler(

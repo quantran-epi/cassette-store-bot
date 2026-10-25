@@ -1,5 +1,6 @@
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from telegram import InlineKeyboardMarkup
 
@@ -58,7 +59,7 @@ async def test_probe_model_reachability_failure():
 def test_build_admin_main_keyboard_layout():
     kb = build_admin_main_keyboard(user_role=UserRole.ADMIN)
     assert isinstance(kb, InlineKeyboardMarkup)
-    assert len(kb.inline_keyboard) == 3
+    assert len(kb.inline_keyboard) == 4
     # Row 1: Whitelist, Model Switcher
     assert len(kb.inline_keyboard[0]) == 2
     assert "Whitelist" in kb.inline_keyboard[0][0].text
@@ -73,12 +74,17 @@ def test_build_admin_main_keyboard_layout():
     assert "Sao lưu" in kb.inline_keyboard[1][1].text
     assert kb.inline_keyboard[1][1].callback_data == "adm:bkp:trigger"
 
-    # Row 3: Refresh, Close
+    # Row 3: Schedule, Refresh
     assert len(kb.inline_keyboard[2]) == 2
-    assert "Làm mới" in kb.inline_keyboard[2][0].text
-    assert kb.inline_keyboard[2][0].callback_data == "adm:dash:refresh"
-    assert "Đóng" in kb.inline_keyboard[2][1].text
-    assert kb.inline_keyboard[2][1].callback_data == "adm:dash:close"
+    assert "Đặt giờ sao lưu" in kb.inline_keyboard[2][0].text
+    assert kb.inline_keyboard[2][0].callback_data == "adm:bkp:menu"
+    assert "Làm mới" in kb.inline_keyboard[2][1].text
+    assert kb.inline_keyboard[2][1].callback_data == "adm:dash:refresh"
+
+    # Row 4: Close
+    assert len(kb.inline_keyboard[3]) == 1
+    assert "Đóng" in kb.inline_keyboard[3][0].text
+    assert kb.inline_keyboard[3][0].callback_data == "adm:dash:close"
 
 
 def test_build_whitelist_keyboard():

@@ -11,8 +11,8 @@ from telegram import (
     ReplyKeyboardMarkup,
 )
 
-from src.models.order import Order, OrderStatus
 from src.bot.security import UserRole
+from src.models.order import Order, OrderStatus
 
 # Timezone Vietnam UTC+7
 TZ_VN = timezone(timedelta(hours=7))
@@ -476,7 +476,7 @@ def render_search_multi_card(
     """Render paginated multi-order search result preview card per D-09."""
     esc_query = html.escape(query.strip())
     lines = [
-        f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
+        "🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
         f"<i>(Tìm theo: '{esc_query}')</i>",
         f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
         "────────────────────",
@@ -582,7 +582,10 @@ def build_admin_main_keyboard(
                 InlineKeyboardButton("💾 Sao lưu DB", callback_data="adm:bkp:trigger"),
             ],
             [
+                InlineKeyboardButton("⏰ Đặt giờ sao lưu", callback_data="adm:bkp:menu"),
                 InlineKeyboardButton("🔄 Làm mới", callback_data="adm:dash:refresh"),
+            ],
+            [
                 InlineKeyboardButton("❌ Đóng menu", callback_data="adm:dash:close"),
             ],
         ]
@@ -802,6 +805,27 @@ def build_logs_keyboard(
             ],
         ]
     )
+
+
+def build_backup_schedule_keyboard(current_time: str) -> InlineKeyboardMarkup:
+    """Build backup schedule time picker with presets and custom input per D-15."""
+    presets = ["01:00", "02:00", "03:00", "04:00"]
+    preset_buttons = [
+        InlineKeyboardButton(
+            f"[✓] {p}" if p == current_time else p,
+            callback_data=f"adm:bkp:set:{p}",
+        )
+        for p in presets
+    ]
+    return InlineKeyboardMarkup(
+        [
+            preset_buttons[:2],
+            preset_buttons[2:],
+            [InlineKeyboardButton("✏️ Nhập giờ khác", callback_data="adm:bkp:custom_prompt")],
+            [InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:dash:refresh")],
+        ]
+    )
+
 
 
 

@@ -172,7 +172,7 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     action_state = context.user_data.get("action_state")
     if action_state:
         action_name = action_state.get("action", "")
-        if action_name in ("await_whitelist_id", "await_model_name"):
+        if action_name in ("await_whitelist_id", "await_model_name", "await_backup_time", "await_user_rename"):
             from src.bot.handlers.admin import handle_admin_text_input
 
             handled = await handle_admin_text_input(update, context)
