@@ -17,11 +17,12 @@ from src.bot.keyboards import (
     render_mutation_diff_card,
 )
 from src.db.connection import get_db_connection
-from src.db.orders import find_orders_for_mutation, get_order_by_id
+from src.db.orders import ACTIVE_MUTATION_STATUSES, find_orders_for_mutation, get_order_by_id
 from src.models.mutation import OrderMutationDelta
 from src.models.order import Order, OrderStatus
 from src.services.intent_router import extract_order_id_from_reply, parse_fast_path_status
 from src.services.mutation_extractor import extract_mutation_delta
+from src.services.order_search import execute_natural_language_search
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,41 @@ async def handle_mutation_flow(
             keyword=delta.target_customer_keyword,
             limit=5,
         )
+
+        # Fallback to Text-to-SQL search engine if fast-path found nothing
+        if (
+            not matches
+            and delta.target_customer_keyword
+            and openai_client
+            and not effective_order_id
+        ):
+            try:
+                scoped_query = f"{delta.target_customer_keyword} đang xử lý hoặc chưa giao"
+                _, raw_rows = await execute_natural_language_search(
+                    client=openai_client,
+                    model_id=active_model,
+                    db=db,
+                    query=scoped_query,
+                )
+                if raw_rows:
+                    active_matches: list[Order] = []
+                    terminal_matches: list[Order] = []
+                    for row in raw_rows:
+                        oid = row.get("id") or row.get("order_id")
+                        if oid is not None:
+                            try:
+                                oid_int = int(oid)
+                            except (ValueError, TypeError):
+                                continue
+                            ord_obj = await get_order_by_id(db, oid_int)
+                            if ord_obj:
+                                if ord_obj.status.value in ACTIVE_MUTATION_STATUSES:
+                                    active_matches.append(ord_obj)
+                                else:
+                                    terminal_matches.append(ord_obj)
+                    matches = (active_matches + terminal_matches)[:5]
+            except Exception:
+                logger.exception("Text-to-SQL fallback failed during mutation lookup")
 
     # 5. Handle matching counts
     # 5a. 0 found: friendly empty guidance per Screen 1 / D-09

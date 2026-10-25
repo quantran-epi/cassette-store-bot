@@ -163,3 +163,76 @@ async def test_find_orders_for_mutation_active_priority():
         assert len(results) == 1
         assert results[0].id == oid_active
         assert results[0].status == OrderStatus.CHO_LAM
+
+
+def test_mutation_system_prompt_captures_composite_keywords():
+    """Verify prompt instructs LLM to capture composite identifiers without losing place names."""
+    from src.services.mutation_extractor import MUTATION_SYSTEM_PROMPT
+
+    assert "target_customer_keyword" in MUTATION_SYSTEM_PROMPT
+    assert "Tuấn Gia Lâm" in MUTATION_SYSTEM_PROMPT
+    assert "Linh Đà Nẵng" in MUTATION_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_mutation_handler_text_to_sql_fallback():
+    """Verify handle_mutation_flow invokes Text-to-SQL fallback when token match returns empty."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from telegram import Message, Update
+    from src.bot.handlers.mutation import handle_mutation_flow
+    from src.models.mutation import OrderMutationDelta
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        oid = await create_order(
+            db,
+            Order(
+                customer_name="Trần Văn Nam",
+                customer_phone="0912345678",
+                shipping_address="Hải Phòng",
+                items_text="1 cuốn",
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+
+        mock_context = MagicMock()
+        mock_context.user_data = {}
+        mock_context.application = MagicMock()
+        mock_context.application.bot_data = {
+            "active_model_id": "test-model",
+            "settings": MagicMock(nine_router_model_id="test-model"),
+            "openai_client": MagicMock(),
+            "db": db,
+        }
+
+        update = MagicMock(spec=Update)
+        update.message = MagicMock(spec=Message)
+        update.message.reply_to_message = None
+        update.message.reply_text = AsyncMock()
+        update.message.chat = MagicMock()
+        update.message.chat.send_action = AsyncMock()
+
+        # Mock extract_mutation_delta to return complex query that fast path fails on
+        mock_delta = OrderMutationDelta(
+            target_customer_keyword="khách mua đĩa hôm qua gửi về quê",
+            new_notes="gọi trước khi giao",
+        )
+
+        # Mock execute_natural_language_search to return the order id
+        with (
+            patch("src.bot.handlers.mutation.extract_mutation_delta", AsyncMock(return_value=mock_delta)),
+            patch("src.bot.handlers.mutation.find_orders_for_mutation", AsyncMock(return_value=[])),
+            patch(
+                "src.bot.handlers.mutation.execute_natural_language_search",
+                AsyncMock(return_value=("SELECT * FROM orders WHERE id = 1", [{"id": oid}])),
+            ),
+        ):
+            await handle_mutation_flow(update, mock_context, "sửa ghi chú đơn khách mua đĩa hôm qua gửi về quê")
+
+        # Must display diff card for order oid
+        assert update.message.reply_text.called
+        call_text = update.message.reply_text.call_args[0][0]
+        assert f"#{oid}" in call_text
+        assert "gọi trước khi giao" in call_text
+
