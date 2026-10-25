@@ -17,6 +17,8 @@ from src.models.order import Order, OrderStatus
 # Timezone Vietnam UTC+7
 TZ_VN = timezone(timedelta(hours=7))
 
+DIVIDER = "──────────────"  # 14 chars per D-19 (chống vỡ màn hình nhỏ)
+
 STATUS_NAMES: dict[OrderStatus, str] = {
     OrderStatus.CHO_LAM: "⏳ Chờ làm",
     OrderStatus.DANG_LAM: "🛠️ Đang làm",
@@ -97,12 +99,17 @@ def render_order_detail_card(order: Order) -> str:
         if vn_created_at
         else str(order.created_at or "")
     )
-    created_line = f"🕒 <b>Thời gian:</b> {created_str}\n" if created_str else ""
+    created_line = ""
+    if created_str:
+        creator_tag = f" (bởi {html.escape(order.created_by_name)})" if order.created_by_name else ""
+        created_line = f"🕒 <b>Thời gian:</b> {created_str}{creator_tag}\n"
+    elif order.created_by_name:
+        created_line = f"🕒 <b>Người tạo:</b> {html.escape(order.created_by_name)}\n"
 
     return (
         f"📦 <b>CHI TIẾT ĐƠN HÀNG #{order.id}</b>\n"
         f"Trạng thái: <b>{status_label}</b>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"👤 <b>Khách:</b> {html.escape(order.customer_name)}\n"
         f"📞 <b>SĐT:</b> <code>{html.escape(order.customer_phone)}</code> <i>(chạm để copy)</i>\n"
         f"📍 <b>Địa chỉ:</b> <code>{html.escape(order.shipping_address)}</code>\n"
@@ -112,7 +119,7 @@ def render_order_detail_card(order: Order) -> str:
         f"🚚 <b>Mã vận đơn:</b> {tracking_str}\n"
         f"📷 <b>Ảnh đính kèm:</b> {photo_str}\n"
         f"{created_line}"
-        f"────────────────────"
+        f"{DIVIDER}"
     )
 
 
@@ -277,19 +284,26 @@ def render_order_list_card(
     lines = [
         f"📅 <b>ĐƠN HÀNG NGÀY {display_date}</b>",
         f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})",
-        "────────────────────",
+        DIVIDER,
     ]
 
+    order_blocks = []
     for order in orders:
         status_label = STATUS_NAMES.get(order.status, order.status.value)
         total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
         cust_name = html.escape(order.customer_name)
         addr = html.escape(order.shipping_address) if order.shipping_address else "<i>Chưa có Đ/C</i>"
-        lines.append(f"📦 <b>Đơn #{order.id}</b> - {cust_name}")
-        lines.append(f"   📍 {addr}")
-        lines.append(f"   💰 {total_fmt} | {status_label}")
+        block = (
+            f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+            f"   📍 {addr}\n"
+            f"   💰 {total_fmt} | {status_label}"
+        )
+        order_blocks.append(block)
 
-    lines.append("────────────────────")
+    if order_blocks:
+        lines.append("\n\n".join(order_blocks))
+
+    lines.append(DIVIDER)
     lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
     return "\n".join(lines)
 
@@ -856,6 +870,199 @@ def build_backup_schedule_keyboard(current_time: str) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:dash:refresh")],
         ]
     )
+
+
+def get_suggested_next_statuses(
+    current_status: OrderStatus,
+) -> list[tuple[OrderStatus, str]]:
+    """Return contextually sensible forward transitions and cancellation based on lifecycle per MUT-05 and D-13."""
+    suggestions: dict[OrderStatus, list[tuple[OrderStatus, str]]] = {
+        OrderStatus.CHO_LAM: [
+            (OrderStatus.DANG_LAM, "▶️ Bắt đầu làm"),
+            (OrderStatus.HUY_DON, "❌ Huỷ đơn này"),
+        ],
+        OrderStatus.DANG_LAM: [
+            (OrderStatus.DA_DONG_GOI, "📦 Đã đóng gói xong"),
+            (OrderStatus.DA_TAO_DON, "📑 Đã tạo đơn ship"),
+            (OrderStatus.HUY_DON, "❌ Huỷ đơn này"),
+        ],
+        OrderStatus.DA_DONG_GOI: [
+            (OrderStatus.DA_TAO_DON, "📑 Đã tạo đơn ship"),
+            (OrderStatus.SHIPPER_DA_LAY, "🚚 Shipper đã lấy"),
+            (OrderStatus.HUY_DON, "❌ Huỷ đơn này"),
+        ],
+        OrderStatus.DA_TAO_DON: [
+            (OrderStatus.SHIPPER_DA_LAY, "🚚 Shipper đã lấy"),
+            (OrderStatus.DA_GIAO, "✅ Đã giao thành công"),
+            (OrderStatus.HUY_DON, "❌ Huỷ đơn này"),
+        ],
+        OrderStatus.SHIPPER_DA_LAY: [
+            (OrderStatus.DA_GIAO, "✅ Đã giao thành công"),
+            (OrderStatus.BOM_HANG, "🚫 Đánh dấu bom hàng"),
+            (OrderStatus.HUY_DON, "❌ Huỷ đơn này"),
+        ],
+        OrderStatus.DA_GIAO: [
+            (OrderStatus.CHO_LAM, "⏳ Mở lại đơn (Chờ làm)"),
+        ],
+        OrderStatus.BOM_HANG: [
+            (OrderStatus.CHO_LAM, "⏳ Mở lại đơn (Chờ làm)"),
+        ],
+        OrderStatus.HUY_DON: [
+            (OrderStatus.CHO_LAM, "⏳ Mở lại đơn (Chờ làm)"),
+        ],
+    }
+    return suggestions.get(
+        current_status,
+        [
+            (OrderStatus.DANG_LAM, "▶️ Bắt đầu làm"),
+            (OrderStatus.HUY_DON, "❌ Huỷ đơn"),
+        ],
+    )
+
+
+def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
+    """Format elderly-friendly Visual Diff card showing ONLY changed fields Before ➡️ After per D-11, D-19."""
+    diff_lines: list[str] = []
+
+    # 1. Status
+    new_status = delta_dict.get("status") or delta_dict.get("new_status")
+    if new_status and new_status != order.status:
+        if isinstance(new_status, str):
+            try:
+                new_status = OrderStatus(new_status)
+            except ValueError:
+                pass
+        old_lbl = STATUS_NAMES.get(order.status, str(order.status.value if hasattr(order.status, "value") else order.status))
+        new_lbl = STATUS_NAMES.get(new_status, str(new_status.value if hasattr(new_status, "value") else new_status))
+        diff_lines.append(f"🔄 <b>Trạng thái:</b> {old_lbl} ➡️ <b>{new_lbl}</b>")
+
+    # 2. Phone
+    new_phone = delta_dict.get("customer_phone") or delta_dict.get("new_customer_phone")
+    if new_phone and new_phone != order.customer_phone:
+        old_p = html.escape(order.customer_phone or "[Chưa có]")
+        new_p = html.escape(str(new_phone))
+        diff_lines.append(f"📞 <b>SĐT:</b> <code>{old_p}</code> ➡️ <code>{new_p}</code>")
+
+    # 3. Address
+    new_addr = delta_dict.get("shipping_address") or delta_dict.get("new_shipping_address")
+    if new_addr and new_addr != order.shipping_address:
+        old_a = html.escape(order.shipping_address or "[Chưa có]")
+        new_a = html.escape(str(new_addr))
+        diff_lines.append(f"📍 <b>Địa chỉ:</b>\n   [Cũ]: {old_a}\n   ➡️ [Mới]: <b>{new_a}</b>")
+
+    # 4. Total Amount
+    new_total = delta_dict.get("total_amount")
+    if new_total is None:
+        new_total = delta_dict.get("new_total_amount")
+    if new_total is not None and new_total != order.total_amount:
+        old_t = f"{order.total_amount:,} đ".replace(",", ".")
+        new_t = f"{int(new_total):,} đ".replace(",", ".")
+        diff_lines.append(f"💰 <b>Tổng tiền:</b> {old_t} ➡️ <b>{new_t}</b>")
+
+    # 5. COD Amount
+    new_cod = delta_dict.get("cod_amount")
+    if new_cod is None:
+        new_cod = delta_dict.get("new_cod_amount")
+    if new_cod is not None and new_cod != order.cod_amount:
+        old_c = f"{order.cod_amount:,} đ".replace(",", ".")
+        new_c = f"{int(new_cod):,} đ".replace(",", ".")
+        diff_lines.append(f"💵 <b>Tiền COD:</b> {old_c} ➡️ <b>{new_c}</b>")
+
+    # 6. Tracking Code
+    new_track = delta_dict.get("tracking_code") or delta_dict.get("new_tracking_code")
+    if new_track and new_track != order.tracking_code:
+        old_tr = html.escape(order.tracking_code or "(Chưa có)")
+        new_tr = html.escape(str(new_track))
+        diff_lines.append(f"🚚 <b>Mã vận đơn:</b> <code>{old_tr}</code> ➡️ <code>{new_tr}</code>")
+
+    # 7. Items Text
+    new_items = delta_dict.get("items_text") or delta_dict.get("new_items_text")
+    if new_items and new_items != order.items_text:
+        old_it = html.escape(order.items_text or "(Chưa có)")
+        new_it = html.escape(str(new_items))
+        diff_lines.append(f"📼 <b>Băng:</b> {old_it} ➡️ <b>{new_it}</b>")
+
+    # 8. Notes
+    new_notes = delta_dict.get("notes") or delta_dict.get("new_notes")
+    if new_notes:
+        diff_lines.append(f"📝 <b>Ghi chú mới:</b> {html.escape(str(new_notes))}")
+
+    # Fallback if no specific diff lines
+    diff_text = "\n\n".join(diff_lines) if diff_lines else "<i>Không phát hiện thay đổi cụ thể.</i>"
+
+    cust_name = html.escape(order.customer_name or "[Khách]")
+    return (
+        f"📝 <b>XÁC NHẬN SỬA ĐƠN HÀNG #{order.id}</b>\n"
+        f"👤 <b>Khách:</b> {cust_name}\n"
+        f"{DIVIDER}\n"
+        f"<b>Các nội dung thay đổi:</b>\n\n"
+        f"{diff_text}\n"
+        f"{DIVIDER}\n"
+        f"Bác kiểm tra lại thông tin rồi bấm nút bên dưới nhé (hết hạn sau 120s):"
+    )
+
+
+def build_mutation_confirm_keyboard(draft_id: str) -> InlineKeyboardMarkup:
+    """Build confirmation keyboard with [✅ Xác nhận sửa] and [❌ Huỷ] per D-11."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Xác nhận sửa", callback_data=f"ord_mut_cf:{draft_id}"),
+                InlineKeyboardButton("❌ Huỷ", callback_data=f"ord_mut_ca:{draft_id}"),
+            ]
+        ]
+    )
+
+
+def build_mutation_disambiguation_keyboard(
+    orders: list[Order], draft_id: str
+) -> InlineKeyboardMarkup:
+    """Build 1-button-per-row disambiguation keyboard for 2-5 matching orders per D-08."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    for o in orders[:5]:
+        status_label = STATUS_NAMES.get(o.status, str(o.status.value if hasattr(o.status, "value") else o.status))
+        total_str = f"{o.total_amount:,} đ".replace(",", ".")
+        cust_name = o.customer_name[:12] if len(o.customer_name) > 12 else o.customer_name
+        label = f"📦 Đơn #{o.id} - {cust_name} - {total_str} - {status_label}"
+        if len(label) > 38:
+            label = label[:35] + "..."
+        buttons.append(
+            [InlineKeyboardButton(label, callback_data=f"ord_mut_sel:{draft_id}:{o.id}")]
+        )
+
+    buttons.append(
+        [InlineKeyboardButton("❌ Huỷ", callback_data=f"ord_mut_ca:{draft_id}")]
+    )
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_mutation_status_keyboard(
+    draft_id: str, order_id: int, current_status: OrderStatus
+) -> InlineKeyboardMarkup:
+    """Build status selection suggestions keyboard per MUT-05 and D-13."""
+    suggestions = get_suggested_next_statuses(current_status)
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for status_val, label in suggestions:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    label,
+                    callback_data=f"ord_mut_st:{draft_id}:{order_id}:{status_val.value}",
+                )
+            ]
+        )
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Quay lại thẻ đơn",
+                callback_data=f"ord_mut_ca:{draft_id}",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(buttons)
+
 
 
 
