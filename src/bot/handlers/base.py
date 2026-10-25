@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 
 from telegram import Update
@@ -16,10 +17,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = user.id if user else "Unknown"
     first_name = user.first_name if user else "bác"
 
+    safe_name = html.escape(first_name)
     text = (
-        f"Xin chào {first_name}!\n\n"
+        f"Xin chào {safe_name}!\n\n"
         f"🤖 Bot Quản Lý Đơn Hàng Băng Cassette sẵn sàng phục vụ.\n"
-        f"Telegram User ID nhận diện: `{user_id}`\n\n"
+        f"Telegram User ID nhận diện: <code>{user_id}</code>\n\n"
         f"Bác chỉ cần bấm các nút to bên dưới để xem đơn hoặc gửi tin nhắn đặt hàng bất kỳ lúc nào nhé!"
     )
     keyboard = build_main_menu_reply_keyboard()
@@ -27,7 +29,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.effective_message.reply_text(
             text,
             reply_markup=keyboard,
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
 
