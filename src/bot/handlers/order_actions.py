@@ -271,7 +271,6 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
 
     # 3. View photos album
     if action_type == "view_photo":
-        await query.answer()
         db_ctx = _get_active_db_context(context)
         async with db_ctx as active_db:
             if not active_db:
@@ -282,6 +281,8 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             if not order or not order.photo_file_ids:
                 await query.answer("Đơn này chưa có ảnh nào bác nhé!", show_alert=True)
                 return
+
+            await query.answer()
 
             chat_id = update.effective_chat.id if update.effective_chat else query.message.chat_id
             photo_ids = order.photo_file_ids
@@ -295,14 +296,21 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             else:
                 # Chunk into max 10 photos per media group per Telegram limits (T-03-06, Pitfall 4)
                 for chunk in [photo_ids[i : i + 10] for i in range(0, len(photo_ids), 10)]:
-                    media = [
-                        InputMediaPhoto(
-                            media=fid,
-                            caption=f"📷 Ảnh đính kèm đơn #{order_id}" if fid == chunk[0] else None,
+                    if len(chunk) == 1:
+                        await context.bot.send_photo(
+                            chat_id=chat_id,
+                            photo=chunk[0],
+                            caption=f"📷 Ảnh đính kèm đơn #{order_id}",
                         )
-                        for fid in chunk
-                    ]
-                    await context.bot.send_media_group(chat_id=chat_id, media=media)
+                    else:
+                        media = [
+                            InputMediaPhoto(
+                                media=fid,
+                                caption=f"📷 Ảnh đính kèm đơn #{order_id}" if fid == chunk[0] else None,
+                            )
+                            for fid in chunk
+                        ]
+                        await context.bot.send_media_group(chat_id=chat_id, media=media)
         return
 
 
