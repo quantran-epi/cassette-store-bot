@@ -1,9 +1,12 @@
+import asyncio
 import json
 from collections.abc import Sequence
 
 import aiosqlite
 
 from src.models.order import Order, OrderStatus
+
+_order_photo_locks: dict[int, asyncio.Lock] = {}
 
 
 def _row_to_order(row: aiosqlite.Row) -> Order:
@@ -110,26 +113,28 @@ async def update_order_tracking(
 async def append_order_photos(
     db: aiosqlite.Connection, order_id: int, new_photo_ids: list[str]
 ) -> bool:
-    """Append new photo file_ids to existing JSON array."""
+    """Append new photo file_ids to existing JSON array atomically using per-order lock."""
     if not new_photo_ids:
         return True
 
-    order = await get_order_by_id(db, order_id)
-    if not order:
-        return False
+    lock = _order_photo_locks.setdefault(order_id, asyncio.Lock())
+    async with lock:
+        order = await get_order_by_id(db, order_id)
+        if not order:
+            return False
 
-    combined = list(order.photo_file_ids) + list(new_photo_ids)
-    cursor = await db.execute(
-        """
-        UPDATE orders
-        SET photo_file_ids = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        """,
-        (json.dumps(combined, ensure_ascii=False), order_id),
-    )
-    await db.commit()
-    return cursor.rowcount > 0
+        combined = list(order.photo_file_ids) + list(new_photo_ids)
+        cursor = await db.execute(
+            """
+            UPDATE orders
+            SET photo_file_ids = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (json.dumps(combined, ensure_ascii=False), order_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 async def list_orders_by_date(
