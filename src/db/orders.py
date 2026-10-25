@@ -315,3 +315,92 @@ async def find_orders_for_mutation(
 
     return results
 
+
+async def mutate_order_with_lock(
+    db: aiosqlite.Connection,
+    order_id: int,
+    expected_updated_at: str | None,
+    delta_dict: dict,
+    user_id: int | None = None,
+    user_name: str | None = None,
+) -> tuple[bool, dict | None, Order | None]:
+    """Execute atomic order mutation with optimistic lock WHERE id=? AND updated_at=? (D-15, D-16, D-17)."""
+    # 1. Fetch current order row
+    async with db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            return False, None, None
+
+    # 2. Compare updated_at
+    current_updated_at_str = str(row["updated_at"] or "")
+    expected_updated_at_str = str(expected_updated_at or "")
+
+    if current_updated_at_str != expected_updated_at_str:
+        # Conflict! Read latest history record per D-17
+        async with db.execute(
+            "SELECT * FROM order_history WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+            (order_id,),
+        ) as h_cur:
+            last_change = await h_cur.fetchone()
+            hist_dict = dict(last_change) if last_change else {}
+            if "changes_json" in hist_dict and isinstance(hist_dict["changes_json"], str):
+                try:
+                    hist_dict["changes"] = json.loads(hist_dict["changes_json"])
+                except Exception:
+                    hist_dict["changes"] = {}
+            return False, hist_dict, _row_to_order(row)
+
+    # 3. Dynamic UPDATE building
+    row_keys = set(row.keys())
+    fields: list[str] = []
+    params: list = []
+    changes: dict = {}
+
+    for col, new_val in delta_dict.items():
+        # Handle field renaming or mapping
+        target_col = col
+        if col.startswith("new_"):
+            target_col = col[4:]
+
+        if target_col in row_keys:
+            # Handle enum to string conversion
+            val_to_save = new_val.value if hasattr(new_val, "value") else new_val
+            current_val = row[target_col]
+            if current_val != val_to_save:
+                fields.append(f"{target_col} = ?")
+                params.append(val_to_save)
+                changes[target_col] = {"old": current_val, "new": val_to_save}
+
+    if not fields:
+        # No actual fields changed
+        return True, {}, _row_to_order(row)
+
+    fields.append("updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')")
+    sql = f"UPDATE orders SET {', '.join(fields)} WHERE id = ? AND updated_at = ?"
+    params.extend([order_id, row["updated_at"]])
+
+    cursor = await db.execute(sql, params)
+    if cursor.rowcount == 0:
+        # Concurrency race right between select and update
+        async with db.execute(
+            "SELECT * FROM order_history WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+            (order_id,),
+        ) as h_cur:
+            last_change = await h_cur.fetchone()
+            hist_dict = dict(last_change) if last_change else {}
+        fresh = await get_order_by_id(db, order_id)
+        return False, hist_dict, fresh
+
+    # 4. Insert audit record into order_history
+    await db.execute(
+        """
+        INSERT INTO order_history (order_id, user_id, user_name, action, changes_json)
+        VALUES (?, ?, ?, 'MUTATE', ?)
+        """,
+        (order_id, user_id, user_name, json.dumps(changes, ensure_ascii=False)),
+    )
+    await db.commit()
+
+    fresh_order = await get_order_by_id(db, order_id)
+    return True, changes, fresh_order
+

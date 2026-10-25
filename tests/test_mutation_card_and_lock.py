@@ -138,3 +138,157 @@ def test_render_mutation_diff_card_html_escaping():
     assert "&lt;vào sâu&gt;" in card
     assert "&lt;ra ngoài&gt;" in card
     assert "&lt;urgent&gt;" in card
+
+
+@pytest.mark.asyncio
+async def test_mutate_order_with_lock_success():
+    """Verify mutate_order_with_lock updates fields and records audit history."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Nguyễn Văn A",
+            customer_phone="0912345678",
+            shipping_address="123 Lê Lợi, Q1",
+            items_text="1 cuốn",
+            total_amount=150000,
+            cod_amount=150000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+        original_order = await get_order_by_id(db, order_id)
+        assert original_order is not None
+
+        delta = {
+            "shipping_address": "456 Nguyễn Huệ, Q1",
+            "cod_amount": 200000,
+            "status": OrderStatus.DANG_LAM,
+        }
+
+        success, changes, updated_order = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=original_order.updated_at,
+            delta_dict=delta,
+            user_id=999,
+            user_name="Nhân viên Quân",
+        )
+
+        assert success is True
+        assert changes is not None
+        assert "shipping_address" in changes
+        assert changes["shipping_address"]["old"] == "123 Lê Lợi, Q1"
+        assert changes["shipping_address"]["new"] == "456 Nguyễn Huệ, Q1"
+        assert changes["cod_amount"]["new"] == 200000
+        assert changes["status"]["new"] == "DANG_LAM"
+
+        assert updated_order is not None
+        assert updated_order.shipping_address == "456 Nguyễn Huệ, Q1"
+        assert updated_order.cod_amount == 200000
+        assert updated_order.status == OrderStatus.DANG_LAM
+
+        # Verify audit history row inserted
+        async with db.execute(
+            "SELECT * FROM order_history WHERE order_id = ? AND action = 'MUTATE'",
+            (order_id,),
+        ) as cursor:
+            hist_rows = await cursor.fetchall()
+            assert len(hist_rows) == 1
+            assert hist_rows[0]["user_name"] == "Nhân viên Quân"
+            assert "456 Nguyễn Huệ" in hist_rows[0]["changes_json"]
+
+
+@pytest.mark.asyncio
+async def test_mutate_order_with_lock_conflict():
+    """Verify mutate_order_with_lock detects concurrent conflict and returns last change."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Khách X",
+            customer_phone="0987654321",
+            shipping_address="Hà Nội",
+            items_text="2 cuốn",
+            total_amount=300000,
+            cod_amount=300000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+        original_order = await get_order_by_id(db, order_id)
+        assert original_order is not None
+
+        # Simulate first user mutating order
+        s1, c1, o1 = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=original_order.updated_at,
+            delta_dict={"shipping_address": "Đà Nẵng"},
+            user_id=101,
+            user_name="Admin An",
+        )
+        assert s1 is True
+
+        # Second user tries with stale updated_at
+        s2, last_change, current_ord = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=original_order.updated_at,  # Stale timestamp!
+            delta_dict={"shipping_address": "Cần Thơ"},
+            user_id=102,
+            user_name="Admin Bình",
+        )
+
+        assert s2 is False
+        assert last_change is not None
+        assert last_change.get("user_name") == "Admin An"
+        assert current_ord is not None
+        assert current_ord.shipping_address == "Đà Nẵng"  # Unchanged by second user
+
+
+@pytest.mark.asyncio
+async def test_mutate_order_with_lock_datetime_string_normalization():
+    """Verify mutate_order_with_lock handles datetime object vs string without false conflict."""
+    from datetime import datetime
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Khách Y",
+            customer_phone="0911223344",
+            shipping_address="Hải Phòng",
+            items_text="1 cuốn",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+        fetched = await get_order_by_id(db, order_id)
+        assert fetched is not None
+
+        # fetched.updated_at may be datetime or str
+        # Test passing it as string
+        str_val = str(fetched.updated_at)
+        s, c, updated = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=str_val,
+            delta_dict={"items_text": "2 cuốn"},
+            user_id=1,
+            user_name="Admin",
+        )
+        assert s is True
+        assert updated is not None
+        assert updated.items_text == "2 cuốn"
+
+
