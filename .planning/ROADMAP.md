@@ -19,7 +19,7 @@
 
 ### 🚧 v1.1 NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 
-- [ ] **Phase 5: Role-Based Access Control & Telegram Admin Suite** - Phân quyền 2 cấp độ Super Admin vs Admin, menu /admin Telegram và xem log trực tiếp
+- [x] **Phase 5: Role-Based Access Control & Telegram Admin Suite** - Phân quyền 2 cấp độ Super Admin vs Admin, menu /admin Telegram và xem log trực tiếp (completed 2026-10-25)
 - [ ] **Phase 6: Telegram Database Backup Engine & Scheduled Tasks** - Snapshot SQLite atomic qua VACUUM INTO, nén gzip gửi định kỳ và thủ công vào chat Super Admin
 - [ ] **Phase 7: Natural Language Order Mutation Pipeline** - 3-Way Intent Router, bóc tách delta thay đổi bằng LLM, thẻ so sánh trực quan Trước/Sau và xác nhận 1-chạm
 - [ ] **Phase 8: Containerization & Kubernetes Deployment** - Multi-stage Dockerfile non-root, Docker Compose và Kubernetes manifests RWO Recreate
@@ -45,7 +45,7 @@
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — Telegram Admin Suite UI, LLM model switcher with probe, whitelist CRUD, and /logs viewer (RBAC-03, RBAC-04)
+- [x] 05-02-PLAN.md — Telegram Admin Suite UI, LLM model switcher with probe, whitelist CRUD, and /logs viewer (RBAC-03, RBAC-04)
 
 **UI hint**: yes
 
@@ -102,7 +102,7 @@
 | 2. LLM Ingestion & Interactive Confirmation | v1.0 | 2/2 | Completed | 2026-10-24 |
 | 3. Ergonomic Order Management & Low-Tech Actions | v1.0 | 3/3 | Completed | 2026-10-24 |
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
-| 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 1/2 | In progress | - |
+| 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 0/TBD | Not started | - |
 | 7. Natural Language Order Mutation Pipeline | v1.1 | 0/TBD | Not started | - |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |

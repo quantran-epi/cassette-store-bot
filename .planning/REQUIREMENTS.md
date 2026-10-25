@@ -17,8 +17,8 @@
 
 - [x] **RBAC-01**: Hệ thống lưu trữ danh sách quản trị viên trong bảng `admin_users` với 2 cấp độ: `SUPER_ADMIN` và `ADMIN`, neo cứng `SUPER_ADMIN_ID` gốc trong cấu hình `.env` để chống tự khoá
 - [x] **RBAC-02**: Decorator phân quyền `@require_role` kiểm soát chặt chẽ cả lệnh gõ (`/admin`, `/backup`, `/logs`) lẫn các nút bấm `CallbackQuery` để chống leo thang đặc quyền
-- [ ] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống (bot, DB, LLM) và cấu hình chuyển đổi model LLM 9router trực tiếp
-- [ ] **RBAC-04**: Quản trị viên trên Telegram có thể quản lý whitelist người dùng (xem danh sách, thêm mới, xoá Telegram ID khỏi whitelist) với hiệu lực tức thì
+- [x] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống (bot, DB, LLM) và cấu hình chuyển đổi model LLM 9router trực tiếp
+- [x] **RBAC-04**: Quản trị viên trên Telegram có thể quản lý whitelist người dùng (xem danh sách, thêm mới, xoá Telegram ID khỏi whitelist) với hiệu lực tức thì
 - [x] **RBAC-05**: Super Admin có thể xem log gần nhất qua lệnh `/logs` (ring buffer 25-50 dòng định dạng `<pre>` HTML) trực tiếp trên Telegram mà không cần truy cập terminal
 
 ### Telegram Database Backup Engine (BKP)
@@ -39,10 +39,12 @@
 ## Future Requirements (v2)
 
 ### Voice & Multi-channel
+
 - **VOICE-01**: Bóc tách ghi âm giọng nói (voice message) qua Whisper API để sửa đơn hoặc tạo đơn
 - **VOICE-02**: Trả lời xác nhận bằng giọng nói tổng hợp TTS thân thiện với người khiếm thị
 
 ### Advanced Operations
+
 - **RESTORE-01**: Wizard khôi phục dữ liệu từ file backup gửi ngược lại vào Telegram chat
 - **ANALYTICS-01**: Báo cáo doanh thu biểu đồ nâng cao qua tin nhắn hình ảnh Telegram
 
@@ -62,8 +64,8 @@
 |-------------|-------|--------|
 | RBAC-01 | Phase 5 | Validated |
 | RBAC-02 | Phase 5 | Validated |
-| RBAC-03 | Phase 5 | Pending |
-| RBAC-04 | Phase 5 | Pending |
+| RBAC-03 | Phase 5 | Complete |
+| RBAC-04 | Phase 5 | Complete |
 | RBAC-05 | Phase 5 | Validated |
 | BKP-01 | Phase 6 | Pending |
 | BKP-02 | Phase 6 | Pending |
@@ -81,6 +83,7 @@
 | DEP-05 | Phase 8 | Pending |
 
 **Coverage:**
+
 - Milestone v1.1 requirements: 19 total
 - Mapped to phases: 19
 - Unmapped: 0 ✓
