@@ -10,8 +10,8 @@
 - [x] **MUT-01**: User có thể nhắn tin tự do chứa ý định chỉnh sửa đơn hàng, hệ thống dùng 3-Way Intent Router tách biệt chính xác với Tạo đơn và Tìm kiếm
 - [x] **MUT-02**: Hệ thống tìm đúng đơn hàng cần sửa dựa trên từ khoá (mã đơn, tên khách, số điện thoại, giá tiền), nếu khớp nhiều đơn thì hiển thị danh sách nút bấm để chọn
 - [x] **MUT-03**: Hệ thống dùng LLM trích xuất delta thay đổi cho 5 nhóm trường: Trạng thái đơn (8 trạng thái), Mã vận đơn, Ghi chú, Tiền COD/tổng đơn, SĐT/địa chỉ nhận hàng
-- [ ] **MUT-04**: Hệ thống hiển thị thẻ so sánh Trước ➡️ Sau (Visual Diff) kèm nút bấm Inline `[✅ Xác nhận sửa]` và `[❌ Huỷ]` (hết hạn sau 120s)
-- [ ] **MUT-05**: Khi câu chat chưa chỉ định rõ trạng thái đích, hệ thống hiển thị danh sách nút bấm trạng thái gợi ý để người dùng chọn 1-chạm
+- [x] **MUT-04**: Hệ thống hiển thị thẻ so sánh Trước ➡️ Sau (Visual Diff) kèm nút bấm Inline `[✅ Xác nhận sửa]` và `[❌ Huỷ]` (hết hạn sau 120s)
+- [x] **MUT-05**: Khi câu chat chưa chỉ định rõ trạng thái đích, hệ thống hiển thị danh sách nút bấm trạng thái gợi ý để người dùng chọn 1-chạm
 
 ### Role-Based Access Control & Telegram Admin Suite (RBAC)
 
@@ -74,8 +74,8 @@
 | MUT-01 | Phase 7 | Complete |
 | MUT-02 | Phase 7 | Complete |
 | MUT-03 | Phase 7 | Complete |
-| MUT-04 | Phase 7 | Pending |
-| MUT-05 | Phase 7 | Pending |
+| MUT-04 | Phase 7 | Complete |
+| MUT-05 | Phase 7 | Complete |
 | DEP-01 | Phase 8 | Pending |
 | DEP-02 | Phase 8 | Pending |
 | DEP-03 | Phase 8 | Pending |
