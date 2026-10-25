@@ -10,7 +10,11 @@ Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất
 
 ## Current State
 
-Phase 01 hoàn thành — Walking skeleton chạy được với access control whitelist Telegram (group -1), cấu hình pydantic-settings v2, async SQLite WAL persistence, domain models và repositories cho Customer & Order (hỗ trợ multi-phone, multi-address, 8 trạng thái vòng đời đơn hàng, customer snapshot và photo file_ids JSON).
+Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
+- Phase 01: Nền tảng, SQLite WAL persistence & Bảo mật Whitelist
+- Phase 02: Bóc tách đơn hàng bằng LLM & Xác nhận tương tác
+- Phase 03: Quản trị đơn hàng công thái học, nút sao chép 1-chạm & Cập nhật mã vận đơn
+- Phase 04: Tra cứu và tìm kiếm đơn hàng bằng ngôn ngữ tự nhiên (Natural language order search, thống kê doanh thu, phân trang, unaccent tiếng Việt)
 
 ## Requirements
 
@@ -22,14 +26,15 @@ Phase 01 hoàn thành — Walking skeleton chạy được với access control 
 - [x] Lưu trữ thông tin đơn hàng với customer snapshot (tên, sđt, địa chỉ tại thời điểm đặt hàng) (DATA-02). *Validated in Phase 01: foundation-persistence-security-whitelist*
 - [x] Quản lý trạng thái đơn hàng vòng đời 8 trạng thái (DRAFT -> COMPLETED) qua database CHECK constraints (DATA-03). *Validated in Phase 01: foundation-persistence-security-whitelist*
 - [x] Lưu trữ danh sách Telegram photo file_ids dạng JSON array trong đơn hàng (DATA-04). *Validated in Phase 01: foundation-persistence-security-whitelist*
+- [x] Bóc tách tin nhắn đơn hàng bằng LLM (qua 9router / OpenAI-compatible API): nhận free-text tiếng Việt, extract thông tin có cấu trúc, trả về kèm Inline Keyboard "Xác nhận / Huỷ", lưu DB và thông báo sau xác nhận. *Validated in Phase 02: llm-ingestion-interactive-confirmation*
+- [x] Tập lệnh quản trị nhanh thân thiện với người lớn tuổi: đổi trạng thái đơn, đánh dấu đã giao, xem danh sách đơn theo ngày (hôm nay, hôm qua, ngày cụ thể). *Validated in Phase 03: ergonomic-order-management-low-tech-actions*
+- [x] Cập nhật mã vận đơn cho đơn hàng cụ thể kèm xác nhận. *Validated in Phase 03: ergonomic-order-management-low-tech-actions*
+- [x] Xem chi tiết đơn hàng kèm các inline button sao chép nhanh 1 chạm (sao chép mã vận đơn, số điện thoại, địa chỉ nhận hàng). *Validated in Phase 03: ergonomic-order-management-low-tech-actions*
+- [x] Tra cứu/tìm kiếm đơn hàng bằng ngôn ngữ tự nhiên: người dùng chat free-text mô tả đơn cần xem, bot dùng LLM tìm trong DB, hỏi xác nhận trước khi hiển thị chi tiết hoặc thao tác. *Validated in Phase 04: natural-language-order-search*
 
 ### Active
 
-- [ ] Bóc tách tin nhắn đơn hàng bằng LLM (qua 9router / OpenAI-compatible API): nhận free-text tiếng Việt, extract thông tin có cấu trúc, trả về kèm Inline Keyboard "Xác nhận / Huỷ", lưu DB và thông báo sau xác nhận.
-- [ ] Tập lệnh quản trị nhanh thân thiện với người lớn tuổi: đổi trạng thái đơn, đánh dấu đã giao, xem danh sách đơn theo ngày (hôm nay, hôm qua, ngày cụ thể).
-- [ ] Cập nhật mã vận đơn cho đơn hàng cụ thể kèm xác nhận.
-- [ ] Xem chi tiết đơn hàng kèm các inline button sao chép nhanh 1 chạm (sao chép mã vận đơn, số điện thoại, địa chỉ nhận hàng).
-- [ ] Tra cứu/tìm kiếm đơn hàng bằng ngôn ngữ tự nhiên: người dùng chat free-text mô tả đơn cần xem, bot dùng LLM tìm trong DB, hỏi xác nhận trước khi hiển thị chi tiết hoặc thao tác.
+*(All v1 requirements validated)*
 
 ### Out of Scope
 
@@ -62,10 +67,12 @@ Phase 01 hoàn thành — Walking skeleton chạy được với access control 
 | 2-tier LLM parsing (parse + json_object) | Chống crash 400 trên 9router khi đổi model | Validated in Phase 02 |
 | In-memory draft orders trước khi lưu DB | Tránh ghi rác vào SQLite khi người dùng bấm huỷ | Validated in Phase 02 |
 | Cảnh báo khách bom hàng & gợi ý đổi địa chỉ | Giúp chủ shop lớn tuổi nhận diện rủi ro và chọn địa chỉ nhanh | Validated in Phase 02 |
+| Phím tắt 2x2 Reply Keyboard & CopyTextButton | Tối đa thao tác một chạm trên điện thoại cho người già | Validated in Phase 03 |
+| Unaccent function SQLite & Conversation 2-phase | Tìm kiếm linh hoạt tiếng Việt không dấu, xác nhận trước khi thao tác đơn hàng | Validated in Phase 04 |
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-10-24 after Phase 02 completion*
+*Last updated: 2026-10-25 after Phase 04 completion*

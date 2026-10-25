@@ -101,7 +101,7 @@ Plans:
   2. Bot trả về thẻ xác nhận gợi ý: *"Có phải bạn muốn xem đơn này không?"* hiển thị tóm tắt đơn tìm thấy kèm nút xác nhận mở chi tiết, tránh hiển thị nhầm đơn khi có nhiều kết quả tương tự.
   3. Bấm xác nhận trên thẻ gợi ý, bot mở trực tiếp thẻ chi tiết đơn hàng đầy đủ chức năng (sao chép 1 chạm, đổi trạng thái) như trong Phase 3.
 
-**Plans**: 3 plans (1 gap closure)
+**Plans**: 3/3 plans complete (1 gap closure)
 **UI hint**: yes
 
 Plans:
