@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 07-natural-language-order-mutation-pipeline
 source: 07-01-SUMMARY.md, 07-02-SUMMARY.md, 07-03-SUMMARY.md
 started: 2026-10-25T16:50:00Z
-updated: 2026-10-25T18:50:00Z
+updated: 2026-10-25T19:05:00Z
 ---
 
 ## Current Test
@@ -19,7 +19,7 @@ result: pass
 ### 2. Chọn đơn 1-chạm khi khớp nhiều đơn (Disambiguation)
 expected: Tạo 2 đơn cùng tên khách "Bác Ba", nhắn `đổi sđt khách Bác Ba thành 0988776655`. Bot hiện danh sách nút inline 1-chạm, bấm chọn chuyển mượt sang thẻ diff.
 result: issue
-reported: "tìm anh hà nhưng bot tìm ra cả người là tên là thanh, có vẻ do có chữ \"ha\""
+reported: "tìm anh hà nhưng bot tìm ra cả người là tên là thanh (khớp substring 'ha' thay vì từ nguyên vẹn); ngoài ra câu hỏi kết hợp như 'anh tuấn gia lâm' bot không tìm được trong khi tính năng tra cứu tìm được."
 severity: major
 
 ### 3. Gợi ý trạng thái tiếp theo 1-chạm (MUT-05)
@@ -47,8 +47,16 @@ blocked: 0
 
 - truth: "Tạo 2 đơn cùng tên khách \"Bác Ba\", nhắn `đổi sđt khách Bác Ba thành 0988776655`. Bot hiện danh sách nút inline 1-chạm, bấm chọn chuyển mượt sang thẻ diff."
   status: failed
-  reason: "User reported: tìm anh hà nhưng bot tìm ra cả người là tên là thanh, có vẻ do có chữ \"ha\""
+  reason: "User reported: tìm anh hà nhưng bot tìm ra cả người là tên là thanh (khớp substring 'ha' thay vì từ nguyên vẹn); ngoài ra câu hỏi kết hợp như 'anh tuấn gia lâm' bot không tìm được trong khi tính năng tra cứu tìm được."
   severity: major
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "1) find_orders_for_mutation dùng LIKE '%ha%' không xét word boundary làm 'thanh' bị match nhầm khi tìm 'ha'. 2) find_orders_for_mutation chỉ tìm trên customer_name/customer_phone mà bỏ qua shipping_address, đồng thời tìm nguyên cụm từ đơn lẻ nên truy vấn kết hợp tên + địa chỉ ('anh tuấn gia lâm') trả về 0 kết quả."
+  artifacts:
+    - path: "src/db/orders.py"
+      issue: "find_orders_for_mutation thiếu word boundary matching (gây khớp nhầm chuỗi con) và thiếu tìm kiếm liên trường tên + địa chỉ (shipping_address) với token AND logic"
+    - path: "src/bot/handlers/mutation.py"
+      issue: "handle_mutation_request gọi SQL tĩnh hạn chế thay vì hỗ trợ tìm kiếm đa trường hoặc tận dụng logic tìm kiếm ngôn ngữ tự nhiên"
+  missing:
+    - "Cơ chế word boundary matching (' ' || unaccent(customer_name) || ' ' LIKE '% kw %') để loại trừ khớp chuỗi con không mong muốn"
+    - "Tìm kiếm đa trường (customer_name + shipping_address + items_text) với token tách biệt và AND logic cho các truy vấn kết hợp như 'anh tuấn gia lâm'"
+  debug_session: .planning/debug/disambiguation-substring-and-composite-search.md
