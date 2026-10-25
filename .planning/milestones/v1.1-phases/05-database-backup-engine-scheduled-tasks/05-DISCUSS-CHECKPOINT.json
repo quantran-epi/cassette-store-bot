@@ -1,0 +1,90 @@
+{
+  "phase": "5",
+  "phase_name": "Database Backup Engine & Scheduled Tasks",
+  "timestamp": "2026-10-25T11:45:00Z",
+  "areas_completed": ["Storage & Naming", "Retention Policy"],
+  "areas_remaining": ["Failure & Alerts", "Credential Config"],
+  "decisions": {
+    "Storage & Naming": [
+      {
+        "question": "File backup cơ sở dữ liệu trên GitHub nên được tổ chức thư mục và đặt tên như thế nào?",
+        "answer": "Thư mục theo tháng (Khuyên dùng)",
+        "options_presented": [
+          "Thư mục theo tháng (Khuyên dùng): backups/YYYY-MM/cassette_store_YYYYMMDD_HHMMSS.db.gz",
+          "Thư mục phẳng backups/: backups/cassette_store_YYYYMMDD_HHMMSS.db.gz",
+          "Một file ghi đè theo Git history: cassette_store.db.gz ở gốc repo"
+        ]
+      },
+      {
+        "question": "Định dạng commit message khi bot đẩy file backup lên GitHub repo nên như thế nào?",
+        "answer": "Chuẩn Conventional + metadata (Khuyên dùng)",
+        "options_presented": [
+          "Chuẩn Conventional + metadata (Khuyên dùng): backup(db): auto snapshot YYYY-MM-DD HH:MM:SS (size: X.XKB)",
+          "Đơn giản ngày giờ: Automated backup YYYY-MM-DD HH:MM:SS",
+          "Bạn tự quyết định"
+        ]
+      },
+      {
+        "question": "File sao lưu tạm thời (snapshot + gzip) trên server nên được lưu và dọn dẹp như thế nào trong quá trình backup?",
+        "answer": "Dùng tempfile và xoá ngay (Khuyên dùng)",
+        "options_presented": [
+          "Dùng tempfile và xoá ngay (Khuyên dùng): tempfile /tmp, xoá trong finally",
+          "Giữ bản sao local làm cache",
+          "Bạn tự quyết định"
+        ]
+      },
+      {
+        "question": "File backup nên được đẩy lên nhánh (branch) nào trên GitHub repository?",
+        "answer": "Nhánh main mặc định (Khuyên dùng)",
+        "options_presented": [
+          "Nhánh main mặc định (Khuyên dùng)",
+          "Nhánh riêng (backups)",
+          "Bạn tự quyết định"
+        ]
+      }
+    ],
+    "Retention Policy": [
+      {
+        "question": "Chính sách lưu giữ (retention) các bản sao lưu trên GitHub nên như thế nào?",
+        "answer": "Giữ toàn bộ lịch sử sao lưu vĩnh viễn trên GitHub (không tự động xoá bất kỳ file backup nào)",
+        "options_presented": [
+          "Lưu 30 ngày gần nhất (Khuyên dùng)",
+          "Lưu vô hạn (không tự xoá)",
+          "Chiến lược GFS (7 ngày + 4 tuần + 12 tháng)"
+        ]
+      },
+      {
+        "question": "Khi kích hoạt sao lưu thủ công giữa ngày (manual backup), file được lưu thế nào?",
+        "answer": "Lưu chung thư mục tháng với tiền tố phân biệt: backups/YYYY-MM/manual_... vs backups/YYYY-MM/auto_...",
+        "options_presented": [
+          "Lưu chung thư mục tháng với tiền tố phân biệt (Khuyên dùng)",
+          "Tách riêng thư mục thủ công",
+          "Không phân biệt tên, chỉ dùng timestamp"
+        ]
+      },
+      {
+        "question": "Có nên giữ lại một bản sao lưu dự phòng cục bộ (local) trên ổ đĩa server không?",
+        "answer": "Giữ 1 bản local mới nhất (Khuyên dùng) - backups/latest_local.db.gz ghi đè mỗi lần",
+        "options_presented": [
+          "Giữ 1 bản local mới nhất (Khuyên dùng)",
+          "Chỉ lưu trên GitHub (không lưu local)",
+          "Lưu toàn bộ cả local và GitHub"
+        ]
+      },
+      {
+        "question": "Có nên đặt ngưỡng cảnh báo và giới hạn kích thước tối đa cho file backup nén khi upload lên GitHub không?",
+        "answer": "Chặn nếu vượt quá 25MB (Khuyên dùng)",
+        "options_presented": [
+          "Chặn nếu vượt quá 25MB (Khuyên dùng)",
+          "Không giới hạn dung lượng",
+          "Bạn tự quyết định"
+        ]
+      }
+    ]
+  },
+  "deferred_ideas": [],
+  "canonical_refs": [
+    ".planning/REQUIREMENTS.md",
+    ".planning/ROADMAP.md"
+  ]
+}

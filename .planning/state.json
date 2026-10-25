@@ -1,33 +1,53 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v1.0",
+  "milestone": "v1.1 — NL Order Mutation, Console Admin, Phân quyền & GitHub Backup",
   "phases": [
     {
       "number": "1",
       "name": "Foundation, Persistence & Security Whitelist",
-      "status": "complete"
+      "status": "pending"
     },
     {
       "number": "2",
       "name": "LLM Ingestion & Interactive Confirmation",
-      "status": "complete"
+      "status": "pending"
     },
     {
       "number": "3",
       "name": "Ergonomic Order Management & Low-Tech Actions",
-      "status": "complete"
+      "status": "pending"
     },
     {
       "number": "4",
       "name": "Natural Language Order Search",
-      "status": "complete"
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Database Backup Engine & Scheduled Tasks",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Role-Based Access Control & Telegram Admin Suite",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Interactive Server Console App",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "Natural Language Order Mutation Pipeline",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-10-25T03:13:27.105Z"
+  "updated_at": "2026-10-25T04:21:45.204Z"
 }
