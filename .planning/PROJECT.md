@@ -8,15 +8,15 @@ Chatbot Telegram phục vụ quản lý đơn hàng và khách hàng cho shop b�
 
 Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
 
-## Current Milestone: v1.1 NL Order Mutation, Console Admin, Phân quyền & GitHub Backup
+## Current Milestone: v1.1 NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 
-**Goal:** Mở rộng bot với khả năng chỉnh sửa đơn hàng bằng ngôn ngữ tự nhiên (NL mutation), cung cấp console quản trị tại server, phân quyền Admin đa tầng trên Telegram và backup dữ liệu tự động lên GitHub.
+**Goal:** Cung cấp khả năng chỉnh sửa đơn hàng bằng ngôn ngữ tự nhiên (NL mutation), bộ công cụ quản trị và phân quyền toàn diện trực tiếp trên Telegram (bỏ console terminal), cơ chế sao lưu SQLite an toàn gửi trực tiếp qua Telegram Super Admin (thay thế GitHub), cùng giải pháp đóng gói Docker container và manifest triển khai Kubernetes/Docker Compose.
 
 **Target features:**
-- Natural language order mutation: Đổi trạng thái, gán mã vận đơn, sửa ghi chú, sửa COD/giá tiền, đổi sđt/địa chỉ bằng tin nhắn chat tự nhiên kèm thẻ xác nhận 2-phase.
-- Interactive Console App tại server: CLI menu tương tác quản lý bot, xem trạng thái, quản lý whitelist và chạy backup thủ công.
-- Phân quyền Admin đa tầng (Super Admin vs Admin): Cấu hình Super Admin toàn quyền, Admin vận hành (không có quyền phân quyền), bộ lệnh Telegram cho Admin tương đương console.
-- Backup dữ liệu lên GitHub: Tự động sao lưu định kỳ file SQLite DB lên GitHub repo và hỗ trợ kích hoạt thủ công từ Console/Telegram.
+- Natural language order mutation: Đổi trạng thái, gán mã vận đơn, sửa ghi chú, sửa COD/giá tiền, đổi sđt/địa chỉ bằng tin nhắn chat tự nhiên kèm thẻ xác nhận 2-phase Before/After.
+- Telegram Admin Suite & Phân quyền RBAC: Phân quyền đa tầng Super Admin vs Admin, quản lý whitelist, chuyển đổi model LLM, xem log trực tiếp bằng menu nút bấm Telegram.
+- Sao lưu Database qua Telegram: SQLite snapshot (`VACUUM INTO` + gzip), tự động sao lưu định kỳ và lệnh `/backup` thủ công tức thì gửi file vào chat riêng của Super Admin.
+- Containerization & Triển khai Docker/K8s: Multi-stage `Dockerfile`, build/push Docker Hub, `docker-compose.yml` và bộ manifest Kubernetes (Deployment, PVC, ConfigMap, Secret).
 
 ## Current State
 
@@ -47,14 +47,17 @@ Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
 - [ ] Bóc tách intent chỉnh sửa đơn hàng bằng ngôn ngữ tự nhiên: tìm đơn, hiển thị thẻ so sánh Trước/Sau và yêu cầu xác nhận 1-chạm trước khi thực thi
 - [ ] Chỉnh sửa trạng thái đơn hàng qua chat tự nhiên (tự suy luận trạng thái đích hoặc hiển thị nút trạng thái gợi ý)
 - [ ] Cập nhật mã vận đơn, ghi chú, tiền COD/tổng giá, và địa chỉ/sđt nhận hàng qua chat tự nhiên
-- [ ] Interactive Console App trên terminal server cho phép quản lý cấu hình, whitelist và vận hành bot trực tiếp
-- [ ] Phân quyền đa tầng Super Admin (toàn quyền) và Admin (quản trị vận hành, không can thiệp phân quyền)
-- [ ] Bộ lệnh quản trị Telegram dành riêng cho Admin tương đương tính năng Console
-- [ ] Sao lưu cơ sở dữ liệu SQLite định kỳ tự động lên GitHub repository
-- [ ] Kích hoạt sao lưu dữ liệu thủ công tức thì qua Console và Telegram Admin*
+- [ ] Phân quyền đa tầng Super Admin (toàn quyền) và Admin (quản trị vận hành)
+- [ ] Bộ lệnh quản trị Telegram Admin Suite với Inline Buttons (quản lý whitelist, xem cấu hình/model, log viewer)
+- [ ] Sao lưu cơ sở dữ liệu SQLite định kỳ tự động và gửi file .sqlite3.gz qua Telegram chat của Super Admin
+- [ ] Lệnh sao lưu dữ liệu thủ công tức thì `/backup` dành riêng cho Super Admin trên Telegram
+- [ ] Đóng gói bot server thành Docker image (multi-stage build, non-root, SQLite volume mount) và hướng dẫn/script push lên Docker Hub
+- [ ] Bộ manifest triển khai chuẩn: docker-compose.yml và Kubernetes manifests (Deployment, PVC, ConfigMap, Secret)
 
 ### Out of Scope
 
+- Console CLI tương tác trên terminal server — Bỏ hoàn toàn vì người dùng quản trị 100% qua Telegram, giảm bề mặt vận hành local.
+- Sao lưu database qua GitHub Contents API — Bỏ vì sao lưu trực tiếp vào Telegram Super Admin nhanh, an toàn và không phụ thuộc token GitHub ngoài.
 - Đồng bộ API trực tiếp hai chiều với các đơn vị vận chuyển (GHTK, GHN, ViettelPost) — Người dùng tự tạo đơn trên app ngoài và dán mã vận đơn vào bot để giữ quy trình đơn giản.
 - Quản lý kho, tồn kho chi tiết theo từng mã vạch băng cassette — Chỉ lưu tên hàng hoá tự do trong đơn, tránh phức tạp hoá việc kiểm kho.
 - Giao diện web dashboard — Chỉ tập trung 100% trải nghiệm Telegram bot cho người low-tech.

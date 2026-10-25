@@ -1,12 +1,12 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.1
-milestone_name: NL Order Mutation, Console Admin, Phân quyền & GitHub Backup
+milestone_name: NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 status: planning
-last_updated: "2026-10-25T03:35:00.000Z"
+last_updated: "2026-10-25T04:21:45.197Z"
 last_activity: 2026-10-25
 progress:
-  total_phases: 4
+  total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-10-25)
 
 ## Current Position
 
-Phase: Phase 5: Database Backup Engine & Scheduled Tasks (not started)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Ready for planning
-Last activity: 2026-10-25 — Milestone v1.1 roadmap created
+Status: Defining requirements
+Last activity: 2026-10-25 — Milestone v1.1 started
 
 ## Performance Metrics
 
