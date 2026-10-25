@@ -17,8 +17,9 @@
 
 - [ ] **RBAC-01**: Hệ thống lưu trữ danh sách quản trị viên trong bảng `admin_users` với 2 cấp độ: `SUPER_ADMIN` và `ADMIN`, neo cứng `SUPER_ADMIN_ID` gốc trong cấu hình `.env` để chống tự khoá
 - [ ] **RBAC-02**: Decorator phân quyền `@require_role` kiểm soát chặt chẽ cả lệnh gõ (`/admin`, `/backup`) lẫn các nút bấm `CallbackQuery` để chống leo thang đặc quyền
-- [ ] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống, thống kê doanh thu, và kích hoạt backup dữ liệu
-- [ ] **RBAC-04**: Super Admin có thể thêm hoặc xoá user khỏi nhóm Admin qua giao diện Telegram; Admin cấp 2 bị chặn hoàn toàn quyền can thiệp danh sách Admin
+- [ ] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống (bot, DB, LLM), thống kê doanh thu, kích hoạt backup dữ liệu, và cấu hình đổi model LLM (tương đương console)
+- [ ] **RBAC-04**: Quản trị viên trên Telegram có thể quản lý whitelist người dùng (xem danh sách, thêm mới, xoá Telegram ID khỏi whitelist) với hiệu lực tức thì
+- [ ] **RBAC-05**: Super Admin có thể thêm hoặc xoá user khỏi nhóm Admin qua giao diện Telegram; Admin cấp 2 bị chặn hoàn toàn quyền can thiệp danh sách Admin
 
 ### Interactive Server Console App (CLI)
 
@@ -58,30 +59,31 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MUT-01 | TBD | Pending |
-| MUT-02 | TBD | Pending |
-| MUT-03 | TBD | Pending |
-| MUT-04 | TBD | Pending |
-| MUT-05 | TBD | Pending |
-| RBAC-01 | TBD | Pending |
-| RBAC-02 | TBD | Pending |
-| RBAC-03 | TBD | Pending |
-| RBAC-04 | TBD | Pending |
-| CLI-01 | TBD | Pending |
-| CLI-02 | TBD | Pending |
-| CLI-03 | TBD | Pending |
-| CLI-04 | TBD | Pending |
-| CLI-05 | TBD | Pending |
-| BKP-01 | TBD | Pending |
-| BKP-02 | TBD | Pending |
-| BKP-03 | TBD | Pending |
-| BKP-04 | TBD | Pending |
+| MUT-01 | Phase 8 | Pending |
+| MUT-02 | Phase 8 | Pending |
+| MUT-03 | Phase 8 | Pending |
+| MUT-04 | Phase 8 | Pending |
+| MUT-05 | Phase 8 | Pending |
+| RBAC-01 | Phase 6 | Pending |
+| RBAC-02 | Phase 6 | Pending |
+| RBAC-03 | Phase 6 | Pending |
+| RBAC-04 | Phase 6 | Pending |
+| RBAC-05 | Phase 6 | Pending |
+| CLI-01 | Phase 7 | Pending |
+| CLI-02 | Phase 7 | Pending |
+| CLI-03 | Phase 7 | Pending |
+| CLI-04 | Phase 7 | Pending |
+| CLI-05 | Phase 7 | Pending |
+| BKP-01 | Phase 5 | Pending |
+| BKP-02 | Phase 5 | Pending |
+| BKP-03 | Phase 5 | Pending |
+| BKP-04 | Phase 5 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18 ⚠️ (Will be mapped during Roadmap creation)
+- v1.1 requirements: 19 total
+- Mapped to phases: 19
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-25*
-*Last updated: 2026-10-25 after milestone v1.1 scoping*
+*Last updated: 2026-10-25 after milestone v1.1 roadmap creation*
