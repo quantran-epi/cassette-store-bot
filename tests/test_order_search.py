@@ -91,6 +91,8 @@ def test_is_search_intent_conversational_questions():
     assert is_search_intent("chị Mai có mua băng bao giờ chưa?") is True
     assert is_search_intent("hôm nay bán được bao nhiêu đơn?") is True
     assert is_search_intent("anh Nam đã từng mua băng chưa?") is True
+    # Multiline query test with re.DOTALL per WR-03
+    assert is_search_intent("Anh Tuấn đã từng mua băng\nbao giờ chưa?") is True
 
     # Negative cases (order ingestion texts should remain False)
     assert is_search_intent("Khách Tuấn 0903123456 2 cuốn Tuấn Vũ 200k") is False

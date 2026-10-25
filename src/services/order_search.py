@@ -27,9 +27,9 @@ PHONE_PATTERN = re.compile(r"(?:(?:\+84|84|0)[35789])\d{8}\b")
 
 SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
     # "đã/từng mua ... chưa / bao giờ chưa / không"
-    re.compile(r"\b(?:đã|từng)\s+mua\b.*?\b(?:chưa|bao\s+giờ\s+chưa|không)\b", re.IGNORECASE),
+    re.compile(r"\b(?:đã|từng)\s+mua\b.*?\b(?:chưa|bao\s+giờ\s+chưa|không)\b", re.IGNORECASE | re.DOTALL),
     # "có mua ... không / chưa / bao giờ chưa"
-    re.compile(r"\bcó\s+mua\b.*?\b(?:không|chưa|bao\s+giờ\s+chưa)\b", re.IGNORECASE),
+    re.compile(r"\bcó\s+mua\b.*?\b(?:không|chưa|bao\s+giờ\s+chưa)\b", re.IGNORECASE | re.DOTALL),
     # "mấy đơn / bao nhiêu đơn"
     re.compile(r"\b(?:mấy|bao\s+nhiêu)\s+đơn\b", re.IGNORECASE),
     # "bán được bao nhiêu / mấy"
@@ -39,7 +39,7 @@ SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
     # "tra cứu / tìm kiếm / xem lại đơn / kiểm tra đơn"
     re.compile(r"\b(?:tra\s+cứu|tìm\s+kiếm|xem\s+lại\s+đơn|kiểm\s+tra\s+đơn)\b", re.IGNORECASE),
     # question markers with customer or order inquiry
-    re.compile(r"\b(?:mua|đơn)\b.*?\b(?:bao\s+giờ\s+chưa|chưa\s+nhỉ|chưa\s+bác|chưa\s+shop|không\s+nhỉ)\b", re.IGNORECASE),
+    re.compile(r"\b(?:mua|đơn)\b.*?\b(?:bao\s+giờ\s+chưa|chưa\s+nhỉ|chưa\s+bác|chưa\s+shop|không\s+nhỉ)\b", re.IGNORECASE | re.DOTALL),
 )
 
 FORBIDDEN_SQL_KEYWORDS: set[str] = {
