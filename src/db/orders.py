@@ -279,7 +279,8 @@ async def find_orders_for_mutation(
         conds.append("customer_phone LIKE ?")
         params.append(f"%{phone.strip()}%")
     elif keyword:
-        kw_clean = keyword.strip().lower()
+        from src.db.connection import remove_accents
+        kw_clean = remove_accents(keyword.strip())
         conds.append(
             "(unaccent(customer_name) LIKE ? OR unaccent(shipping_address) LIKE ? OR customer_phone LIKE ?)"
         )

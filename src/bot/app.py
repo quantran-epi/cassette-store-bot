@@ -22,7 +22,7 @@ from telegram.ext import (
 from src.bot.handlers.admin import admin_command, handle_admin_callback
 from src.bot.handlers.backup import backup_command
 from src.bot.handlers.base import help_command, ping_command, start_command
-from src.bot.handlers.callbacks import handle_order_callback
+from src.bot.handlers.callbacks import handle_mutation_callback, handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
 from src.bot.handlers.logs import handle_logs_callback, logs_command
 from src.bot.handlers.order_actions import (
@@ -290,6 +290,10 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
             handle_order_nav_callback,
             pattern=r"^(ord_(dt|pg|v|bk):|ord_noop$|ord_act:(pick_date|new)$)",
         ),
+        group=0,
+    )
+    app.add_handler(
+        CallbackQueryHandler(handle_mutation_callback, pattern=r"^ord_mut_"),
         group=0,
     )
     app.add_handler(

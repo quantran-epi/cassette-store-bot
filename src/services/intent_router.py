@@ -38,7 +38,7 @@ FAST_PATH_STATUS_PATTERNS: list[tuple[re.Pattern, OrderStatus]] = [
 
 def extract_order_id_from_reply(reply_text: str | None) -> int | None:
     """Extract Order ID integer from replied bot order card messages per D-05."""
-    if not reply_text:
+    if not reply_text or not isinstance(reply_text, str):
         return None
     match = REPLY_ORDER_ID_PATTERN.search(reply_text)
     return int(match.group(1)) if match else None

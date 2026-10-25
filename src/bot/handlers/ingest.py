@@ -13,7 +13,9 @@ from src.db.connection import get_db_connection
 from src.db.customers import get_customer_by_phone
 from src.db.orders import get_customer_order_stats
 from src.models.extractor import ExtractedOrder
+from src.models.mutation import IntentType
 from src.services.extractor import extract_order_from_text
+from src.services.intent_router import classify_intent, extract_order_id_from_reply
 from src.services.order_search import is_search_intent
 
 logger = logging.getLogger(__name__)
@@ -190,6 +192,37 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             # Expired after 120s: clean up state and proceed to regular ingestion
             context.user_data.pop("action_state", None)
 
+    # 3-Way Intent Routing (CREATE vs SEARCH vs MUTATE) per MUT-01..MUT-05, D-01..D-05
+    app_context = context.application.bot_data.get("app_context")
+    if not app_context:
+        settings = context.application.bot_data.get("settings")
+        openai_client = context.application.bot_data.get("openai_client")
+    else:
+        settings = getattr(app_context, "settings", None)
+        openai_client = getattr(app_context, "openai_client", None)
+
+    active_model = (
+        context.application.bot_data.get("active_model_id")
+        or (settings.nine_router_model_id if settings else "")
+    )
+
+    reply_msg = update.message.reply_to_message
+    reply_text = (reply_msg.text or reply_msg.caption) if reply_msg else None
+    reply_order_id = extract_order_id_from_reply(reply_text)
+
+    intent = await classify_intent(
+        text=text,
+        client=openai_client,
+        model_id=active_model,
+        has_reply_order=bool(reply_order_id),
+    )
+
+    if intent == IntentType.MUTATE:
+        from src.bot.handlers.mutation import handle_mutation_flow
+
+        await handle_mutation_flow(update, context, text)
+        return
+
     # Check for search_state or search_intent per D-01, D-02, D-03
     search_state = context.user_data.get("search_state")
     if search_state:
@@ -200,21 +233,13 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             return
         context.user_data.pop("search_state", None)
 
-    if is_search_intent(text):
+    if intent == IntentType.SEARCH or is_search_intent(text):
         from src.bot.handlers.search import process_search_query
 
         await process_search_query(update, context, text)
         return
 
     await update.message.chat.send_action(ChatAction.TYPING)
-
-    app_context = context.application.bot_data.get("app_context")
-    if not app_context:
-        settings = context.application.bot_data.get("settings")
-        openai_client = context.application.bot_data.get("openai_client")
-    else:
-        settings = getattr(app_context, "settings", None)
-        openai_client = getattr(app_context, "openai_client", None)
 
     if not openai_client or not settings:
         logger.error("OpenAI client or settings missing from application data")
@@ -223,10 +248,6 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
-    active_model = (
-        context.application.bot_data.get("active_model_id")
-        or settings.nine_router_model_id
-    )
     try:
         extracted = await extract_order_from_text(
             client=openai_client,
