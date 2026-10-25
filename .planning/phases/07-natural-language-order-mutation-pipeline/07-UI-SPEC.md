@@ -1,7 +1,8 @@
 ---
 phase: 7
 slug: natural-language-order-mutation-pipeline
-status: draft
+status: approved
+reviewed_at: 2026-10-25
 shadcn_initialized: false
 preset: none
 created: 2026-10-25
@@ -274,11 +275,11 @@ Trạng thái: <b>{fresh_status_label}</b>
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG (Non-blocking: primary visual anchor on Screen 2 is `{diff_lines}` with `➡️` pointer)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-10-25
