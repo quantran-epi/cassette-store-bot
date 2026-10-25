@@ -12,6 +12,7 @@ from telegram import (
 )
 
 from src.models.order import Order, OrderStatus
+from src.bot.security import UserRole
 
 # Timezone Vietnam UTC+7
 TZ_VN = timezone(timedelta(hours=7))
@@ -564,5 +565,243 @@ def build_search_prompt_keyboard() -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def build_admin_main_keyboard(
+    user_role: UserRole = UserRole.ADMIN,
+) -> InlineKeyboardMarkup:
+    """Build 2-column admin suite navigation grid per D-03 and UI-SPEC."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("👥 Quản lý Whitelist", callback_data="adm:wl:list:1"),
+                InlineKeyboardButton("🤖 Đổi Model LLM", callback_data="adm:mdl:menu"),
+            ],
+            [
+                InlineKeyboardButton("📜 Xem Logs", callback_data="adm:log:view:25:all"),
+                InlineKeyboardButton("💾 Sao lưu DB", callback_data="adm:bkp:trigger"),
+            ],
+            [
+                InlineKeyboardButton("🔄 Làm mới", callback_data="adm:dash:refresh"),
+                InlineKeyboardButton("❌ Đóng menu", callback_data="adm:dash:close"),
+            ],
+        ]
+    )
+
+
+def build_whitelist_keyboard(
+    users: list[dict], current_page: int = 1, total_pages: int = 1
+) -> InlineKeyboardMarkup:
+    """Build whitelist users listing keyboard with 2 columns and action buttons."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    user_buttons: list[InlineKeyboardButton] = []
+
+    for u in users:
+        uid = u["telegram_id"]
+        role = u.get("role", "STAFF")
+        name = u.get("name", "") or str(uid)
+        icon = "👑" if role == "SUPER_ADMIN" else ("🛡️" if role == "ADMIN" else "👤")
+        label = f"{icon} {name}"
+        if len(label) > 20:
+            label = label[:17] + "..."
+        user_buttons.append(
+            InlineKeyboardButton(label, callback_data=f"adm:wl:view:{uid}")
+        )
+
+    # 2 buttons per row
+    for i in range(0, len(user_buttons), 2):
+        buttons.append(user_buttons[i : i + 2])
+
+    # Pagination if total_pages > 1
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if current_page > 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "⬅️ Trước", callback_data=f"adm:wl:list:{current_page - 1}"
+                )
+            )
+        nav_row.append(
+            InlineKeyboardButton(
+                f"Trang {current_page}/{total_pages}", callback_data="adm:noop"
+            )
+        )
+        if current_page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "Sau ➡️", callback_data=f"adm:wl:list:{current_page + 1}"
+                )
+            )
+        buttons.append(nav_row)
+
+    # Add user button
+    buttons.append(
+        [
+            InlineKeyboardButton("➕ Thêm tài khoản", callback_data="adm:wl:add_prompt"),
+        ]
+    )
+
+    # Navigation row
+    buttons.append(
+        [
+            InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:dash:refresh"),
+            InlineKeyboardButton("❌ Đóng", callback_data="adm:dash:close"),
+        ]
+    )
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_whitelist_user_detail_keyboard(
+    target_user: dict, is_root: bool = False
+) -> InlineKeyboardMarkup:
+    """Build detail and action keyboard for a whitelist user."""
+    target_id = target_user["telegram_id"]
+    current_role = target_user.get("role", "STAFF")
+
+    if is_root:
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🛡️ Root Super Admin (Bảo vệ)", callback_data="adm:noop"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "⬅️ Quay lại danh sách", callback_data="adm:wl:list:1"
+                    )
+                ],
+            ]
+        )
+
+    buttons: list[list[InlineKeyboardButton]] = []
+    # Role toggle buttons
+    role_row: list[InlineKeyboardButton] = []
+    if current_role == "ADMIN":
+        role_row.append(
+            InlineKeyboardButton(
+                "👤 Đổi: NHÂN VIÊN",
+                callback_data=f"adm:wl:role:{target_id}:STAFF",
+            )
+        )
+    else:
+        role_row.append(
+            InlineKeyboardButton(
+                "🛡️ Đổi vai trò: ADMIN",
+                callback_data=f"adm:wl:role:{target_id}:ADMIN",
+            )
+        )
+    buttons.append(role_row)
+
+    # Remove button
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "🗑️ Xoá khỏi Whitelist",
+                callback_data=f"adm:wl:rm_req:{target_id}",
+            )
+        ]
+    )
+
+    # Back button
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Quay lại danh sách",
+                callback_data="adm:wl:list:1",
+            )
+        ]
+    )
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_whitelist_confirm_delete_keyboard(target_id: int) -> InlineKeyboardMarkup:
+    """Build 2-step confirmation modal for whitelist removal per D-07."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⚠️ Xác nhận xoá", callback_data=f"adm:wl:rm_cf:{target_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "Quay lại", callback_data=f"adm:wl:view:{target_id}"
+                ),
+            ],
+        ]
+    )
+
+
+def build_model_switcher_keyboard(
+    available_models: list[str], active_model: str
+) -> InlineKeyboardMarkup:
+    """Build model switcher keyboard with active indicator and custom input option."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    model_buttons: list[InlineKeyboardButton] = []
+
+    for m in available_models:
+        label = f"[✓] {m}" if m == active_model else m
+        model_buttons.append(
+            InlineKeyboardButton(label, callback_data=f"adm:mdl:sel:{m}")
+        )
+
+    # 2 buttons per row
+    for i in range(0, len(model_buttons), 2):
+        buttons.append(model_buttons[i : i + 2])
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "✏️ Nhập tên model khác", callback_data="adm:mdl:input_prompt"
+            )
+        ]
+    )
+    buttons.append(
+        [
+            InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:dash:refresh"),
+            InlineKeyboardButton("❌ Đóng", callback_data="adm:dash:close"),
+        ]
+    )
+
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_logs_keyboard(
+    current_limit: int = 25, errors_only: bool = False
+) -> InlineKeyboardMarkup:
+    """Build logs viewer keyboard with limit, error filter, and refresh actions."""
+    filter_val = "errors" if errors_only else "all"
+    toggle_filter = "all" if errors_only else "errors"
+    toggle_label = "📋 Tất cả" if errors_only else "⚠️ Chỉ Lỗi"
+
+    filter_row = [
+        InlineKeyboardButton(
+            f"{'• ' if current_limit == 25 else ''}25 dòng",
+            callback_data=f"adm:log:view:25:{filter_val}",
+        ),
+        InlineKeyboardButton(
+            f"{'• ' if current_limit == 50 else ''}50 dòng",
+            callback_data=f"adm:log:view:50:{filter_val}",
+        ),
+        InlineKeyboardButton(
+            toggle_label,
+            callback_data=f"adm:log:view:{current_limit}:{toggle_filter}",
+        ),
+        InlineKeyboardButton("🔄 Làm mới", callback_data="adm:log:refresh"),
+    ]
+
+    return InlineKeyboardMarkup(
+        [
+            filter_row,
+            [
+                InlineKeyboardButton("⬅️ Menu Quản trị", callback_data="adm:dash:refresh"),
+                InlineKeyboardButton("❌ Đóng", callback_data="adm:dash:close"),
+            ],
+        ]
+    )
+
 
 
