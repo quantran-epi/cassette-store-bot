@@ -322,14 +322,22 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
             kb = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("🔍 Tìm câu khác", callback_data="sch_new")]]
             )
-            await query.edit_message_text(text=summary, reply_markup=kb)
+            try:
+                await query.edit_message_text(text=summary, reply_markup=kb)
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
             return
 
         orders = result.orders
         if len(orders) == 1:
             card_text = render_search_single_order_card(orders[0], query_text)
             kb = build_search_single_order_keyboard(orders[0].id, search_id)
-            await query.edit_message_text(text=card_text, reply_markup=kb, parse_mode="HTML")
+            try:
+                await query.edit_message_text(text=card_text, reply_markup=kb, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
             return
 
         # Multi-orders: restore saved page
@@ -352,7 +360,11 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
             page=page,
             total_pages=total_pages,
         )
-        await query.edit_message_text(text=card_text, reply_markup=kb, parse_mode="HTML")
+        try:
+            await query.edit_message_text(text=card_text, reply_markup=kb, parse_mode="HTML")
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
         return
 
     if data.startswith("sch_v:"):

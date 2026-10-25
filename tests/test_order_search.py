@@ -671,6 +671,13 @@ async def test_search_view_order_detail_and_back_to_results(test_db):
     assert f"sch_v:search_01:{oid}" in flat_back_cbs
     assert "sch_new" in flat_back_cbs
 
+    # Step 3: WR-02 regression - verify BadRequest("Message is not modified") is suppressed on repeated back click
+    from telegram.error import BadRequest
+
+    query.edit_message_text.side_effect = BadRequest("Message is not modified: specified new message content and reply markup are exactly the same")
+    # Should not raise exception
+    await handle_search_callback(update, context)
+
 
 @pytest.mark.asyncio
 async def test_process_search_query_without_bot_data_db(tmp_path):
