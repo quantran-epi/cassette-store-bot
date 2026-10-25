@@ -93,3 +93,11 @@ def test_format_logs_for_telegram_truncation():
     assert "... (đã cắt bớt các dòng cũ)" in formatted
     # Most recent message should be preserved
     assert "[19]" in formatted
+
+
+def test_format_logs_for_telegram_empty():
+    """Verify empty buffer returns plain text without HTML tags for pre/code safety."""
+    handler = RingBufferLogHandler(capacity=10)
+    formatted = handler.format_logs_for_telegram()
+    assert formatted == "(Không có nhật ký nào)"
+    assert "<" not in formatted

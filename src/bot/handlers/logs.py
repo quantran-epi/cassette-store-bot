@@ -20,7 +20,7 @@ def _render_logs_card(
     if log_handler:
         formatted_logs = log_handler.format_logs_for_telegram(limit=limit, errors_only=errors_only)
     else:
-        formatted_logs = "<i>(Không tìm thấy log handler)</i>"
+        formatted_logs = "(Không tìm thấy log handler)"
 
     now_str = datetime.now(TZ_VN).strftime("%H:%M:%S %d/%m/%Y")
     filter_label = "lỗi " if errors_only else ""

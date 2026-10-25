@@ -39,7 +39,7 @@ class RingBufferLogHandler(logging.Handler):
         """Format logs as a single string bounded by max_chars for safe Telegram delivery."""
         lines = self.get_logs(limit=limit, errors_only=errors_only)
         if not lines:
-            return "<i>(Không có nhật ký nào)</i>"
+            return "(Không có nhật ký nào)"
 
         prefix = "... (đã cắt bớt các dòng cũ)\n"
         # Assemble lines from newest backwards
