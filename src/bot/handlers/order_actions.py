@@ -49,6 +49,8 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
     # Return to order detail card: ord_v_cur:{order_id}
     if data.startswith("ord_v_cur:"):
         await query.answer()
+        if context.user_data:
+            context.user_data.pop("action_state", None)
         parts = data.split(":")
         order_id = int(parts[1])
         db_ctx = _get_active_db_context(context)

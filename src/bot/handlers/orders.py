@@ -35,6 +35,9 @@ def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle 2x2 Reply Keyboard button clicks per D-01, D-02, D-03, D-04."""
+    if context.user_data:
+        context.user_data.pop("action_state", None)
+
     if not update.message or not update.message.text:
         return
 
@@ -142,6 +145,8 @@ async def handle_order_nav_callback(update: Update, context: ContextTypes.DEFAUL
 
     # Handle direct new order prompt from empty list card
     if data == "ord_act:new":
+        if context.user_data:
+            context.user_data.pop("action_state", None)
         try:
             await query.edit_message_text(
                 text="📝 <b>NHẬP ĐƠN HÀNG MỚI</b>\n\n"
