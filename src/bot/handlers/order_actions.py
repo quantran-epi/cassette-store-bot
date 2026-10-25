@@ -1,3 +1,4 @@
+import html
 import logging
 import re
 import time
@@ -333,10 +334,11 @@ async def handle_action_state_text(
 
             if success:
                 order = await get_order_by_id(active_db, order_id)
+                escaped_code = html.escape(tracking_code)
                 card_text = (
                     f"✅ <b>ĐÃ CẬP NHẬT MÃ VẬN ĐƠN</b>\n\n"
                     f"📦 <b>Đơn:</b> <code>#{order_id}</code>\n"
-                    f"🚚 <b>Mã vận đơn:</b> <code>{tracking_code}</code>"
+                    f"🚚 <b>Mã vận đơn:</b> <code>{escaped_code}</code>"
                 )
                 back_kb = None
                 if order:
