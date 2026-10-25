@@ -189,3 +189,27 @@ async def test_build_application_startup_db_sync(tmp_path):
         assert 111 in app.bot_data["whitelist_user_ids"]
         assert app.bot_data["admin_roles"][111] == UserRole.STAFF
         assert app.bot_data["active_model_id"] == "custom-synced-model"
+
+
+@pytest.mark.asyncio
+async def test_startup_sync_fallback_logs_exception_on_failure(caplog):
+    """Startup sync fallback must log an exception if DB connection fails."""
+    import logging
+    from unittest.mock import MagicMock, patch
+    from src.bot.app import startup_sync
+
+    app = MagicMock()
+    app.bot_data = {
+        "db": None,
+        "settings": Settings(
+            telegram_bot_token=SecretStr("fake_token_for_app_build"),
+            telegram_whitelist_user_ids=[111],
+            sqlite_db_path="invalid_path.db",
+        ),
+    }
+
+    with patch("src.db.connection.get_db_connection", side_effect=RuntimeError("disk failure")):
+        with caplog.at_level(logging.ERROR):
+            await startup_sync(app)
+
+    assert "Startup synchronization failed" in caplog.text

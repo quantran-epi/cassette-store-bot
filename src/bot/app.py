@@ -76,7 +76,7 @@ async def startup_sync(app: Application) -> None:
             async with get_db_connection(settings.sqlite_db_path) as conn:
                 await _do_sync(app, conn, settings)
         except Exception:
-            pass
+            logging.getLogger(__name__).exception("Startup synchronization failed")
 
 
 def build_application(settings: Settings, db: aiosqlite.Connection | None = None) -> Application:
