@@ -1,7 +1,8 @@
-# Architecture Research: Cassette Store Telegram Chatbot
+# Architecture Research: Milestone v1.1 Integration
 
 **Domain:** Telegram Retail Order Management Chatbot (Small Low-Tech Merchant)  
-**Researched:** 2026-10-24  
+**Milestone:** v1.1 NL Order Mutation, Console Admin, RBAC & GitHub Backup  
+**Researched:** 2026-10-25  
 **Confidence:** HIGH  
 
 ---
@@ -11,407 +12,541 @@
 ### System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       1. Configuration & Security Layer                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────┐     ┌─────────────────────────────────┐  │
-│  │  pydantic-settings (.env)     │     │  Telegram User ID Whitelist     │  │
-│  │  (Tokens, 9router URL, Paths) │     │  Auth Middleware (Gatekeeper)   │  │
-│  └───────────────┬───────────────┘     └────────────────┬────────────────┘  │
-│                  │                                      │                   │
-├──────────────────┴──────────────────────────────────────┴───────────────────┤
-│                       2. Telegram Bot Presentation Layer                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────┐  ┌────────────────────────────────────────┐  │
-│  │ Message Handlers          │  │ Callback Router (Inline Queries)       │  │
-│  │ - Free-text Ingest Handler│  │ - Order Draft Confirmation             │  │
-│  │ - Query / Search Handler  │  │ - Order Status Transitions             │  │
-│  │ - Admin / Daily List      │  │ - Tracking Code Prompt                 │  │
-│  └─────────────┬─────────────┘  └───────────────────┬────────────────────┘  │
-│                │                                    │                       │
-│  ┌─────────────┴─────────────┐  ┌───────────────────┴────────────────────┐  │
-│  │ Message Formatters        │  │ Inline & Reply Keyboards               │  │
-│  │ - Order Receipt Card      │  │ - Persistent Menu (Tạo đơn, Hôm nay)   │  │
-│  │ - Compact Daily List      │  │ - 1-Tap Copy Text Buttons              │  │
-│  │ - Status Badges & Emojis  │  │ - Two-Phase Confirm/Cancel Buttons     │  │
-│  └─────────────┬─────────────┘  └───────────────────┬────────────────────┘  │
-│                │                                    │                       │
-├────────────────┼────────────────────────────────────┼───────────────────────┤
-│                ▼                                    ▼                       │
-│        3. LLM Extraction & NLP Query Service (9router Gateway)               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ AsyncOpenAI Client (9router OpenAI-compatible Endpoint)               │  │
-│  │ ├─ Prompt Templates (Vietnamese cassette slang, addresses, phones)    │  │
-│  │ ├─ Pydantic Structured Output Schemas (OrderDraft, SearchFilter)      │  │
-│  │ └─ Response Validation & Normalization Service                        │  │
-│  └──────────────────────────────────┬────────────────────────────────────┘  │
-│                                     │                                       │
-├─────────────────────────────────────┼───────────────────────────────────────┤
-│                                     ▼                                       │
-│                        4. Domain & State Management                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────┐  ┌─────────────────────────────┐  │
-│  │ Ephemeral Flow State Manager         │  │ Order Lifecycle FSM         │  │
-│  │ - In-memory Draft Cache (UUID key)   │  │ - Valid transition rules    │  │
-│  │ - TTL cleanup (PTB user_data / dict) │  │ - Terminal state guards     │  │
-│  └──────────────────┬───────────────────┘  └──────────────┬──────────────┘  │
-│                     │                                     │                 │
-├─────────────────────┴─────────────────────────────────────┴─────────────────┤
-│                       5. Data & Persistence Layer (SQLite)                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ SQLite Repositories (WAL Mode, Foreign Keys = ON, Parameterized SQL)  │  │
-│  │ ├─ CustomerRepository (Find/Upsert by phone, multi-address, notes)    │  │
-│  │ ├─ OrderRepository (CRUD, status update, tracking code, date query)   │  │
-│  │ └─ OrderSearchRepository (Fuzzy text match, phone lookup, date range) │  │
-│  └──────────────────────────────────┬────────────────────────────────────┘  │
-│                                     │                                       │
-│                                     ▼                                       │
-│                   [Local SQLite Storage: store.db]                          │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Presentation & Interface Layer                                │
+├───────────────────────────────────────────────┬─────────────────────────────────────────────────┤
+│  Telegram Bot (python-telegram-bot v20+)       │  Interactive Server Console (Terminal TTY)       │
+│  ├─ Security Gate (Group -1: RBAC Middleware) │  ├─ Non-blocking stdin reader (asyncio.to_thread)│
+│  ├─ Free-Text & Photo Message Handlers        │  ├─ System Status & Metrics Monitor             │
+│  ├─ Natural Language Router (3-Way Dispatch)  │  ├─ Dynamic Admin & Whitelist Manager           │
+│  ├─ 2-Phase Confirmation Callback Handlers    │  ├─ Manual GitHub Backup Trigger                │
+│  └─ Ergonomic Keyboards & CopyTextButtons     │  └─ Headless auto-detection (isatty check)      │
+├───────────────────────────────────────────────┴─────────────────────────────────────────────────┤
+│                                  Core Application Services Layer                                │
+├────────────────────────────────┬───────────────────────────────┬────────────────────────────────┤
+│  Intent Router & Extraction    │  RBAC & Security Service      │  GitHub Backup Service         │
+│  ├─ Intent Classifier (3-Way)  │  ├─ Roles (SUPER_ADMIN/ADMIN) │  ├─ VACUUM INTO atomic snapshot│
+│  ├─ Order Target Resolver      │  ├─ Super Admin Bootstrap     │  ├─ Gzip compression pipeline  │
+│  ├─ LLM Mutation Extractor     │  ├─ RBAC Enforcement (Decor.) │  ├─ httpx Async GitHub REST API│
+│  └─ Visual Diff Card Formatter │  └─ In-Memory Role Cache      │  └─ Background Async Scheduler │
+├────────────────────────────────┴───────────────────────────────┴────────────────────────────────┤
+│                                   Persistence & Storage Layer                                   │
+├─────────────────────────────────────────────────────────────────────────────────────────────────┤
+│  aiosqlite Connection Pool (WAL Mode, PRAGMA busy_timeout=5000, unaccent function)              │
+│  ├─ orders table (Order lifecycle, tracking, snapshots, customer FK)                            │
+│  ├─ customers table (Multi-phone, multi-address, notes, history)                                │
+│  └─ admin_users table (Telegram ID, Role: SUPER_ADMIN | ADMIN, name, audit log)                 │
+└─────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ### Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
-|-----------|----------------|------------------------|
-| **Security Whitelist Middleware** | Intercepts incoming `Update` objects. Discards or rejects users whose Telegram User ID is not in `ALLOWED_USER_IDS`. Protects PII and shop data. | Custom PTB `BaseHandler` wrapper or outer update filter checking `update.effective_user.id`. |
-| **Telegram Handlers & Routers** | Maps incoming user actions (text messages, command buttons, inline callbacks) to appropriate service logic. Dispatches actions without holding database connections open. | `python-telegram-bot` (v20+ async) `MessageHandler`, `CallbackQueryHandler`. |
-| **Keyboards & Formatters** | Generates elder-friendly UI: large emoji labels, high-contrast status tags, 1-tap copy buttons (`CopyTextButton` / monospace text), and persistent bottom reply menus. | Pure presentation functions returning `InlineKeyboardMarkup`, `ReplyKeyboardMarkup`, and MarkdownV2/HTML formatted strings. |
-| **LLM Gateway Service (9router)** | Wraps OpenAI-compatible API on 9router. Sends raw Vietnamese chat text with few-shot system prompts, returning validated JSON matching Pydantic models. | `openai.AsyncOpenAI(base_url=..., api_key=...)` using structured outputs (`client.beta.chat.completions.parse` or `response_format={"type": "json_object"}`). |
-| **Ephemeral Flow Cache** | Temporarily retains unconfirmed order drafts and pending search selections between user typing and button clicking. Keeps callback payloads under 64 bytes. | Key-value store inside PTB `context.user_data` or short-lived in-memory dict with UUID keys and timestamp expiration. |
-| **Domain State Machine** | Enforces cassette production order lifecycle (`Chờ làm` -> `Đang làm` -> `Đã đóng gói` -> `Đã tạo đơn app` -> `Shipper đã lấy` -> `Đã giao` / `Bom` / `Huỷ`). Blocks illegal jumps. | Python `Enum` + transition dictionary check before updating DB status. |
-| **SQLite Repositories** | Handles all CRUD operations, database constraints, customer deduplication, and transactions. Ensures ACID durability locally. | Python standard library `sqlite3` (or `aiosqlite`) with WAL mode, parameterized queries, and dedicated repository classes. |
+| Component | Responsibility | Status | Implementation Details |
+|-----------|----------------|--------|------------------------|
+| **Interactive Console App** | Provides direct server-side operator control without Telegram dependency. Runs concurrently with bot polling. | **NEW** | Async lifecycle in `main.py`, reading `sys.stdin` via `asyncio.to_thread`. Auto-detects headless mode via `sys.stdin.isatty()`. |
+| **3-Way Intent Router** | Classifies incoming chat into Mutation, Search, or New Ingestion. Prevents mutation collisions with order creation. | **NEW** | Pattern & keyword heuristic classifier in `src/services/router.py`, routing to search, mutation, or ingest handlers. |
+| **NL Order Mutation Service** | Resolves target orders, extracts field changes via LLM structured output, and coordinates 2-phase visual diff confirmation. | **NEW** | `src/services/order_mutation.py` using `OrderMutationDelta` Pydantic model + 9router LLM gateway. |
+| **RBAC Manager** | Enforces two-tier authority (`SUPER_ADMIN` vs `ADMIN`). Persists admin roles, manages bootstrap from `.env`, exposes decorators. | **NEW** | `src/bot/rbac.py` + `admin_users` table in SQLite + `@require_role` decorators for handlers. |
+| **GitHub Backup Service** | Takes safe, consistent snapshots of SQLite WAL database and uploads gzipped backups to GitHub repository. | **NEW** | `src/services/backup.py` using `VACUUM INTO`, gzip, and `httpx.AsyncClient` against GitHub REST API. |
+| **Background Scheduler** | Drives periodic backup tasks without requiring heavy external cron or APScheduler dependencies. | **NEW** | Native `asyncio.create_task` loop with cancellation handling tied to application lifecycle. |
+| **Telegram Ingest & Search** | Existing v1.0 handlers for order creation, photo batching, and text-to-SQL search. | **MODIFIED** | Updated to delegate routing decisions to 3-Way Intent Router instead of assuming all non-search text is a new order. |
+| **Security Gate (`whitelist_gate`)** | Group -1 filter intercepting every Telegram update. | **MODIFIED** | Upgraded from static `.env` list to dynamic `admin_users` database table with memory caching. |
+| **Database Schema & Factory** | Manages SQLite connection lifecycle, WAL settings, custom functions, and schema migrations. | **MODIFIED** | Added `admin_users` table and migration helpers in `src/db/schema.py`. |
 
 ---
 
 ## Recommended Project Structure
 
 ```
-cassette-store/
-├── .env.example                 # Example environment variables
-├── pyproject.toml               # Python dependencies and project metadata
-├── README.md                    # Setup and execution guide
-├── store.db                     # Local SQLite database (git-ignored)
-└── src/
+src/
+├── __init__.py
+├── config.py                     # Pydantic Settings (GitHub token, Super Admin ID, 9router, DB path)
+│
+├── bot/                          # Telegram Presentation Layer
+│   ├── __init__.py
+│   ├── app.py                   # ApplicationBuilder, lifecycle hooks, handler registration
+│   ├── keyboards.py             # Markup builders (Visual diff confirmation, Admin menu, 1-tap copy)
+│   ├── formatters.py            # HTML card formatters (Order cards, Mutation diffs, Backup alerts)
+│   ├── rbac.py                  # [NEW] RBAC decorators (@require_role), permission checks, role enum
+│   └── handlers/
+│       ├── __init__.py
+│       ├── base.py              # /start, /ping, /help
+│       ├── callbacks.py         # Order creation callbacks (ord:cf, ord:ca, ord:ad)
+│       ├── ingest.py            # Free-text & photo ingestion handler
+│       ├── order_actions.py     # Status transitions, tracking code prompt
+│       ├── orders.py            # Menu reply buttons, navigation callbacks
+│       ├── search.py            # Natural language order search & Text-to-SQL
+│       ├── mutation.py          # [NEW] NL order mutation callback handlers & diff confirmation
+│       └── admin.py             # [NEW] /admin commands (list, add, remove, backup) for Super Admin
+│
+├── console/                      # [NEW] Interactive Server Console CLI
+│   ├── __init__.py
+│   ├── cli.py                   # Terminal interactive loop, non-blocking input, menu dispatch
+│   └── commands.py              # CLI commands: status, admin management, manual backup, order inspect
+│
+├── services/                     # Business Logic & External Integrations
+│   ├── __init__.py
+│   ├── extractor.py             # LLM order extraction (9router gateway)
+│   ├── order_search.py          # NL text-to-SQL order search
+│   ├── router.py                # [NEW] 3-Way Intent Classifier (MUTATION | SEARCH | CREATE)
+│   ├── order_mutation.py        # [NEW] NL mutation pipeline, target resolver, LLM delta extractor
+│   ├── backup.py                # [NEW] SQLite VACUUM INTO + gzip + GitHub REST API client
+│   └── scheduler.py             # [NEW] Async background periodic scheduler for automated backups
+│
+├── models/                       # Pydantic Schemas & Domain Enums
+│   ├── __init__.py
+│   ├── customer.py              # Customer domain model
+│   ├── order.py                 # Order domain model, OrderStatus enum
+│   ├── extractor.py             # ExtractedOrder, ExtractedSearch schemas
+│   ├── mutation.py              # [NEW] OrderMutationDelta, MutationAction schemas
+│   └── rbac.py                  # [NEW] Role enum (SUPER_ADMIN, ADMIN), AdminUser schema
+│
+└── db/                           # Persistence Layer
     ├── __init__.py
-    ├── main.py                  # Application entry point: initializes bot & DB
-    ├── config.py                # Pydantic BaseSettings: tokens, 9router URL, whitelist
-    │
-    ├── bot/                     # Telegram Presentation Layer
-    │   ├── __init__.py
-    │   ├── app.py               # Bot builder, handlers registration, error handling
-    │   ├── middleware.py        # Whitelist authentication filter
-    │   ├── keyboards.py         # Inline & Reply markup builders
-    │   ├── formatters.py        # Telegram Markdown card formatters
-    │   └── handlers/
-    │       ├── __init__.py
-    │       ├── admin.py         # /start, /help, stats, persistent menu init
-    │       ├── ingest.py        # Free-text order ingestion & preview confirmation
-    │       ├── orders.py        # Order details, 1-tap copy card, tracking code entry
-    │       ├── lifecycle.py     # Status transitions (Đang làm -> Đóng gói -> ...)
-    │       └── search.py        # Date-filtered queries (Hôm nay, Hôm qua) & NL search
-    │
-    ├── llm/                     # LLM Extraction & NLP Query Service
-    │   ├── __init__.py
-    │   ├── client.py            # 9router AsyncOpenAI client wrapper
-    │   ├── schemas.py           # Pydantic schemas (ExtractedOrder, ExtractedSearch)
-    │   └── prompts.py           # Few-shot prompts for Vietnamese cassette ordering
-    │
-    ├── domain/                  # Domain Models & Rules
-    │   ├── __init__.py
-    │   ├── models.py            # Dataclasses: Customer, Order, OrderItem, Address, Phone
-    │   └── lifecycle.py         # OrderStatus Enum and valid state transition matrix
-    │
-    └── db/                      # Persistence Layer (SQLite)
-        ├── __init__.py
-        ├── connection.py        # SQLite connection factory (WAL, foreign keys, row_factory)
-        ├── schema.sql           # DDL schema definitions and indexes
-        ├── migrations.py        # Automated schema migration on startup
-        └── repositories/
-            ├── __init__.py
-            ├── customer_repo.py # Customer, phones, addresses lookup & upsert
-            └── order_repo.py    # Order persistence, state update, search queries
+    ├── connection.py            # aiosqlite connection factory (WAL, busy_timeout, unaccent)
+    ├── schema.py                # DDL schema (customers, orders, admin_users)
+    ├── customers.py             # Customer queries
+    ├── orders.py                # Order queries & status updates
+    ├── admin_users.py           # [NEW] Admin user CRUD, role updates, whitelist synchronization
+    └── backup_ops.py            # [NEW] VACUUM INTO execution wrapper
 ```
 
 ### Structure Rationale
 
-- **`src/bot/handlers/` segregated by domain flow:** Separates ingest, lifecycle, and query logic. Prevents monolithic 2000-line bot files.
-- **`src/llm/` isolated from Telegram:** LLM prompts and Pydantic schemas can be tested independently with mock inputs or unit tests without firing up a Telegram polling loop.
-- **`src/domain/` zero external dependencies:** Holds pure Python definitions of order states, transition validation, and core data contracts.
-- **`src/db/repositories/` data access boundary:** Keeps SQL queries isolated. Handlers never write raw SQL. Changing schema or queries touches only the repository layer.
-- **`src/bot/keyboards.py` & `formatters.py`:** Centralizes all text templates and button layouts. Guarantees visual consistency across the entire UI for the low-tech user.
+- **`src/console/` decoupled from Telegram:** Server terminal management logic runs independently. It accesses `src/db/` and `src/services/` directly, meaning the console operates even if Telegram connectivity is impaired.
+- **`src/services/router.py` centralizes intent dispatch:** Prevents scattered regex rules across `ingest.py` and `search.py`. Router decides intent before passing text to specific pipelines.
+- **`src/services/backup.py` isolated from bot runtime:** The backup engine (SQLite VACUUM + GitHub REST API) is callable from both the automated async scheduler, the Telegram `/backup` handler, and the Console CLI.
+- **`src/bot/rbac.py` single source of authority:** Unifies role checking for Telegram handlers, callback queries, and command dispatch.
 
 ---
 
 ## Architectural Patterns
 
-### Pattern 1: Two-Phase Ephemeral State Confirmation
+### Pattern 1: Non-Blocking Console Loop within Asyncio Lifecycle
 
-**What:** Never write to the database immediately upon LLM parsing or text extraction. Instead, store the parsed `OrderDraft` into an ephemeral cache with a UUID token, display a confirmation card with buttons (`[Xác nhận tạo đơn]`, `[Huỷ]`), and commit to SQLite only when the user taps confirmation.  
-**When to use:** Crucial for all AI-assisted ingestion and sensitive mutations (cancelling orders, marking orders as "Bom").  
-**Trade-offs:** Requires ephemeral storage in memory; draft expires if user abandons the chat. Eliminates accidental database corruption caused by LLM hallucination or typos.
+**What:** Run an interactive server terminal menu concurrently with python-telegram-bot's long-polling loop inside the same asyncio event loop without freezing update processing or crashing on headless environments.  
+**When to use:** Server-side administration for operators who want local control without sending Telegram messages.  
+**Trade-offs:** Reading `sys.stdin` via `input()` blocks the Python thread. Using `asyncio.to_thread` moves blocking I/O off the main event loop thread. Requires handling environments without a TTY (`sys.stdin.isatty() == False`).
+
+**Implementation:**
 
 ```python
-# src/bot/handlers/ingest.py
-import uuid
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+# main.py
+import asyncio
+import logging
+import sys
+from src.bot.app import build_application
+from src.config import Settings
+from src.console.cli import run_console
+from src.db.connection import get_db_connection
+from src.db.schema import init_db
+from src.services.scheduler import start_backup_scheduler
 
-async def handle_freetext_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    raw_text = update.message.text
-    # 1. Parse via LLM
-    draft = await context.bot_data["llm_service"].extract_order(raw_text)
+logger = logging.getLogger(__name__)
+
+async def main_async() -> None:
+    settings = Settings()
     
-    # 2. Store in ephemeral context using short UUID
-    draft_id = str(uuid.uuid4())[:8]
-    context.user_data[f"draft:{draft_id}"] = draft
+    # 1. Initialize DB schema
+    async with get_db_connection(settings.sqlite_db_path) as db:
+        await init_db(db)
+        
+    # 2. Build PTB Application
+    app = build_application(settings)
     
-    # 3. Present confirmation card
-    receipt_preview = formatters.format_order_preview(draft)
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✅ Xác nhận tạo đơn", callback_data=f"confirm_order:{draft_id}"),
-            InlineKeyboardButton("❌ Huỷ bỏ", callback_data=f"cancel_order:{draft_id}")
-        ]
-    ])
-    await update.message.reply_text(receipt_preview, reply_markup=keyboard, parse_mode="HTML")
+    # 3. Explicit Async Application Lifecycle (Replaces app.run_polling())
+    async with app:
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(drop_pending_updates=True)
+        logger.info("Telegram Bot polling started.")
+
+        # 4. Start background backup scheduler
+        stop_event = asyncio.Event()
+        scheduler_task = asyncio.create_task(
+            start_backup_scheduler(settings, stop_event)
+        )
+
+        # 5. Run Console if interactive TTY is available; else wait on stop_event
+        if sys.stdin.isatty():
+            logger.info("Interactive TTY detected. Launching Console CLI...")
+            try:
+                await run_console(app, settings, stop_event)
+            except Exception:
+                logger.exception("Console CLI terminated unexpectedly")
+        else:
+            logger.info("Non-interactive / daemon environment. Running headless...")
+            await stop_event.wait()
+
+        # 6. Graceful Shutdown
+        stop_event.set()
+        await scheduler_task
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+
+def main() -> None:
+    asyncio.run(main_async())
 ```
 
-### Pattern 2: Schema-Enforced Extraction via Pydantic & 9router
-
-**What:** Direct 9router API to respond with structured JSON adhering strictly to a JSON Schema derived from a Pydantic model.  
-**When to use:** All free-text parsing (order placement text, search queries).  
-**Trade-offs:** Strict schema ensures zero regex parsing bugs on downstream layers. Requires model that respects structured outputs / JSON mode.
-
 ```python
-# src/llm/schemas.py
-from pydantic import BaseModel, Field
-from typing import List, Optional
+# src/console/cli.py
+import asyncio
+import sys
 
-class ExtractedItem(BaseModel):
-    title: str = Field(description="Tên cuốn băng hoặc mặt hàng cassette")
-    quantity: int = Field(default=1, description="Số lượng")
-    unit_price: Optional[int] = Field(default=None, description="Đơn giá nếu có")
+async def read_input(prompt: str) -> str:
+    """Read line from stdin in a background thread to prevent blocking event loop."""
+    sys.stdout.write(prompt)
+    sys.stdout.flush()
+    return await asyncio.to_thread(sys.stdin.readline)
 
-class ExtractedOrder(BaseModel):
-    customer_name: str = Field(description="Tên người nhận hàng")
-    phones: List[str] = Field(description="Danh sách số điện thoại tìm thấy")
-    address: str = Field(description="Địa chỉ giao hàng chi tiết")
-    items: List[ExtractedItem] = Field(description="Danh sách băng cassette khách đặt")
-    total_amount: int = Field(description="Tổng tiền thanh toán (VNĐ)")
-    cod_amount: int = Field(default=0, description="Tiền cần thu hộ khi giao hàng (0 nếu đã CK)")
-    payment_method: str = Field(description="'BANKING' nếu khách chuyển khoản trước, 'COD' nếu thu tiền mặt")
-    notes: Optional[str] = Field(default=None, description="Ghi chú đặc biệt về bài hát, phôi băng hoặc giao hàng")
-```
-
-### Pattern 3: SQLite Repository with Write-Ahead Logging (WAL)
-
-**What:** Configure SQLite with `PRAGMA journal_mode = WAL` and `PRAGMA foreign_keys = ON`. Encapsulate all database interaction inside explicit repository classes.  
-**When to use:** Multi-handler async environment where reads (listing orders, searching) occur concurrently with writes (updating status, inserting orders).  
-**Trade-offs:** WAL mode allows concurrent readers and a writer without `database is locked` errors. Single-file database remains trivial to back up and inspect.
-
-```python
-# src/db/connection.py
-import sqlite3
-from pathlib import Path
-
-def get_connection(db_path: str = "store.db") -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=10.0)
-    conn.execute("PRAGMA journal_mode = WAL;")
-    conn.execute("PRAGMA foreign_keys = ON;")
-    conn.execute("PRAGMA synchronous = NORMAL;")
-    conn.row_factory = sqlite3.Row
-    return conn
-```
-
-### Pattern 4: 1-Tap Ergonomic Clipboard Copy Actions
-
-**What:** Eliminate mobile text selection friction for elderly shop owners. Format order details with Telegram Bot API `CopyTextButton` on modern clients and backtick monospaced text on fallback clients.  
-**When to use:** Order detail cards containing carrier tracking codes, recipient phone numbers, and full delivery addresses.  
-**Trade-offs:** Minimal development cost; dramatically speeds up manual entry into shipping apps (GHTK, ViettelPost, GHN).
-
-```python
-# src/bot/keyboards.py
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
-
-def build_order_copy_keyboard(order_id: int, phone: str, address: str, tracking_code: str | None) -> InlineKeyboardMarkup:
-    buttons = []
-    if phone:
-        buttons.append([InlineKeyboardButton("📞 Sao chép SĐT", copy_text=CopyTextButton(text=phone))])
-    if address:
-        buttons.append([InlineKeyboardButton("🏠 Sao chép Địa chỉ", copy_text=CopyTextButton(text=address))])
-    if tracking_code:
-        buttons.append([InlineKeyboardButton("📦 Sao chép Mã vận đơn", copy_text=CopyTextButton(text=tracking_code))])
-    
-    # State update actions
-    buttons.append([InlineKeyboardButton("🔄 Đổi trạng thái", callback_data=f"status_menu:{order_id}")])
-    return InlineKeyboardMarkup(buttons)
+async def run_console(app, settings, stop_event: asyncio.Event) -> None:
+    while not stop_event.is_set():
+        print("\n=== CASSETTE STORE BOT - SERVER CONSOLE ===")
+        print("1. Trạng thái hệ thống & DB")
+        print("2. Quản lý Admin / Whitelist")
+        print("3. Sao lưu DB lên GitHub ngay")
+        print("4. Danh sách đơn hàng gần đây")
+        print("0. Dừng bot & Thoát")
+        
+        choice = (await read_input("Chọn chức năng: ")).strip()
+        if choice == "1":
+            await handle_status(app, settings)
+        elif choice == "2":
+            await handle_admin_management(settings)
+        elif choice == "3":
+            await handle_manual_backup(settings)
+        elif choice == "0":
+            print("Đang dừng bot an toàn...")
+            stop_event.set()
+            break
 ```
 
 ---
 
-## State Management for Conversational Flows
+### Pattern 2: 3-Way Intent Routing Pipeline (Collision Avoidance)
 
-Telegram bot interactions fall into two categories: **linear wizards** (brittle) vs **stateless message dispatch with ephemeral action tokens** (resilient). For elderly non-tech users, rigid multi-step conversation wizards (`ConversationHandler`) fail because users send out-of-order messages, type greetings, or make mistakes without knowing how to cancel.
+**What:** In incoming text processing, classify intent into **MUTATION**, **SEARCH**, or **CREATE** *before* triggering LLM extraction. This prevents mutation commands (e.g. "Đổi địa chỉ đơn anh Minh") from triggering the new order creation workflow or being misparsed by search.  
+**When to use:** Every incoming free-text message in `handle_text_order`.  
+**Trade-offs:** Adds a deterministic heuristic classification step. Guarantees 0-token cost for obvious intents and eliminates draft creation collisions.
 
-### Architectural Decision: Stateless Action Tokens over ConversationHandler
+```
+Incoming Free-Text Message
+           │
+           ▼
+┌──────────────────────────────────────┐
+│ Active State Check in user_data?     │
+│ (action_state, pending_mutation)     │
+└──────────────────┬───────────────────┘
+                   │ No
+                   ▼
+┌────────────────────────────────────────────────────────┐
+│ Heuristic Intent Router (src/services/router.py)        │
+│ 1. Mutation Pattern Match? (verbs + order cue/fields)  │
+│ 2. Search Pattern Match? (is_search_intent)           │
+│ 3. Fallback: New Order Creation                        │
+└──────┬──────────────────────┬────────────────────┬─────┘
+       │ MUTATION             │ SEARCH             │ CREATE
+       ▼                      ▼                    ▼
+┌──────────────────┐   ┌──────────────────┐  ┌──────────────────┐
+│ Order Mutation   │   │ Text-to-SQL      │  │ Order Extractor  │
+│ Pipeline         │   │ Search Handler   │  │ Preview Card     │
+└──────────────────┘   └──────────────────┘  └──────────────────┘
+```
 
-1. **Order Confirmation Flow:**
-   - User pastes raw order chat.
-   - Bot calls LLM parser -> Generates `draft_id = uuid.uuid4()[:8]`.
-   - Bot writes `draft` to `context.user_data[f"draft:{draft_id}"]`.
-   - Bot renders preview card with inline buttons: `confirm_order:{draft_id}` and `cancel_order:{draft_id}`.
-   - If user taps Confirm: Read draft from `user_data`, write to SQLite in atomic transaction, edit message into confirmed receipt, delete draft from `user_data`.
-   - If user ignores or pastes another order: Old draft silently expires with TTL or is overwritten. Bot remains responsive to every message.
+#### Mutation Verbs & Keywords Heuristic
 
-2. **Tracking Code Update Flow:**
-   - User taps `[✏️ Thêm mã vận đơn]` on order card.
-   - Bot writes `context.user_data["awaiting_tracking_order_id"] = order_id`.
-   - Bot prompts: *"Bác hãy dán mã vận đơn từ app giao hàng vào đây:"* with an inline button `[❌ Huỷ]`.
-   - Next text message from user is checked: if key exists in `user_data`, update order in SQLite, clear state key, return updated order card.
+- **Action Verbs:** `sửa`, `đổi`, `chuyển`, `cập nhật`, `huỷ`, `bỏ`, `gán mã`, `thêm mã`, `hoàn`, `bom`, `đổi giá`, `sửa cod`, `đổi địa chỉ`, `đổi sđt`.
+- **Target Identifiers:** `#\d+`, `đơn \d+`, `đơn vừa tạo`, `đơn mới nhất`, `đơn của <tên>`, or 10-digit phone number.
+- **Target Fields:** `trạng thái`, `địa chỉ`, `sđt`, `ghi chú`, `mã vận đơn`, `cod`, `tiền`.
 
-3. **Natural Language Search Confirmation Flow:**
-   - User types: *"Tìm đơn anh Tuấn mua băng Chế Linh"*
-   - LLM extracts query parameters: `customer_name="Tuấn"`, `tape_title="Chế Linh"`.
-   - Search repository queries DB for candidates.
-   - If multiple candidates: Bot displays a list with preview buttons: `[Đơn #12 - 0912*** - 280k]`, `[Đơn #15 - 0988*** - 150k]`.
-   - If single candidate: Bot asks: *"Có phải đơn của bác **Nguyễn Văn Tuấn** (SĐT ...89) không?"* with `[✅ Đúng đơn này]` / `[❌ Không phải]`.
-   - User confirms -> Bot renders full order inspection card with copy buttons.
+---
+
+### Pattern 3: Five-Stage NL Order Mutation Pipeline
+
+**What:** Complete flow from natural language command to verified database mutation with elderly-friendly visual diff confirmation.  
+**Pipeline:** `Intent Classifier` → `Order Target Resolution` → `LLM Mutation Extractor` → `Confirmation Callback (2-Phase)` → `Atomic DB Update`.
+
+```
+Step 1: Intent Classifier (MUTATION detected)
+   │
+   ▼
+Step 2: Order Target Resolution (Order Search)
+   ├─ Extract target cue: ID (#105), phone (0901...), customer name, or recency ("đơn vừa tạo")
+   ├─ Query SQLite DB for candidate orders:
+   │    ├─ 0 candidates: Reply "Không tìm thấy đơn hàng cần sửa. Bác kiểm tra lại nhé."
+   │    ├─ >1 candidates: Show interactive list of buttons: [Đơn #101] [Đơn #104]
+   │    └─ 1 candidate: Lock target order record.
+   │
+   ▼
+Step 3: LLM Mutation Extractor (Structured Delta)
+   ├─ Send: Target Order JSON Snapshot + User Text to 9router
+   ├─ Receive: Pydantic OrderMutationDelta
+   │    {
+   │      "order_id": 105,
+   │      "status": "SHIPPER_DA_LAY",
+   │      "tracking_code": "VN88291039",
+   │      "shipping_address": null,
+   │      "cod_amount": null
+   │    }
+   │
+   ▼
+Step 4: Interactive Confirmation Callback (Visual Diff Card)
+   ├─ Generate Before/After HTML Diff
+   ├─ Render Inline Keyboard: [✅ Xác nhận sửa | ❌ Huỷ]
+   ├─ Cache pending delta in context.user_data[f"mut:{token}"] (TTL: 120s)
+   │
+   ▼
+Step 5: Database Update & Audit
+   ├─ User taps [✅ Xác nhận sửa]
+   ├─ Execute atomic UPDATE on orders table
+   ├─ If address/phone modified: sync customer record in customers table
+   └─ Update message: "✅ Đã cập nhật thành công đơn hàng #105!"
+```
+
+#### Visual Diff Card Format
+
+```html
+✏️ <b>XÁC NHẬN SỬA ĐƠN HÀNG #105</b>
+👤 <b>Khách hàng:</b> Nguyễn Văn An (<code>0901234567</code>)
+────────────────────
+🔄 <b>Nội dung thay đổi:</b>
+• <b>Trạng thái:</b> ⏳ Chờ làm ➡️ 🚚 <b>Shipper đã lấy</b>
+• <b>Mã vận đơn:</b> [Chưa có] ➡️ <code>VN88291039</code>
+• <b>Địa chỉ:</b> <i>(Giữ nguyên)</i>
+• <b>Tiền COD:</b> <i>(Giữ nguyên: 280.000 đ)</i>
+────────────────────
+Bác kiểm tra kỹ rồi bấm nút bên dưới nhé:
+```
+
+---
+
+### Pattern 4: RBAC Hierarchy with In-Memory Cache & Super Admin Bootstrap
+
+**What:** Two-tier permission model (`SUPER_ADMIN` vs `ADMIN`). Super Admin is bootstrapped from configuration and can manage other admins via Telegram or Console.  
+**When to use:** Multi-user operations where shop staff can manage orders but must not add/remove admins or alter security whitelist.  
+**Trade-offs:** Requires an `admin_users` table in SQLite. Keeping an in-memory `dict[int, str]` in `bot_data` guarantees zero database query latency on every Telegram request.
+
+```sql
+CREATE TABLE IF NOT EXISTS admin_users (
+    telegram_id INTEGER PRIMARY KEY,
+    role TEXT NOT NULL CHECK(role IN ('SUPER_ADMIN', 'ADMIN')),
+    full_name TEXT NOT NULL DEFAULT '',
+    added_by INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### Authority Matrix
+
+| Capability | SUPER_ADMIN | ADMIN | Strangers |
+|------------|:-----------:|:-----:|:---------:|
+| Pass Security Gate (Group -1) | ✅ | ✅ | ❌ (Rejected) |
+| Create / Ingest Orders | ✅ | ✅ | ❌ |
+| Search & View Orders | ✅ | ✅ | ❌ |
+| NL Order Mutation & Status Update | ✅ | ✅ | ❌ |
+| Trigger Manual Backup (/backup) | ✅ | ✅ | ❌ |
+| Add / Remove Admins (/admin add/rm) | ✅ | ❌ | ❌ |
+| Promote / Demote Roles | ✅ | ❌ | ❌ |
+| Access Server Console CLI | ✅ | N/A (Server access) | ❌ |
+
+#### Handler Decorator Example
+
+```python
+# src/bot/rbac.py
+from functools import wraps
+from telegram import Update
+from telegram.ext import ContextTypes
+from src.models.rbac import Role
+
+def require_role(min_role: Role):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            user_id = update.effective_user.id
+            roles: dict[int, str] = context.bot_data.get("user_roles", {})
+            user_role = roles.get(user_id)
+            
+            if not user_role:
+                return  # Blocked by gatekeeper
+            
+            if min_role == Role.SUPER_ADMIN and user_role != Role.SUPER_ADMIN.value:
+                if update.callback_query:
+                    await update.callback_query.answer("⛔ Chỉ Super Admin mới có quyền này!", show_alert=True)
+                elif update.effective_message:
+                    await update.effective_message.reply_text("⛔ Bác không có quyền thực hiện chức năng này (Yêu cầu Super Admin).")
+                return
+            
+            return await func(update, context, *args, **kwargs)
+        return wrapper
+    return decorator
+```
+
+---
+
+### Pattern 5: Safe SQLite WAL Backup via Atomic VACUUM INTO & GitHub REST API
+
+**What:** Snapshot the live SQLite database without blocking concurrent transactions or corrupting uncheckpointed WAL pages, compress it, and commit it to GitHub.  
+**Why standard file copy fails in WAL mode:** SQLite WAL writes active pages into `<db>-wal`. Copying `<db>` alone captures stale state or torn pages.  
+**Solution:** `VACUUM INTO` creates an atomic, consistent, compacted standalone database file containing all transactions committed up to that exact instant, with zero WAL or SHM dependencies.
+
+```
+┌────────────────────────────────────────────────────────┐
+│  Live SQLite DB (WAL Mode)                             │
+│  cassette_store.db + cassette_store.db-wal             │
+└──────────────────────────┬─────────────────────────────┘
+                           │ 1. db.execute("VACUUM INTO ?")
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│  Temp Standalone DB (Zero WAL dependencies)             │
+│  /tmp/backup_20261025_120000.db                        │
+└──────────────────────────┬─────────────────────────────┘
+                           │ 2. gzip.compress()
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│  Compressed Archive (70-85% smaller)                   │
+│  /tmp/backup_20261025_120000.db.gz                     │
+└──────────────────────────┬─────────────────────────────┘
+                           │ 3. httpx.AsyncClient (GitHub REST API)
+                           │ PUT /repos/{owner}/{repo}/contents/backups/{file}
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│  Private GitHub Repository (Safe Cloud Storage)         │
+│  backups/2026-10/backup_20261025_120000.db.gz          │
+└────────────────────────────────────────────────────────┘
+```
+
+#### GitHub REST API Integration Pattern
+
+Instead of invoking shell `git` CLI (which requires SSH keys, local repo config, and risks git lock collisions), use `httpx.AsyncClient` to upload directly via the GitHub Contents API:
+
+```python
+# src/services/backup.py
+import base64
+import gzip
+import os
+import httpx
+from datetime import datetime
+
+async def push_backup_to_github(
+    backup_file_path: str,
+    github_token: str,
+    repo: str,
+    branch: str = "main",
+) -> str:
+    """Read DB, gzip compress, encode base64, and upload via GitHub REST API."""
+    gz_path = f"{backup_file_path}.gz"
+    with open(backup_file_path, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+        f_out.writelines(f_in)
+
+    with open(gz_path, "rb") as f:
+        content_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    filename = os.path.basename(gz_path)
+    date_path = datetime.now().strftime("%Y-%m")
+    api_url = f"https://api.github.com/repos/{repo}/contents/backups/{date_path}/{filename}"
+    
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    payload = {
+        "message": f"chore(backup): automated sqlite backup {filename}",
+        "content": content_b64,
+        "branch": branch,
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.put(api_url, json=payload, headers=headers)
+        resp.raise_for_status()
+
+    # Clean up local temporary files
+    os.remove(backup_file_path)
+    os.remove(gz_path)
+    return filename
+```
 
 ---
 
 ## Data Flow
 
-### 1. Primary Ingestion Flow (Raw Chat to Confirmed DB Order)
+### Request Flow: NL Order Mutation
 
 ```
-[Merchant Telegram Chat]
-         │ (Pastes raw customer chat text)
-         ▼
-[Whitelist Middleware] ───(Unauthorized)───► [Silent Drop / Access Denied]
-         │ (Authorized)
-         ▼
-[Ingest Message Handler]
-         │
-         ▼
-[9router LLM Service] ───(HTTP POST /chat/completions with Pydantic JSON Schema)
-         │
-         ▼ (Returns ExtractedOrder JSON)
-[Ephemeral Cache] ───(Save draft: context.user_data[draft_id])
-         │
-         ▼
-[Message Formatter] ───(Generates HTML Preview Card + Inline Keyboard)
-         │
-         ▼
-[Merchant Telegram Chat] ◄─── (Displays: "Bác kiểm tra lại thông tin đơn hàng...")
-         │
-         │ (Merchant taps [✅ Xác nhận tạo đơn])
-         ▼
-[Callback Query Handler]
-         │ (Fetches draft by draft_id from user_data)
-         ▼
-[CustomerRepository] ───(Find or create Customer, insert Phone & Address)
-         │
-         ▼
-[OrderRepository] ───(Insert Order & OrderItems in SQLite transaction)
-         │
-         ▼
-[Message Formatter] ───(Edit original message into Formal Order Receipt + Copy Buttons)
+[User sends: "Đổi địa chỉ đơn anh Minh sang 45 Lê Lợi"]
+    ↓
+[Group -1: Whitelist & RBAC Gate] ──(Valid ADMIN)──► [Group 0: Text Handler]
+    ↓
+[3-Way Intent Router]
+    ↓ (Matches Mutation Heuristic: verb "Đổi", field "địa chỉ", name "Minh")
+[Order Target Resolver] ──► SQLite Query (unaccent customer_name LIKE '%minh%')
+    ↓ (Found 1 candidate: Order #42)
+[LLM Mutation Extractor (9router)]
+    ↓ (Returns OrderMutationDelta: order_id=42, shipping_address="45 Lê Lợi")
+[Formatters: render_mutation_preview_card]
+    ↓
+[Bot replies with Visual Diff & Confirmation Inline Buttons]
+    ↓
+[User clicks "✅ Xác nhận sửa"]
+    ↓
+[Mutation Callback Handler] ──► aiosqlite UPDATE orders SET shipping_address=?
+    ↓
+[Bot edits message to Success Card with timestamp & updated badge]
 ```
 
-### 2. Natural Language Search & Order Inspection Flow
+### State Management
 
-```
-[Merchant Telegram Chat]
-         │ (Types: "tìm đơn anh Hùng ship về Hải Phòng")
-         ▼
-[Search Handler]
-         │
-         ▼
-[LLM Query Extractor] ───(Extracts: name="Hùng", city="Hải Phòng")
-         │
-         ▼
-[OrderSearchRepository] ───(SQL: SELECT orders JOIN customers WHERE name LIKE %Hùng%...)
-         │
-         ├────────────────────────────────────────┬─────────────────────────────────────┐
-         ▼ (Found 0)                              ▼ (Found 1)                           ▼ (Found > 1)
-[Reply: Không tìm thấy]       [Preview Confirmation Card]                 [Candidate List Buttons]
-                              "Có phải đơn của bác Hùng...?"               [Đơn 101 - 320k] [Đơn 104 - 150k]
-                                         │ (Taps [✅ Xem chi tiết])                 │ (Taps candidate)
-                                         └──────────────────┬───────────────────────┘
-                                                            ▼
-                                               [Full Order Inspection Card]
-                                               - Line items, COD amount, Status badge
-                                               - [📞 Copy Phone] [🏠 Copy Address]
-                                               - [🔄 Cập nhật trạng thái]
-```
-
-### 3. Order Lifecycle Transition Flow
-
-```
-[Merchant taps [🔄 Đổi trạng thái] on Order Card]
-         │
-         ▼
-[Lifecycle Handler]
-         │ (Reads current_status from DB)
-         ▼
-[Lifecycle State Machine] ───(Calculates allowed next transitions)
-         │ (e.g. "Đang làm" -> ["Đã đóng gói", "Huỷ đơn"])
-         ▼
-[Inline Keyboard Builder] ───(Displays allowed action buttons)
-         │
-         ▼
-[Merchant taps: [📦 Đã đóng gói]]
-         │
-         ▼
-[OrderRepository] ───(UPDATE orders SET status = 'Đã đóng gói', updated_at = CURRENT_TIMESTAMP)
-         │
-         ▼
-[Message Formatter] ───(Edit message: Updates badge to "📦 ĐÃ ĐÓNG GÓI", refreshes next buttons)
-```
+- **Ephemeral Drafts:** Unconfirmed mutations stored in `context.user_data["pending_mutation:<token>"]` with 120s TTL. Avoids database pollution if cancelled or abandoned.
+- **RBAC Role Cache:** Cached in `context.bot_data["user_roles"]` dictionary (`telegram_id -> role`). Cache refreshed on every admin mutation command.
+- **Application Lifecycle State:** Shared `asyncio.Event` (`stop_event`) coordinating shutdown across PTB polling, Console CLI, and Backup Scheduler.
 
 ---
 
 ## Scaling Considerations
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| **1 - 100 orders/day** *(Current baseline)* | Single-process Python bot running `sqlite3` in WAL mode on local VPS/mini PC. Local SQLite handles all queries in < 2ms. Bot polling mode is fully sufficient. |
-| **100 - 1,000 orders/day** | Keep single-node SQLite. Ensure composite indexes on `(created_at, status)` and `customer_id`. Retain daily database backup file to Google Drive or S3 using simple cron script. |
-| **1,000+ orders/day** *(Far beyond single shop)* | Migrate from SQLite to PostgreSQL. Switch bot from Long Polling to Telegram Webhook behind Nginx. Offload LLM parsing jobs to Redis-backed task queue (Celery/ARQ). |
+| Scale | Architecture Status | Actions Needed |
+|-------|---------------------|----------------|
+| **Single Shop (< 100 orders/day)** | **Current Architecture** | SQLite WAL mode + local in-memory caching easily handles 100-500 transactions/second. Zero external services needed. |
+| **Growing Shop (100 - 1,000 orders/day)** | **Well within limits** | GitHub backup size ~5-10MB/month gzipped. Weekly VACUUM keeps SQLite lean. In-memory role dict takes <100KB. |
+| **Enterprise / Multi-Branch (10K+ orders/day)** | **Out of Scope** | Migrating to Postgres/RDS and separating bot polling from worker queues. Not applicable for cassette shop domain. |
 
-### Scaling & Failure Priorities
+### Scaling & Safety Priorities
 
-1. **First bottleneck: 9router / LLM Gateway Latency & Rate Limits.** LLM completion takes 1.5s - 4.0s. Handlers must run async (`AsyncOpenAI`) to ensure the Telegram bot event loop never blocks during extraction. Display a transient typing indicator (`send_chat_action("typing")`) so the user knows processing is active.
-2. **Second bottleneck: SQLite File Lock on Concurrent Writes.** If multiple handlers write simultaneously, standard SQLite can raise `OperationalError: database is locked`. **Solution:** Enable WAL mode (`PRAGMA journal_mode = WAL;`) and set a connection busy timeout (`timeout=10.0`).
+1. **Backup file growth:** Use `gzip` compression and folder partitioning (`backups/YYYY-MM/`) to prevent GitHub repository file-count limits.
+2. **Terminal state guards:** Ensure orders in `COMPLETED`, `HUY_DON`, or `BOM_HANG` require explicit override confirmation before allowing mutations.
+3. **LLM Gateway rate limits:** The 2-tier fallback (structured parse → json_object) already proven in v1.0 handles 9router provider instability.
 
 ---
 
-## Anti-Patterns to Avoid
+## Anti-Patterns
 
-### Anti-Pattern 1: Direct Database Commit Without User Confirmation
-- **What people do:** Write directly to `orders` and `customers` as soon as the LLM returns JSON.
-- **Why it's wrong:** LLMs make mistakes on ambiguous Vietnamese texts (e.g., confusing sender address with receiver address, splitting composite numbers, or mistaking tape titles for customer notes). Once committed, correcting bad data on Telegram mobile UI is frustrating for non-tech users.
-- **Do this instead:** Strictly adhere to the Two-Phase Ephemeral State Confirmation pattern. Every LLM output is presented as a draft card with explicit `[Xác nhận]` and `[Huỷ]` buttons.
+### Anti-Pattern 1: Direct File Copy of SQLite DB in WAL Mode
 
-### Anti-Pattern 2: Multi-Step Conversational Wizards (`ConversationHandler`)
-- **What people do:** Build a rigid step-by-step form: Step 1 (Ask name) -> Step 2 (Ask phone) -> Step 3 (Ask address) -> Step 4 (Ask cassettes)...
-- **Why it's wrong:** High cognitive burden on elderly operators. If they make a mistake in step 2, they get stuck, can't navigate back, and abandon the bot.
-- **Do this instead:** One single free-text paste -> LLM extracts all entities at once -> 1-tap confirmation.
+**What:** Using `shutil.copyfile("cassette_store.db", "backup.db")` while the bot is running.  
+**Why it's wrong:** In WAL mode, transactions are written to `cassette_store.db-wal`. Copying only `.db` produces an incomplete, corrupt, or inconsistent snapshot missing the latest orders.  
+**Do this instead:** Run `VACUUM INTO 'backup.db'` on the open `aiosqlite` connection. It guarantees an atomic, consistent, clean single-file snapshot.
 
-### Anti-Pattern 3: Bloated Callback Data Exceeding Telegram 64-Byte Limit
-- **What people do:** Serialize raw JSON or long strings into inline button `callback_data` (e.g. `callback_data="confirm_order:name=Tuan&phone=0912345678&total=300000"`).
-- **Why it's wrong:** Telegram Bot API limits `callback_data` strictly to 1-64 bytes. Long strings trigger silent failures or API exceptions.
-- **Do this instead:** Store the payload in `context.user_data` or cache keyed by an 8-character UUID or integer ID. Button `callback_data` carries only the action prefix and ID (e.g., `cf_ord:a1b2c3d4`).
+### Anti-Pattern 2: Running Blocking `input()` on the Asyncio Event Loop
 
-### Anti-Pattern 4: Coupling Database Connection with Telegram Handlers
-- **What people do:** Create a single global `sqlite3.connect` object shared across all async handlers or open/close connections inside handler functions without context managers.
-- **Why it's wrong:** Multi-threaded async event loops sharing raw SQLite connection objects cause thread affinity errors (`sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread`).
-- **Do this instead:** Use a connection factory or repository methods that manage short-lived connection lifetimes per operation, or utilize an async wrapper (`aiosqlite`).
+**What:** Calling standard Python `input()` inside an async console function.  
+**Why it's wrong:** `input()` halts the OS thread waiting for user keystrokes. In Python asyncio, this freezes the single-threaded event loop, blocking all Telegram bot polling and background tasks until the user hits Enter.  
+**Do this instead:** Offload input reading to worker thread: `await asyncio.to_thread(sys.stdin.readline)`.
+
+### Anti-Pattern 3: Greedy Fallback to Order Creation on Free-Text
+
+**What:** Assuming any text message that isn't a search query must be a new order.  
+**Why it's wrong:** Users typing "Huỷ đơn #12" or "Đổi sđt khách Nam" get prompted with "ĐƠN HÀNG MỚI (Xem trước)" because LLM tries to hallucinate a new order from mutation text.  
+**Do this instead:** Implement a 3-way intent router before LLM ingestion. Route mutation commands to the mutation pipeline.
+
+### Anti-Pattern 4: Hardcoding Admin IDs Exclusively in `.env`
+
+**What:** Storing all admin Telegram IDs only in a `.env` comma-separated string.  
+**Why it's wrong:** Adding or removing an admin requires SSH access, editing files, and restarting the bot container, causing downtime.  
+**Do this instead:** Use `.env` only for the bootstrap `SUPER_ADMIN_ID`. Store all active admins in SQLite `admin_users` table with in-memory caching. Allow Super Admin to add/remove admins dynamically via Telegram `/admin` and Console CLI.
 
 ---
 
@@ -419,84 +554,53 @@ Telegram bot interactions fall into two categories: **linear wizards** (brittle)
 
 ### External Services
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| **Telegram Bot API** | `python-telegram-bot` (v20+ async) via HTTPS Long Polling (`ApplicationBuilder().token(...).build()`). | No public domain or reverse proxy required; runs behind standard home or VPS NAT. |
-| **9router LLM Gateway** | `openai.AsyncOpenAI(base_url="https://9router.example/v1", api_key=...)`. | Model ID configurable via `.env` (`LLM_MODEL_NAME`). Must support Vietnamese comprehension and JSON mode. |
+| Service | Protocol | Integration Pattern | Error Handling / Gotchas |
+|---------|----------|---------------------|--------------------------|
+| **9router (OpenAI Gateway)** | HTTPS REST / JSON | `AsyncOpenAI` client with structured outputs (`parse` + fallback `json_object`). | 15s timeout, polite error message to user, fallback to manual button action. |
+| **Telegram Bot API** | HTTPS Long-Polling | `python-telegram-bot` v20+ async `Application`. | Automated reconnect on network drop. Non-blocking callback query answering. |
+| **GitHub REST API** | HTTPS REST / JSON | `httpx.AsyncClient` PUT `/repos/{owner}/{repo}/contents/{path}`. | Requires Personal Access Token with `contents:write`. Gzip files to minimize transfer payload. |
 
 ### Internal Boundaries
 
 | Boundary | Communication Pattern | Notes |
-|----------|-----------------------|-------|
-| **Bot Handler ↔ Security Middleware** | Pre-handler inspection of `update.effective_user.id`. | Rejects unauthorized users before triggering any LLM or DB work. |
-| **Bot Handler ↔ LLM Service** | Async method invocation passing raw text string, returning Pydantic model (`ExtractedOrder`). | Handler catches `LLMParseError` and displays a gentle *"Không thể đọc tin nhắn, bác hãy kiểm tra lại"* message. |
-| **Bot Handler ↔ Domain Repositories** | Function calls passing domain models / primitives, receiving validated objects. | Handlers do not execute SQL directly. |
-| **Handler ↔ Ephemeral Cache** | Read/write to `context.user_data` with prefix keys and auto-cleanup. | Isolates user draft state per Telegram chat. |
+|----------|----------------------|-------|
+| **Console CLI ↔ Telegram Bot App** | Shared `Application` instance & `stop_event` | Console inspects `app.bot_data` and controls shutdown gracefully. |
+| **Intent Router ↔ Mutation / Ingest / Search** | Direct function call dispatch | Pure routing decision based on message characteristics. |
+| **RBAC Security Gate ↔ Handlers** | Group -1 filter + `@require_role` decorator | Halts execution before Group 0 if unauthorized; attaches role to `user_data`. |
+| **Backup Scheduler ↔ SQLite DB** | Background `asyncio.Task` calling `VACUUM INTO` | Zero lock contention with concurrent order writes due to SQLite WAL isolation. |
 
 ---
 
 ## Suggested Build Order & Dependencies
 
-To ensure zero blocked development cycles, components must be constructed in strict topological dependency order:
-
 ```
-[Phase 1: Foundation]
-  ├── Settings & Configuration (.env, Pydantic settings)
-  └── SQLite Schema & Connection (DDL tables, WAL mode, migrations)
-       │
-       ▼
-[Phase 2: Repositories & Domain Engine]
-  ├── CustomerRepository & OrderRepository (CRUD tests)
-  └── Lifecycle State Machine (Transition logic & validation)
-       │
-       ▼
-[Phase 3: LLM Extraction Engine]
-  ├── 9router Client configuration
-  ├── Pydantic extraction schemas
-  └── Vietnamese few-shot prompts & parser verification
-       │
-       ▼
-[Phase 4: Telegram Presentation Core]
-  ├── Whitelist security middleware
-  ├── Persistent Reply Keyboard & command router
-  └── Formatters (Order preview card, copy buttons, badges)
-       │
-       ▼
-[Phase 5: Ingestion & Confirmation Workflow]
-  ├── Free-text message handler -> LLM parser
-  ├── Ephemeral draft cache
-  └── Confirmation callback router -> DB commit
-       │
-       ▼
-[Phase 6: Order Lifecycle & Tracking Updates]
-  ├── Order detail view with 1-tap copy buttons
-  ├── Inline status transition buttons
-  └── Tracking code prompt & update handler
-       │
-       ▼
-[Phase 7: Query & Natural Language Search]
-  ├── Date-filtered listings (Hôm nay, Hôm qua, Ngày cụ thể)
-  └── Natural language search with match confirmation
+Wave 1: Foundation (RBAC & Database Schema)
+├── 1. Add admin_users table in src/db/schema.py & queries in src/db/admin_users.py
+├── 2. Implement Super Admin bootstrap from config.py in app initialization
+└── 3. Implement src/bot/rbac.py with @require_role decorators & update whitelist_gate
+
+Wave 2: Concurrency & Infrastructure (Console & Backup)
+├── 4. Refactor main.py to explicit async lifecycle (app.initialize/start/polling)
+├── 5. Implement non-blocking Console CLI (src/console/) with TTY auto-detection
+├── 6. Implement SQLite VACUUM INTO + GitHub REST API client (src/services/backup.py)
+└── 7. Implement background periodic backup scheduler (src/services/scheduler.py)
+
+Wave 3: NL Order Mutation Pipeline
+├── 8. Build 3-Way Intent Router (src/services/router.py) to prevent ingest collisions
+├── 9. Implement Order Target Resolver & Pydantic OrderMutationDelta schema
+├── 10. Implement 2-phase Visual Diff card & confirmation callbacks (src/bot/handlers/mutation.py)
+└── 11. Add Telegram Admin management commands (/admin, /backup) in src/bot/handlers/admin.py
 ```
-
-### Build Order Rationale
-
-1. **Database & Repositories first:** Handlers and LLM outputs have nowhere to persist without a rock-solid data model. Building and testing SQLite repositories with pytest guarantees data integrity before any UI exists.
-2. **LLM Extraction second:** Allows benchmarking prompt extraction accuracy on real Vietnamese cassette chat samples before writing Telegram handler code.
-3. **Bot Shell & Security third:** Guarantees that unauthorized Telegram users cannot access the bot while development and testing are ongoing.
-4. **Ingestion & Lifecycle fourth and fifth:** Implements the core business value (paste chat -> confirm -> advance state).
-5. **Search & Analytics last:** Natural language search is an enhancement built on top of an already populated database and proven LLM infrastructure.
 
 ---
 
 ## Sources
 
-- [Telegram Bot API Official Documentation (v7.8+)](https://core.telegram.org/bots/api) — CopyTextButton & Inline Keyboards.
-- [python-telegram-bot Documentation](https://docs.python-telegram-bot.org/) — ApplicationBuilder, Handler architecture, user_data context.
-- [SQLite Write-Ahead Logging (WAL) Documentation](https://www.sqlite.org/wal.html) — Concurrency and reliability guidelines.
-- [OpenAI Structured Outputs Guide](https://platform.openai.com/docs/guides/structured-outputs) — Schema validation via Pydantic.
-- [FEATURES.md](./FEATURES.md) — Cassette Store feature requirements and table stakes.
+- [SQLite Official Documentation - VACUUM INTO](https://www.sqlite.org/lang_vacuum.html#vacuuminto) — verified atomic backup snapshot behavior in WAL mode.
+- [python-telegram-bot Documentation - Application Lifecycle](https://docs.python-telegram-bot.org/en/v22.8/telegram.ext.application.html) — verified manual async lifecycle (`initialize`, `start`, `updater.start_polling`, `stop`).
+- [GitHub REST API Documentation - Create or update file contents](https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents) — verified Base64 PUT endpoint.
+- [Python asyncio Documentation - Running in Threads](https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread) — verified non-blocking standard input reading.
 
 ---
-*Architecture research for: Cassette Store Telegram Chatbot*  
-*Researched: 2026-10-24*
+*Architecture research for: Cassette Store Telegram Chatbot (Milestone v1.1)*  
+*Researched: 2026-10-25*

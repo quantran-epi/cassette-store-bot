@@ -1,0 +1,1 @@
+{"content":"prompt_toolkit provides async-native prompt sessions with patch_stdout context manager, preventing background Telegram logging from corrupting terminal input lines.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-10-25T03:38:49.812Z","ttl":86400000,"kind":"web"}

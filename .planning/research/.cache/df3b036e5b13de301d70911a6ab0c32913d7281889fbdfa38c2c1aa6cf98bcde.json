@@ -1,0 +1,1 @@
+{"content":"SQLite VACUUM INTO produces an atomic, point-in-time standalone database backup file from WAL mode without locking concurrent readers or writers; native in SQLite 3.27+.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-10-25T03:38:50.076Z","ttl":86400000,"kind":"web"}

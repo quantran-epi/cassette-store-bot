@@ -1,0 +1,1 @@
+{"content":"GitHub REST API Contents endpoint PUT /repos/{owner}/{repo}/contents/{path} accepts base64-encoded files up to 100MB via httpx AsyncClient with Bearer token authentication, avoiding Git CLI or PyGithub dependencies.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-10-25T03:38:50.321Z","ttl":86400000,"kind":"web"}
