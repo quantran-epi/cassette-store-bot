@@ -38,6 +38,7 @@ Người dùng gửi tin nhắn chat tự nhiên chứa ý định chỉnh sửa
 - **D-16:** Lưu người tạo đơn & Lịch sử sửa đơn:
   - Bổ sung 2 cột `created_by_user_id` (INTEGER) và `created_by_name` (TEXT) vào bảng `orders`.
   - Luồng tạo đơn mới (`confirm_order_callback`): lưu `effective_user.id` và `effective_user.full_name` vào bản ghi đơn hàng mới, đồng thời ghi 1 bản ghi vào `order_history` (action `CREATE`).
+  - Thẻ chi tiết đơn hàng (`render_order_detail_card`): hiển thị người tạo ngay tại dòng thời gian theo format `🕒 Thời gian: 25/10/2026 14:30 (bởi Quan Tran)`. Với đơn cũ không có dữ liệu người tạo thì không hiện đoạn `(bởi ...)`.
   - Tạo bảng `order_history (id, order_id, user_id, user_name, action, changes_json, created_at)` ghi nhận chi tiết mọi thao tác tạo mới và sửa đổi (ai thực hiện, lúc nào, thay đổi trường gì từ giá trị cũ sang giá trị mới).
 - **D-17:** Xử lý và thông báo khi có xung đột: Khi phát hiện optimistic lock mismatch, bot đọc bản ghi mới nhất từ `order_history` và thông báo rõ: "⚠️ Đơn vừa được [Tên/ID] sửa nội dung [Chi tiết thay đổi] lúc [Giờ]!".
 - **D-18:** Điều hướng sau xung đột: Hiển thị thông báo xung đột kèm thẻ chi tiết đơn mới nhất (kèm các nút thao tác) và dừng thao tác sửa cũ để tránh ghi đè nhầm lên thay đổi của người khác.
