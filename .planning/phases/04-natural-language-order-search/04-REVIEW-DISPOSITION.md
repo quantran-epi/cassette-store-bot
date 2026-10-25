@@ -5,19 +5,19 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Overly Broad Search Intent Regex Intercepts Order Ingestion and Drops Orders"
   - id: WR-01
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "`_get_active_db_context` Does Not Inspect `app_context.settings`"
   - id: WR-02
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "Missing `BadRequest` (\"Message is not modified\") Suppression in `sch_bk`"
   - id: WR-03
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "Conversational Search Patterns Miss Multiline Queries Due to Missing `re.DOTALL`"
   - id: IN-01
     severity: info
@@ -27,19 +27,19 @@ findings:
     severity: info
     disposition: open
     title: "Trailing Empty Lines in Test File"
-open: 6
+open: 2
 total: 6
-recorded: 2026-10-25T01:53:06.897Z
+recorded: 2026-10-25T02:33:00.853Z
 ---
 
 # Phase 04: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| WR-03 | warning | open | - |
+| CR-01 | critical | fixed | 04-REVIEW-FIX.md |
+| WR-01 | warning | fixed | 04-REVIEW-FIX.md |
+| WR-02 | warning | fixed | 04-REVIEW-FIX.md |
+| WR-03 | warning | fixed | 04-REVIEW-FIX.md |
 | IN-01 | info | open | - |
 | IN-02 | info | open | - |
 
