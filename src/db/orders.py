@@ -326,61 +326,31 @@ ACTIVE_MUTATION_STATUSES = (
 TERMINAL_MUTATION_STATUSES = ("DA_GIAO", "BOM_HANG", "HUY_DON")
 
 
-async def find_orders_for_mutation(
+async def find_orders_by_multi_token(
     db: aiosqlite.Connection,
-    order_id: int | None = None,
-    keyword: str | None = None,
-    phone: str | None = None,
+    tokens: list[str],
     limit: int = 5,
 ) -> list[Order]:
-    """Retrieve orders for mutation prioritizing active lifecycle states before completed ones (D-07)."""
-    if order_id is not None:
-        ord_obj = await get_order_by_id(db, order_id)
-        return [ord_obj] if ord_obj else []
+    """Retrieve orders where all substantive tokens match within composite fields."""
+    if not tokens:
+        return []
 
     conds: list[str] = []
     params: list[str] = []
-    if phone:
-        conds.append("customer_phone LIKE ?")
-        params.append(f"%{phone.strip()}%")
-    elif keyword:
-        from src.db.connection import remove_accents
-        kw_clean = remove_accents(keyword.strip().lower())
-        tokens = [t for t in re.split(r"\s+", kw_clean) if t]
 
-        # 1. Strip leading conversational fillers ('khách', 'đơn', 'của', 'cho', 'giao')
-        PREFIX_FILLERS = {"khach", "don", "cua", "cho", "giao"}
-        prefix_tokens = list(tokens)
-        while prefix_tokens and prefix_tokens[0] in PREFIX_FILLERS:
-            prefix_tokens.pop(0)
+    # Composite searchable text across all identifiable order fields
+    searchable_expr = (
+        "(customer_name || ' ' || customer_phone || ' ' || "
+        "shipping_address || ' ' || items_text || ' ' || COALESCE(notes, ''))"
+    )
 
-        # Build candidate search phrases in priority order (full stripped phrase first, e.g. 'bac ba', 'anh ha')
-        search_phrases: list[str] = []
-        if prefix_tokens:
-            search_phrases.append(" ".join(prefix_tokens))
+    for tok in tokens:
+        conds.append(
+            f"(word_match({searchable_expr}, ?) = 1 OR customer_phone LIKE ?)"
+        )
+        params.extend([tok, f"%{tok}%"])
 
-        # Core name without honorifics if available and distinct (e.g. 'ha' from 'anh ha')
-        HONORIFIC_FILLERS = {"anh", "chi", "bac", "ong", "ba", "chu", "co", "em"}
-        core_tokens = [t for t in prefix_tokens if t not in HONORIFIC_FILLERS]
-        if core_tokens:
-            core_phrase = " ".join(core_tokens)
-            if core_phrase not in search_phrases:
-                search_phrases.append(core_phrase)
-
-        if not search_phrases and kw_clean:
-            search_phrases.append(kw_clean)
-
-        kw_subconds: list[str] = []
-        for phrase in search_phrases:
-            kw_subconds.append(
-                "(unaccent(customer_name) LIKE ? OR customer_phone LIKE ?)"
-            )
-            params.extend([f"%{phrase}%", f"%{phrase}%"])
-
-        if kw_subconds:
-            conds.append(f"({' OR '.join(kw_subconds)})")
-
-    where_filter = f"AND ({' AND '.join(conds)})" if conds else ""
+    where_filter = f"AND ({' AND '.join(conds)})"
 
     # 1. Fetch active orders
     placeholders_active = ",".join(f"'{s}'" for s in ACTIVE_MUTATION_STATUSES)
@@ -409,6 +379,80 @@ async def find_orders_for_mutation(
             results.extend([_row_to_order(r) for r in term_rows])
 
     return results
+
+
+async def find_orders_for_mutation(
+    db: aiosqlite.Connection,
+    order_id: int | None = None,
+    keyword: str | None = None,
+    phone: str | None = None,
+    limit: int = 5,
+) -> list[Order]:
+    """Retrieve orders for mutation prioritizing active lifecycle states before completed ones (D-07)."""
+    if order_id is not None:
+        ord_obj = await get_order_by_id(db, order_id)
+        return [ord_obj] if ord_obj else []
+
+    if phone:
+        conds = ["customer_phone LIKE ?"]
+        params = [f"%{phone.strip()}%"]
+        where_filter = f"AND ({' AND '.join(conds)})"
+
+        placeholders_active = ",".join(f"'{s}'" for s in ACTIVE_MUTATION_STATUSES)
+        active_query = f"""
+            SELECT * FROM orders
+            WHERE status IN ({placeholders_active}) {where_filter}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+        """
+        async with db.execute(active_query, (*params, limit)) as cursor:
+            active_rows = await cursor.fetchall()
+            results = [_row_to_order(r) for r in active_rows]
+
+        remaining = limit - len(results)
+        if remaining > 0:
+            placeholders_term = ",".join(f"'{s}'" for s in TERMINAL_MUTATION_STATUSES)
+            term_query = f"""
+                SELECT * FROM orders
+                WHERE status IN ({placeholders_term}) {where_filter}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+            """
+            async with db.execute(term_query, (*params, remaining)) as cursor:
+                term_rows = await cursor.fetchall()
+                results.extend([_row_to_order(r) for r in term_rows])
+        return results
+
+    if keyword:
+        from src.db.connection import remove_accents
+        kw_clean = remove_accents(keyword.strip().lower())
+        tokens = [t for t in re.split(r"\s+", kw_clean) if t]
+
+        # 1. Strip leading conversational fillers ('khách', 'đơn', 'của', 'cho', 'giao')
+        PREFIX_FILLERS = {"khach", "don", "cua", "cho", "giao"}
+        while tokens and tokens[0] in PREFIX_FILLERS:
+            tokens.pop(0)
+
+        # Build candidate token lists to try:
+        # Candidate A: Full stripped tokens (preserves honorifics like 'bac ba', 'anh ha')
+        # Candidate B: Substantive tokens without honorifics (e.g. 'ha' or 'ba' or 'tuan' 'gia' 'lam')
+        HONORIFIC_FILLERS = {"anh", "chi", "bac", "ong", "ba", "chu", "co", "em"}
+        substantive_tokens = [t for t in tokens if t not in HONORIFIC_FILLERS]
+
+        # If tokens had honorifics and substantive tokens remain distinct (e.g. ['anh', 'ha']):
+        # If substantive tokens alone match, check if full phrase matches more specifically
+        if tokens:
+            matches = await find_orders_by_multi_token(db, tokens, limit=limit)
+            if matches:
+                return matches
+
+        if substantive_tokens and substantive_tokens != tokens:
+            return await find_orders_by_multi_token(db, substantive_tokens, limit=limit)
+
+        if not tokens and kw_clean:
+            return await find_orders_by_multi_token(db, [kw_clean], limit=limit)
+
+    return []
 
 
 async def mutate_order_with_lock(
@@ -495,4 +539,24 @@ async def mutate_order_with_lock(
 
     fresh_order = await get_order_by_id(db, order_id)
     return True, changes, fresh_order
+
+
+__all__ = [
+    "create_order",
+    "get_order_by_id",
+    "update_order_status",
+    "update_order_tracking",
+    "update_order_fields",
+    "list_orders_by_date",
+    "count_orders_by_date",
+    "list_orders_by_status",
+    "get_customer_order_stats",
+    "record_order_history",
+    "find_orders_by_multi_token",
+    "find_orders_for_mutation",
+    "mutate_order_with_lock",
+    "ACTIVE_MUTATION_STATUSES",
+    "TERMINAL_MUTATION_STATUSES",
+]
+
 
