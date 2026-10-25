@@ -112,7 +112,7 @@ Plans:
 - [x] 04-02-PLAN.md — Giao diện tra cứu đơn hàng (menu 2x2, dual-trigger routing), thẻ xác nhận 2-phase confirmation & điều hướng bảo toàn ngữ cảnh.
 
 **Wave 3 (Gap Closure)** *(blocked on Wave 2 completion)*
-- [ ] 04-03-PLAN.md — Khắc phục kết nối DB động trong search handler và mở rộng nhận diện câu hỏi tìm kiếm tự nhiên (Gap G-04-3).
+- [x] 04-03-PLAN.md — Khắc phục kết nối DB động trong search handler và mở rộng nhận diện câu hỏi tìm kiếm tự nhiên (Gap G-04-3).
 
 ## Progress
 
@@ -124,4 +124,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation, Persistence & Security Whitelist | 3/3 | Complete    | 2026-10-24 |
 | 2. LLM Ingestion & Interactive Confirmation | 2/2 | Complete    | 2026-10-24 |
 | 3. Ergonomic Order Management & Low-Tech Actions | 3/3 | Complete    | 2026-10-24 |
-| 4. Natural Language Order Search | 2/3 | In Progress | - |
+| 4. Natural Language Order Search | 3/3 | Complete    | 2026-10-25 |

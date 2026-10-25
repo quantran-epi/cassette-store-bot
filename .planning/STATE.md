@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 04
-current_plan: 04-03
-status: in_progress
-stopped_at: Gap closure 04-03 planned
-last_updated: "2026-10-25T08:50:00.000Z"
+current_phase_name: Natural Language Order Search
+current_plan: 3
+status: complete
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-10-25T01:50:00.000Z"
 last_activity: 2026-10-25
-last_activity_desc: Plan 04-03 created for gap G-04-3
-state_head: 325943a
+last_activity_desc: Gap closure 04-03 complete
+state_head: 25532e2a60037e775133fb8050f468e690dbf9fd
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
 milestone_name: milestone
 ---
 
@@ -25,23 +25,23 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-24)
 
 **Core value:** Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
-**Current focus:** Phase 04 — Natural Language Order Search (Gap Closure)
+**Current focus:** Phase 04 — Natural Language Order Search (Complete)
 
 ## Current Position
 
-Phase: 04
-Current Plan: 04-03
+Phase: 04 (Natural Language Order Search) — COMPLETE
+Current Plan: 3
 Total Plans in Phase: 3
-Status: In progress (Gap closure)
-Last activity: 2026-10-25 — Plan 04-03 created for gap G-04-3
+Status: Phase 04 Complete
+Last activity: 2026-10-25 — Gap closure 04-03 complete
 
-Progress: [█████████░] 91%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 0 min
 - Total execution time: 0.0 hours
 
@@ -52,7 +52,7 @@ Progress: [█████████░] 91%
 | 1. Foundation, Persistence & Security Whitelist | - | - | - |
 | 2. LLM Ingestion & Interactive Confirmation | - | - | - |
 | 3. Ergonomic Order Management & Low-Tech Actions | - | - | - |
-| 4. Natural Language Order Search | - | - | - |
+| 4. Natural Language Order Search | 3 | - | - |
 | 01 | 3 | - | - |
 | 02 | 2 | - | - |
 | 03 | 3 | - | - |
@@ -72,6 +72,8 @@ Progress: [█████████░] 91%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- [Phase 04-03]: Adopt _get_active_db_context in search.py matching orders.py and callbacks.py to safely resolve SQLite connection when bot_data['db'] is None
+- [Phase 04-03]: Broaden is_search_intent with SEARCH_CONVERSATIONAL_PATTERNS to capture questions with 'đã mua...chưa nhỉ', 'mấy đơn', 'có mua...không' without interfering with phone number order drafts
 - [Roadmap]: Nhóm 19 yêu cầu v1 thành 4 phase theo cấu hình granularity coarse (3-5 phases). Phase 1 (Nền tảng & Bảo mật), Phase 2 (LLM Ingestion & Xác nhận), Phase 3 (Quản trị vòng đời đơn & UX phím bấm), Phase 4 (Tìm kiếm đơn bằng ngôn ngữ tự nhiên).
 - [Architecture]: Sử dụng SQLite WAL mode + busy timeout 5000ms để chống concurrency file lock trên async Telegram handler.
 - [UX]: Áp dụng xác nhận 2 pha (preview card kèm nút xác nhận) cho cả khâu tạo đơn (Phase 2) và tìm kiếm tự nhiên (Phase 4).
@@ -94,6 +96,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-24T17:20:47.284Z
-Stopped at: Phase 04 complete — all phases complete
-Resume file: .planning/phases/04-natural-language-order-search/04-CONTEXT.md
+Last session: 2026-10-25T01:50:00.000Z
+Stopped at: Completed 04-03-PLAN.md
+Resume file: None
+
