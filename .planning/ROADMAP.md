@@ -41,7 +41,7 @@
 **Plans**: 2 plansPlans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Foundation persistence, RBAC role decorator, and ring buffer log handler (RBAC-01, RBAC-02, RBAC-05)
+- [x] 05-01-PLAN.md — Foundation persistence, RBAC role decorator, and ring buffer log handler (RBAC-01, RBAC-02, RBAC-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -102,7 +102,7 @@
 | 2. LLM Ingestion & Interactive Confirmation | v1.0 | 2/2 | Completed | 2026-10-24 |
 | 3. Ergonomic Order Management & Low-Tech Actions | v1.0 | 3/3 | Completed | 2026-10-24 |
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
-| 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 0/2 | Not started | - |
+| 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 1/2 | In progress | - |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 0/TBD | Not started | - |
 | 7. Natural Language Order Mutation Pipeline | v1.1 | 0/TBD | Not started | - |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |

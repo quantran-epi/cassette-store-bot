@@ -15,11 +15,11 @@
 
 ### Role-Based Access Control & Telegram Admin Suite (RBAC)
 
-- [ ] **RBAC-01**: Hệ thống lưu trữ danh sách quản trị viên trong bảng `admin_users` với 2 cấp độ: `SUPER_ADMIN` và `ADMIN`, neo cứng `SUPER_ADMIN_ID` gốc trong cấu hình `.env` để chống tự khoá
-- [ ] **RBAC-02**: Decorator phân quyền `@require_role` kiểm soát chặt chẽ cả lệnh gõ (`/admin`, `/backup`, `/logs`) lẫn các nút bấm `CallbackQuery` để chống leo thang đặc quyền
+- [x] **RBAC-01**: Hệ thống lưu trữ danh sách quản trị viên trong bảng `admin_users` với 2 cấp độ: `SUPER_ADMIN` và `ADMIN`, neo cứng `SUPER_ADMIN_ID` gốc trong cấu hình `.env` để chống tự khoá
+- [x] **RBAC-02**: Decorator phân quyền `@require_role` kiểm soát chặt chẽ cả lệnh gõ (`/admin`, `/backup`, `/logs`) lẫn các nút bấm `CallbackQuery` để chống leo thang đặc quyền
 - [ ] **RBAC-03**: Quản trị viên có thể mở menu `/admin` trên Telegram để xem trạng thái hệ thống (bot, DB, LLM) và cấu hình chuyển đổi model LLM 9router trực tiếp
 - [ ] **RBAC-04**: Quản trị viên trên Telegram có thể quản lý whitelist người dùng (xem danh sách, thêm mới, xoá Telegram ID khỏi whitelist) với hiệu lực tức thì
-- [ ] **RBAC-05**: Super Admin có thể xem log gần nhất qua lệnh `/logs` (ring buffer 25-50 dòng định dạng `<pre>` HTML) trực tiếp trên Telegram mà không cần truy cập terminal
+- [x] **RBAC-05**: Super Admin có thể xem log gần nhất qua lệnh `/logs` (ring buffer 25-50 dòng định dạng `<pre>` HTML) trực tiếp trên Telegram mà không cần truy cập terminal
 
 ### Telegram Database Backup Engine (BKP)
 
@@ -60,11 +60,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RBAC-01 | Phase 5 | Pending |
-| RBAC-02 | Phase 5 | Pending |
+| RBAC-01 | Phase 5 | Validated |
+| RBAC-02 | Phase 5 | Validated |
 | RBAC-03 | Phase 5 | Pending |
 | RBAC-04 | Phase 5 | Pending |
-| RBAC-05 | Phase 5 | Pending |
+| RBAC-05 | Phase 5 | Validated |
 | BKP-01 | Phase 6 | Pending |
 | BKP-02 | Phase 6 | Pending |
 | BKP-03 | Phase 6 | Pending |
