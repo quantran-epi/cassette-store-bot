@@ -8,6 +8,16 @@ Chatbot Telegram phục vụ quản lý đơn hàng và khách hàng cho shop b�
 
 Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
 
+## Current Milestone: v1.1 NL Order Mutation, Console Admin, Phân quyền & GitHub Backup
+
+**Goal:** Mở rộng bot với khả năng chỉnh sửa đơn hàng bằng ngôn ngữ tự nhiên (NL mutation), cung cấp console quản trị tại server, phân quyền Admin đa tầng trên Telegram và backup dữ liệu tự động lên GitHub.
+
+**Target features:**
+- Natural language order mutation: Đổi trạng thái, gán mã vận đơn, sửa ghi chú, sửa COD/giá tiền, đổi sđt/địa chỉ bằng tin nhắn chat tự nhiên kèm thẻ xác nhận 2-phase.
+- Interactive Console App tại server: CLI menu tương tác quản lý bot, xem trạng thái, quản lý whitelist và chạy backup thủ công.
+- Phân quyền Admin đa tầng (Super Admin vs Admin): Cấu hình Super Admin toàn quyền, Admin vận hành (không có quyền phân quyền), bộ lệnh Telegram cho Admin tương đương console.
+- Backup dữ liệu lên GitHub: Tự động sao lưu định kỳ file SQLite DB lên GitHub repo và hỗ trợ kích hoạt thủ công từ Console/Telegram.
+
 ## Current State
 
 Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
@@ -34,7 +44,14 @@ Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
 
 ### Active
 
-*(All v1 requirements validated)*
+- [ ] Bóc tách intent chỉnh sửa đơn hàng bằng ngôn ngữ tự nhiên: tìm đơn, hiển thị thẻ so sánh Trước/Sau và yêu cầu xác nhận 1-chạm trước khi thực thi
+- [ ] Chỉnh sửa trạng thái đơn hàng qua chat tự nhiên (tự suy luận trạng thái đích hoặc hiển thị nút trạng thái gợi ý)
+- [ ] Cập nhật mã vận đơn, ghi chú, tiền COD/tổng giá, và địa chỉ/sđt nhận hàng qua chat tự nhiên
+- [ ] Interactive Console App trên terminal server cho phép quản lý cấu hình, whitelist và vận hành bot trực tiếp
+- [ ] Phân quyền đa tầng Super Admin (toàn quyền) và Admin (quản trị vận hành, không can thiệp phân quyền)
+- [ ] Bộ lệnh quản trị Telegram dành riêng cho Admin tương đương tính năng Console
+- [ ] Sao lưu cơ sở dữ liệu SQLite định kỳ tự động lên GitHub repository
+- [ ] Kích hoạt sao lưu dữ liệu thủ công tức thì qua Console và Telegram Admin*
 
 ### Out of Scope
 
@@ -75,5 +92,18 @@ Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
 
 This document evolves at phase transitions and milestone boundaries.
 
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-10-25 after v1.0 milestone completion*
+*Last updated: 2026-10-25 after milestone v1.1 initialization*

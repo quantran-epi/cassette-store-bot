@@ -1,19 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v1.0
-status: Awaiting next milestone
-stopped_at: Phase 04 complete — all phases complete
-last_updated: "2026-10-25T03:13:27.064Z"
+milestone: v1.1
+milestone_name: NL Order Mutation, Console Admin, Phân quyền & GitHub Backup
+status: planning
+last_updated: "2026-10-25T03:27:46.085Z"
 last_activity: 2026-10-25
-last_activity_desc: Milestone v1.0 completed and archived
-state_head: c83b6944b773cbc40e35bb23ee446125546f8a74
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
-milestone_name: milestone
-current_phase: 04
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-10-25)
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-10-25 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-10-25 — Milestone v1.1 started
 
 ## Performance Metrics
 
