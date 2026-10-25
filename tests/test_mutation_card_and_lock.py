@@ -295,3 +295,44 @@ async def test_mutate_order_with_lock_datetime_string_normalization():
         assert updated.items_text == "2 cuốn"
 
 
+@pytest.mark.asyncio
+async def test_mutate_order_with_lock_deduplicates_columns():
+    """Verify delta_dict with overlapping new_status and status does not generate duplicate SQL columns (WR-01)."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Khách Z",
+            customer_phone="0911223344",
+            shipping_address="Hải Phòng",
+            items_text="1 cuốn",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+        fetched = await get_order_by_id(db, order_id)
+        assert fetched is not None
+
+        delta = {
+            "status": OrderStatus.DANG_LAM,
+            "new_status": OrderStatus.DANG_LAM,
+        }
+        success, changes, updated = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=fetched.updated_at,
+            delta_dict=delta,
+            user_id=1,
+            user_name="Admin",
+        )
+        assert success is True
+        assert updated is not None
+        assert updated.status == OrderStatus.DANG_LAM
+        assert "status" in changes
+
+
+

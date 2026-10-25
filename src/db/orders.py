@@ -359,14 +359,14 @@ async def mutate_order_with_lock(
     fields: list[str] = []
     params: list = []
     changes: dict = {}
+    seen_cols: set[str] = set()
 
     for col, new_val in delta_dict.items():
         # Handle field renaming or mapping
-        target_col = col
-        if col.startswith("new_"):
-            target_col = col[4:]
+        target_col = col[4:] if col.startswith("new_") else col
 
-        if target_col in row_keys:
+        if target_col in row_keys and target_col not in seen_cols:
+            seen_cols.add(target_col)
             # Handle enum to string conversion
             val_to_save = new_val.value if hasattr(new_val, "value") else new_val
             current_val = row[target_col]
