@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from collections.abc import Sequence
 
 import aiosqlite
@@ -344,11 +345,40 @@ async def find_orders_for_mutation(
         params.append(f"%{phone.strip()}%")
     elif keyword:
         from src.db.connection import remove_accents
-        kw_clean = remove_accents(keyword.strip())
-        conds.append(
-            "(unaccent(customer_name) LIKE ? OR unaccent(shipping_address) LIKE ? OR customer_phone LIKE ?)"
-        )
-        params.extend([f"%{kw_clean}%", f"%{kw_clean}%", f"%{kw_clean}%"])
+        kw_clean = remove_accents(keyword.strip().lower())
+        tokens = [t for t in re.split(r"\s+", kw_clean) if t]
+
+        # 1. Strip leading conversational fillers ('khách', 'đơn', 'của', 'cho', 'giao')
+        PREFIX_FILLERS = {"khach", "don", "cua", "cho", "giao"}
+        prefix_tokens = list(tokens)
+        while prefix_tokens and prefix_tokens[0] in PREFIX_FILLERS:
+            prefix_tokens.pop(0)
+
+        # Build candidate search phrases in priority order (full stripped phrase first, e.g. 'bac ba', 'anh ha')
+        search_phrases: list[str] = []
+        if prefix_tokens:
+            search_phrases.append(" ".join(prefix_tokens))
+
+        # Core name without honorifics if available and distinct (e.g. 'ha' from 'anh ha')
+        HONORIFIC_FILLERS = {"anh", "chi", "bac", "ong", "ba", "chu", "co", "em"}
+        core_tokens = [t for t in prefix_tokens if t not in HONORIFIC_FILLERS]
+        if core_tokens:
+            core_phrase = " ".join(core_tokens)
+            if core_phrase not in search_phrases:
+                search_phrases.append(core_phrase)
+
+        if not search_phrases and kw_clean:
+            search_phrases.append(kw_clean)
+
+        kw_subconds: list[str] = []
+        for phrase in search_phrases:
+            kw_subconds.append(
+                "(unaccent(customer_name) LIKE ? OR customer_phone LIKE ?)"
+            )
+            params.extend([f"%{phrase}%", f"%{phrase}%"])
+
+        if kw_subconds:
+            conds.append(f"({' OR '.join(kw_subconds)})")
 
     where_filter = f"AND ({' AND '.join(conds)})" if conds else ""
 

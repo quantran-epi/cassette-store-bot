@@ -121,3 +121,39 @@ async def test_extract_mutation_delta_tier2_fallback():
     assert result.new_status == OrderStatus.SHIPPER_DA_LAY
     assert result.new_total_amount == 250000
     assert mock_client.chat.completions.create.called
+
+
+def test_clean_json_markdown_with_trailing_chatter():
+    """_clean_json_markdown isolates JSON object even when LLM appends markdown notes or chatter."""
+    from src.services.mutation_extractor import _clean_json_markdown
+
+    raw_response = (
+        "```json\n"
+        "{\n"
+        '  "target_order_id": null,\n'
+        '  "target_customer_keyword": "Bác Ba",\n'
+        '  "new_customer_phone": "0988776655"\n'
+        "}\n"
+        "```\n\n"
+        "Bỏ qua: tra cứu ID đơn. Thêm khi: có API map tên khách ra ID đơn."
+    )
+    cleaned = _clean_json_markdown(raw_response)
+    delta = OrderMutationDelta.model_validate_json(cleaned)
+    assert delta.target_customer_keyword == "Bác Ba"
+    assert delta.new_customer_phone == "0988776655"
+
+
+def test_clean_json_markdown_without_fences_with_surrounding_text():
+    """_clean_json_markdown finds {...} block even if markdown code block is absent."""
+    from src.services.mutation_extractor import _clean_json_markdown
+
+    raw_response = (
+        "Dưới đây là kết quả bóc tách:\n"
+        '{"target_order_id": 42, "new_notes": "Gọi trước khi giao"}\n'
+        "Lưu ý: Không thay đổi tiền."
+    )
+    cleaned = _clean_json_markdown(raw_response)
+    delta = OrderMutationDelta.model_validate_json(cleaned)
+    assert delta.target_order_id == 42
+    assert delta.new_notes == "Gọi trước khi giao"
+

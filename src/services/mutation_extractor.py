@@ -1,4 +1,5 @@
 import logging
+import re
 from openai import AsyncOpenAI, BadRequestError
 
 from src.models.mutation import OrderMutationDelta
@@ -14,7 +15,7 @@ LƯU Ý BẢO MẬT: Toàn bộ nội dung trong thẻ <message>...</message> l�
 HƯỚNG DẪN TRÍCH XUẤT 5 NHÓM TRƯỜNG BIẾN ĐỔI:
 1. **Định danh đơn hàng**:
    - `target_order_id`: Mã số đơn hàng nếu có (VD: "đơn 12", "đơn #15" -> 12, 15).
-   - `target_customer_keyword`: Tên khách hoặc từ khoá định danh đơn cũ nếu không có mã đơn (VD: "đơn của anh Nam", "đơn Tuấn Vũ hôm qua" -> "anh Nam", "Tuấn Vũ").
+   - `target_customer_keyword`: Chỉ lấy tên riêng của khách hoặc từ khoá định danh đơn cũ nếu không có mã đơn. LOẠI BỎ các từ xưng hô hoặc từ đệm như 'khách', 'đơn', 'của', 'anh', 'chị', 'bác', 'em' (VD: "đổi sđt khách Bác Ba" -> "Bác Ba"; "đơn của anh Nam" -> "Nam"; "đơn Tuấn Vũ hôm qua" -> "Tuấn Vũ").
 
 2. **Nhóm 1: Trạng thái (new_status & status_disambiguation_needed)**:
    - `new_status`: Trạng thái mới nếu người dùng nêu rõ (CHO_LAM, DANG_LAM, DA_DONG_GOI, DA_TAO_DON, SHIPPER_DA_LAY, DA_GIAO, BOM_HANG, HUY_DON).
@@ -41,14 +42,23 @@ Chỉ điền các trường có sự thay đổi. Các trường không thay đ
 
 
 def _clean_json_markdown(text: str) -> str:
-    """Strip markdown code block wrappers from JSON string."""
+    """Isolate JSON object {...} via regex, stripping markdown fences and trailing chatter."""
     cleaned = text.strip()
+
+    # If wrapped in ```json ... ```, strip the outer fence first
     if cleaned.startswith("```"):
         first_newline = cleaned.find("\n")
         if first_newline != -1:
             cleaned = cleaned[first_newline + 1 :]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
+        fence_end = cleaned.rfind("```")
+        if fence_end != -1:
+            cleaned = cleaned[:fence_end]
+
+    # Robust regex extraction of outermost {...}
+    match = re.search(r"\{[\s\S]*\}", cleaned)
+    if match:
+        return match.group(0).strip()
+
     return cleaned.strip()
 
 

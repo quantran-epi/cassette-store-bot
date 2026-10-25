@@ -430,5 +430,56 @@ async def test_mutate_order_with_lock_microsecond_vs_millisecond_normalization()
         assert updated.items_text == "3 cuốn"
 
 
+@pytest.mark.asyncio
+async def test_find_orders_for_mutation_strips_honorifics_and_fillers():
+    """Verify find_orders_for_mutation matches DB customer even if keyword includes 'khách', 'bác', 'đơn'."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, find_orders_for_mutation
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        # Create orders for customer 'Bác Ba'
+        ord1 = Order(
+            customer_name="Bác Ba",
+            customer_phone="0911223344",
+            shipping_address="Hải Phòng",
+            items_text="1 cuốn",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        )
+        ord2 = Order(
+            customer_name="Bác Ba",
+            customer_phone="0911223344",
+            shipping_address="Hà Nội",
+            items_text="2 cuốn",
+            total_amount=200000,
+            status=OrderStatus.DANG_LAM,
+        )
+        ord3 = Order(
+            customer_name="Anh Hà",
+            customer_phone="0988776655",
+            shipping_address="Đà Nẵng",
+            items_text="1 cuốn",
+            total_amount=150000,
+            status=OrderStatus.CHO_LAM,
+        )
+        await create_order(db, ord1)
+        await create_order(db, ord2)
+        await create_order(db, ord3)
+
+        # 1. Search with 'khách Bác Ba'
+        matches = await find_orders_for_mutation(db, keyword="khách Bác Ba")
+        assert len(matches) == 2
+        assert all(m.customer_name == "Bác Ba" for m in matches)
+
+        # 2. Search with 'đơn của anh Hà'
+        matches_ha = await find_orders_for_mutation(db, keyword="đơn của anh Hà")
+        assert len(matches_ha) == 1
+        assert matches_ha[0].customer_name == "Anh Hà"
+
+
+
 
 
