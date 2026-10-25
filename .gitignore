@@ -32,3 +32,4 @@ build/
 
 # Claude Code local settings
 .claude/
+.gsd/

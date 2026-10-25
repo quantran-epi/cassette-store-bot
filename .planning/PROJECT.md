@@ -45,6 +45,7 @@ Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
 
 ## Context
 
+- Shipped v1.0 MVP with 7,134 LOC Python across 4 phases and 11 plans. 110 automated tests passing. Zero external dashboard, 100% in Telegram via async python-telegram-bot, aiosqlite (WAL), and 9router LLM gateway.
 - Khách hàng mua cassette thường chốt đơn qua inbox/Zalo/Facebook bằng tin nhắn văn bản không theo khuôn mẫu chuẩn.
 - Người vận hành shop là người lớn tuổi, ngại dùng các app bán hàng phức tạp nhiều bước, quen dùng Telegram.
 - Inline keyboard buttons với emoji rõ ràng, chữ to, văn phong tiếng Việt dễ hiểu là cốt lõi của UX.
@@ -75,4 +76,4 @@ Tất cả 4/4 phases trong Milestone v1.0 hoàn thành:
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-10-25 after Phase 04 completion*
+*Last updated: 2026-10-25 after v1.0 milestone completion*

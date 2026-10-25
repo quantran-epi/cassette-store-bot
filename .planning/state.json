@@ -1,0 +1,33 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.0",
+  "phases": [
+    {
+      "number": "1",
+      "name": "Foundation, Persistence & Security Whitelist",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "LLM Ingestion & Interactive Confirmation",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Ergonomic Order Management & Low-Tech Actions",
+      "status": "complete"
+    },
+    {
+      "number": "4",
+      "name": "Natural Language Order Search",
+      "status": "complete"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
+  },
+  "updated_at": "2026-10-25T03:13:27.105Z"
+}
