@@ -168,7 +168,14 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
             await query.answer(text="Lỗi kết nối cơ sở dữ liệu!", show_alert=True)
             return
 
-        success = await update_order_status(active_db, order_id, target_status)
+        user = query.from_user
+        success = await update_order_status(
+            active_db,
+            order_id,
+            target_status,
+            user_id=user.id if user else None,
+            user_name=user.full_name if user else None,
+        )
         if not success:
             await query.answer(text="Không tìm thấy đơn để cập nhật!", show_alert=True)
             return
@@ -341,7 +348,14 @@ async def handle_action_state_text(
                 await update.message.reply_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
                 return True
 
-            success = await update_order_tracking(active_db, order_id, tracking_code)
+            user = update.effective_user
+            success = await update_order_tracking(
+                active_db,
+                order_id,
+                tracking_code,
+                user_id=user.id if user else None,
+                user_name=user.full_name if user else None,
+            )
             context.user_data.pop("action_state", None)
 
             if success:

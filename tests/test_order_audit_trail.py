@@ -7,6 +7,8 @@ from src.db.orders import (
     find_orders_for_mutation,
     get_order_by_id,
     record_order_history,
+    update_order_status,
+    update_order_tracking,
 )
 from src.db.schema import init_db
 from src.models.order import Order, OrderStatus
@@ -139,6 +141,65 @@ async def test_record_order_history_helper(test_db: aiosqlite.Connection):
         assert row["action"] == "STATUS_CHANGE"
         assert row["user_id"] == 9999
         assert "DANG_LAM" in row["changes_json"]
+
+
+@pytest.mark.asyncio
+async def test_update_order_status_writes_audit_trail(test_db: aiosqlite.Connection):
+    """update_order_status writes audit trail to order_history (WR-02)."""
+    order = Order(
+        customer_name="Bác Ba",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="1 cuốn",
+        status=OrderStatus.CHO_LAM,
+    )
+    oid = await create_order(test_db, order)
+
+    success = await update_order_status(
+        test_db, oid, OrderStatus.DANG_LAM, user_id=111, user_name="Quân Staff"
+    )
+    assert success is True
+
+    async with test_db.execute(
+        "SELECT * FROM order_history WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        (oid,),
+    ) as cursor:
+        row = await cursor.fetchone()
+        assert row is not None
+        assert row["action"] == "STATUS_CHANGE"
+        assert row["user_id"] == 111
+        assert row["user_name"] == "Quân Staff"
+        assert "CHO_LAM" in row["changes_json"]
+        assert "DANG_LAM" in row["changes_json"]
+
+
+@pytest.mark.asyncio
+async def test_update_order_tracking_writes_audit_trail(test_db: aiosqlite.Connection):
+    """update_order_tracking writes audit trail to order_history (WR-02)."""
+    order = Order(
+        customer_name="Bác Bốn",
+        customer_phone="0987654321",
+        shipping_address="Hải Phòng",
+        items_text="1 cuốn",
+        tracking_code=None,
+    )
+    oid = await create_order(test_db, order)
+
+    success = await update_order_tracking(
+        test_db, oid, "VNPOST9999", user_id=222, user_name="Bác Admin"
+    )
+    assert success is True
+
+    async with test_db.execute(
+        "SELECT * FROM order_history WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        (oid,),
+    ) as cursor:
+        row = await cursor.fetchone()
+        assert row is not None
+        assert row["action"] == "TRACKING_UPDATE"
+        assert row["user_id"] == 222
+        assert row["user_name"] == "Bác Admin"
+        assert "VNPOST9999" in row["changes_json"]
 
 
 @pytest.mark.asyncio

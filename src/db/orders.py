@@ -102,9 +102,18 @@ async def get_order_by_id(db: aiosqlite.Connection, order_id: int) -> Order | No
 
 
 async def update_order_status(
-    db: aiosqlite.Connection, order_id: int, new_status: OrderStatus
+    db: aiosqlite.Connection,
+    order_id: int,
+    new_status: OrderStatus,
+    user_id: int | None = None,
+    user_name: str | None = None,
 ) -> bool:
-    """Update order status and updated_at timestamp."""
+    """Update order status and updated_at timestamp, recording audit trail."""
+    current_order = await get_order_by_id(db, order_id)
+    if not current_order:
+        return False
+
+    old_status = current_order.status.value
     cursor = await db.execute(
         """
         UPDATE orders
@@ -114,14 +123,32 @@ async def update_order_status(
         """,
         (new_status.value, order_id),
     )
-    await db.commit()
-    return cursor.rowcount > 0
+    if cursor.rowcount > 0:
+        await record_order_history(
+            db,
+            order_id=order_id,
+            user_id=user_id,
+            user_name=user_name,
+            action="STATUS_CHANGE",
+            changes={"status": {"old": old_status, "new": new_status.value}},
+        )
+        return True
+    return False
 
 
 async def update_order_tracking(
-    db: aiosqlite.Connection, order_id: int, tracking_code: str
+    db: aiosqlite.Connection,
+    order_id: int,
+    tracking_code: str,
+    user_id: int | None = None,
+    user_name: str | None = None,
 ) -> bool:
-    """Update order tracking code and updated_at timestamp."""
+    """Update order tracking code and updated_at timestamp, recording audit trail."""
+    current_order = await get_order_by_id(db, order_id)
+    if not current_order:
+        return False
+
+    old_tracking = current_order.tracking_code or ""
     cursor = await db.execute(
         """
         UPDATE orders
@@ -131,8 +158,17 @@ async def update_order_tracking(
         """,
         (tracking_code, order_id),
     )
-    await db.commit()
-    return cursor.rowcount > 0
+    if cursor.rowcount > 0:
+        await record_order_history(
+            db,
+            order_id=order_id,
+            user_id=user_id,
+            user_name=user_name,
+            action="TRACKING_UPDATE",
+            changes={"tracking_code": {"old": old_tracking, "new": tracking_code}},
+        )
+        return True
+    return False
 
 
 async def append_order_photos(
@@ -238,6 +274,17 @@ async def record_order_history(
     changes: dict | None = None,
 ) -> None:
     """Record order audit trail history entry (D-16)."""
+    clean_user_id: int | None = None
+    if user_id is not None:
+        try:
+            clean_user_id = int(user_id)
+        except (ValueError, TypeError):
+            clean_user_id = None
+
+    clean_user_name: str | None = None
+    if isinstance(user_name, str):
+        clean_user_name = user_name
+
     await db.execute(
         """
         INSERT INTO order_history (order_id, user_id, user_name, action, changes_json)
@@ -245,8 +292,8 @@ async def record_order_history(
         """,
         (
             order_id,
-            user_id,
-            user_name,
+            clean_user_id,
+            clean_user_name,
             action,
             json.dumps(changes or {}, ensure_ascii=False),
         ),
