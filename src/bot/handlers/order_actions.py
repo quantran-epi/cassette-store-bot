@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from contextlib import nullcontext
+from datetime import datetime
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
 from telegram.error import BadRequest
@@ -13,6 +14,7 @@ from src.bot.keyboards import (
     build_order_detail_keyboard,
     build_status_selection_keyboard,
     render_order_detail_card,
+    to_vn_datetime,
 )
 from src.db.connection import get_db_connection
 from src.db.orders import (
@@ -64,8 +66,9 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
                 await query.edit_message_text("⚠️ Đơn hàng không tồn tại.")
                 return
             card_text = render_order_detail_card(order)
-            # Default to today's list back navigation
-            today_str = order.created_at.strftime("%Y-%m-%d") if order.created_at else ""
+            # Default to today's list back navigation in Vietnam local time
+            vn_dt = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
+            today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
             keyboard = build_order_detail_keyboard(order, date_str=today_str, page=1)
             try:
                 await query.edit_message_text(
@@ -176,7 +179,8 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
         updated_order = await get_order_by_id(active_db, order_id)
         if updated_order:
             card_text = render_order_detail_card(updated_order)
-            today_str = updated_order.created_at.strftime("%Y-%m-%d") if updated_order.created_at else ""
+            vn_dt = to_vn_datetime(updated_order.created_at) if isinstance(updated_order.created_at, datetime) else None
+            today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
             keyboard = build_order_detail_keyboard(updated_order, date_str=today_str, page=1)
             try:
                 await query.edit_message_text(
@@ -235,7 +239,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         try:
             await query.edit_message_text(
                 text=f"🚚 <b>NHẬP MÃ VẬN ĐƠN CHO ĐƠN #{order_id}</b>\n\n"
-                f"Bác gửi mã vận đơn đối tác ship (hoặc dán ảnh biên lai ship) vào ô chat cho đơn này nhé.\n\n"
+                f"Bác gõ hoặc dán mã vận đơn vào ô chat cho đơn này nhé.\n\n"
                 f"<i>(Thời gian chờ là 2 phút)</i>",
                 reply_markup=cancel_kb,
                 parse_mode="HTML",
@@ -350,7 +354,8 @@ async def handle_action_state_text(
                 )
                 back_kb = None
                 if order:
-                    today_str = order.created_at.strftime("%Y-%m-%d") if order.created_at else ""
+                    vn_dt = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
+                    today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
                     back_kb = InlineKeyboardMarkup(
                         [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
                     )

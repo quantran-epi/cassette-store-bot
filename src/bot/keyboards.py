@@ -39,6 +39,15 @@ def extract_province_or_city(address: str) -> str:
     cleaned = re.sub(r"^(TP\.?|Thành phố|Tỉnh)\s+", "", last, flags=re.IGNORECASE).strip()
     return cleaned or last
 
+
+def to_vn_datetime(dt: datetime | None) -> datetime | None:
+    """Convert naive or UTC datetime to Vietnam local timezone (UTC+7)."""
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(TZ_VN)
+
 NEXT_STATUS_MAP: dict[OrderStatus, tuple[OrderStatus, str]] = {
     OrderStatus.CHO_LAM: (OrderStatus.DANG_LAM, "▶️ Bắt đầu làm"),
     OrderStatus.DANG_LAM: (OrderStatus.DA_DONG_GOI, "📦 Đã đóng gói xong"),
@@ -81,9 +90,10 @@ def render_order_detail_card(order: Order) -> str:
     photo_count = len(order.photo_file_ids)
     photo_str = f"{photo_count} ảnh" if photo_count > 0 else "Không có"
 
+    vn_created_at = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
     created_str = (
-        order.created_at.strftime("%d/%m/%Y %H:%M")
-        if isinstance(order.created_at, datetime)
+        vn_created_at.strftime("%d/%m/%Y %H:%M")
+        if vn_created_at
         else str(order.created_at or "")
     )
     created_line = f"🕒 <b>Thời gian:</b> {created_str}\n" if created_str else ""
