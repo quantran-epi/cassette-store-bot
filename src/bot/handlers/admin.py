@@ -540,10 +540,7 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
     now = time.time()
     if now > action_state.get("expires_at", 0):
         context.user_data.pop("action_state", None)
-        await update.effective_message.reply_text(
-            "⏳ Đã hết thời gian nhập Telegram ID (60s). Thao tác đã được huỷ."
-        )
-        return True
+        return False
 
     action = action_state.get("action")
     raw_text = update.effective_message.text.strip()

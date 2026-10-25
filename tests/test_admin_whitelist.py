@@ -187,11 +187,9 @@ async def test_add_whitelist_text_input_timeout():
     update = make_mock_update(user_id=123456, text="777888")
     handled = await handle_admin_text_input(update, context)
 
-    assert handled is True
+    assert handled is False
     assert "action_state" not in context.user_data
-    update.effective_message.reply_text.assert_awaited_once()
-    msg = update.effective_message.reply_text.call_args[0][0]
-    assert "hết thời gian" in msg
+    update.effective_message.reply_text.assert_not_awaited()
 
 
 @pytest.mark.asyncio
