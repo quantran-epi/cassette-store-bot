@@ -83,6 +83,21 @@ def test_is_search_intent():
     assert is_search_intent("đơn mới nè") is False
 
 
+def test_is_search_intent_conversational_questions():
+    """Verify natural Vietnamese conversational inquiry questions are detected per G-04-3."""
+    # Positive conversational inquiry questions
+    assert is_search_intent("a Biên đã mua băng bao giờ chưa nhỉ?") is True
+    assert is_search_intent("anh Nam mua mấy đơn rồi?") is True
+    assert is_search_intent("chị Mai có mua băng bao giờ chưa?") is True
+    assert is_search_intent("hôm nay bán được bao nhiêu đơn?") is True
+    assert is_search_intent("anh Nam đã từng mua băng chưa?") is True
+
+    # Negative cases (order ingestion texts should remain False)
+    assert is_search_intent("Khách Tuấn 0903123456 2 cuốn Tuấn Vũ 200k") is False
+    assert is_search_intent("Bác Ba 0903123456 2 cuốn Chế Linh") is False
+    assert is_search_intent("Khách mua 2 cuốn Tuấn Vũ gửi 123 Lê Lợi") is False
+
+
 def test_generate_sql_from_query_prompt():
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -650,6 +665,135 @@ async def test_search_view_order_detail_and_back_to_results(test_db):
     flat_back_cbs = [btn.callback_data for row in back_kb.inline_keyboard for btn in row if btn.callback_data]
     assert f"sch_v:search_01:{oid}" in flat_back_cbs
     assert "sch_new" in flat_back_cbs
+
+
+@pytest.mark.asyncio
+async def test_process_search_query_without_bot_data_db(tmp_path):
+    """Verify process_search_query acquires connection via _get_active_db_context when bot_data['db'] is None per G-04-3."""
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import Message, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.search import process_search_query
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order
+    from src.db.schema import init_db
+    from src.models.order import Order, OrderStatus
+
+    db_path = str(tmp_path / "test_search_dynamic.db")
+    async with get_db_connection(db_path) as init_conn:
+        await init_db(init_conn)
+        order = Order(
+            customer_name="Anh Tuấn",
+            customer_phone="0903123456",
+            shipping_address="Hà Nội",
+            items_text="2 cuốn Tuấn Vũ",
+            total_amount=200000,
+            status=OrderStatus.CHO_LAM,
+        )
+        await create_order(init_conn, order)
+
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = "SELECT * FROM orders WHERE customer_name LIKE '%Tuấn%'"
+    mock_resp = MagicMock(choices=[mock_choice])
+    mock_client.chat.completions.create.return_value = mock_resp
+
+    mock_settings = MagicMock()
+    mock_settings.sqlite_db_path = db_path
+    mock_settings.nine_router_model_id = "test-model"
+
+    message = MagicMock(spec=Message)
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.effective_message = message
+    update.effective_chat = None
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {
+        "db": None,
+        "settings": mock_settings,
+        "openai_client": mock_client,
+    }
+    context.user_data = {}
+
+    await process_search_query(update, context, "tìm đơn anh Tuấn")
+
+    message.reply_text.assert_awaited_once()
+    call_args = message.reply_text.call_args
+    reply_text = call_args[1].get("text") if "text" in call_args[1] else call_args[0][0]
+    assert "⚠️ Hệ thống tra cứu đang bận" not in reply_text
+    assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in reply_text
+    assert "Anh Tuấn" in reply_text
+
+
+@pytest.mark.asyncio
+async def test_handle_search_callback_detail_without_bot_data_db(tmp_path):
+    """Verify handle_search_callback sch_v acquires connection dynamically when bot_data['db'] is None per G-04-3."""
+    from unittest.mock import AsyncMock, MagicMock
+    from telegram import CallbackQuery, Update
+    from telegram.ext import ContextTypes
+    from src.bot.handlers.search import handle_search_callback
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order
+    from src.db.schema import init_db
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import SearchResult, SearchResultType
+
+    db_path = str(tmp_path / "test_callback_dynamic.db")
+    async with get_db_connection(db_path) as init_conn:
+        await init_db(init_conn)
+        order = Order(
+            customer_name="Bác Khánh",
+            customer_phone="0911889900",
+            shipping_address="456 Hai Bà Trưng, Đà Nẵng",
+            items_text="3 cuốn Khánh Ly",
+            total_amount=300000,
+            status=OrderStatus.CHO_LAM,
+        )
+        oid = await create_order(init_conn, order)
+        order.id = oid
+
+    mock_settings = MagicMock()
+    mock_settings.sqlite_db_path = db_path
+
+    search_res = SearchResult(
+        result_type=SearchResultType.ORDERS,
+        sql_executed="SELECT * FROM orders",
+        orders=[order],
+    )
+
+    query = MagicMock(spec=CallbackQuery)
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = f"sch_v:search_01:{oid}"
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {
+        "db": None,
+        "settings": mock_settings,
+    }
+    context.user_data = {
+        "searches": {
+            "search_01": {
+                "query": "tìm đơn bác Khánh",
+                "result": search_res,
+                "page": 1,
+            }
+        }
+    }
+
+    await handle_search_callback(update, context)
+
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+    call_args = query.edit_message_text.call_args
+    detail_text = call_args[1].get("text") if "text" in call_args[1] else call_args[0][0]
+    assert "Lỗi cơ sở dữ liệu" not in detail_text
+    assert f"CHI TIẾT ĐƠN HÀNG #{oid}" in detail_text
+    assert "Bác Khánh" in detail_text
+
 
 
 
