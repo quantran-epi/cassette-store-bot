@@ -168,9 +168,17 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if text.startswith("/"):
         return  # Allow command handlers to process
 
-    # Check for active action_state (e.g. await_tracking) per D-12
+    # Check for active action_state (e.g. await_tracking or admin prompts) per D-12
     action_state = context.user_data.get("action_state")
     if action_state:
+        action_name = action_state.get("action", "")
+        if action_name in ("await_whitelist_id", "await_model_name"):
+            from src.bot.handlers.admin import handle_admin_text_input
+
+            handled = await handle_admin_text_input(update, context)
+            if handled:
+                return
+
         expires_at = action_state.get("expires_at", 0)
         if time.time() <= expires_at:
             from src.bot.handlers.order_actions import handle_action_state_text
@@ -215,10 +223,14 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
+    active_model = (
+        context.application.bot_data.get("active_model_id")
+        or settings.nine_router_model_id
+    )
     try:
         extracted = await extract_order_from_text(
             client=openai_client,
-            model_id=settings.nine_router_model_id,
+            model_id=active_model,
             text=text,
         )
     except Exception:
@@ -261,10 +273,14 @@ async def _extract_and_process_photo_order(
         )
         return
 
+    active_model = (
+        context.application.bot_data.get("active_model_id")
+        or settings.nine_router_model_id
+    )
     try:
         extracted = await extract_order_from_text(
             client=openai_client,
-            model_id=settings.nine_router_model_id,
+            model_id=active_model,
             text=caption,
         )
     except Exception:

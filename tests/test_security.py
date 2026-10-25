@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import SecretStr
 from telegram import CallbackQuery, Message, Update, User
-from telegram.ext import ApplicationHandlerStop, CommandHandler, TypeHandler
+from telegram.ext import ApplicationHandlerStop, CallbackQueryHandler, CommandHandler, TypeHandler
 
 from src.bot.app import build_application
 from src.bot.handlers.base import ping_command, start_command
-from src.bot.security import whitelist_gate
+from src.bot.security import UserRole, whitelist_gate
 from src.config import Settings
 
 
@@ -143,3 +143,49 @@ def test_build_application_registers_gate_at_group_minus_one():
     flat_commands = [cmd for sub in command_names for cmd in sub]
     assert "start" in flat_commands
     assert "ping" in flat_commands
+    assert "admin" in flat_commands
+    assert "logs" in flat_commands
+
+    # Check bot_data has log_handler and admin components
+    assert "log_handler" in app.bot_data
+    assert "admin_roles" in app.bot_data
+    assert "active_model_id" in app.bot_data
+
+    # Check callback query handlers include adm:
+    cb_patterns = [
+        h.pattern.pattern
+        for h in zero_handlers
+        if isinstance(h, CallbackQueryHandler) and hasattr(h.pattern, "pattern")
+    ]
+    assert any("adm:" in p for p in cb_patterns)
+
+
+@pytest.mark.asyncio
+async def test_build_application_startup_db_sync(tmp_path):
+    """Startup sync must load admin roles and settings from SQLite."""
+    import aiosqlite
+    from src.db.schema import init_db
+    from src.db.settings import set_setting
+    from src.bot.app import startup_sync
+
+    db_path = str(tmp_path / "app_test.db")
+    async with aiosqlite.connect(db_path) as db:
+        await init_db(db)
+        await set_setting(db, "active_model_id", "custom-synced-model")
+
+    settings = Settings(
+        telegram_bot_token=SecretStr("fake_token_for_app_build"),
+        telegram_whitelist_user_ids=[111],
+        telegram_super_admin_id=999,
+        sqlite_db_path=db_path,
+    )
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        app = build_application(settings, db=db)
+        await startup_sync(app)
+
+        assert 999 in app.bot_data["whitelist_user_ids"]
+        assert app.bot_data["admin_roles"][999] == UserRole.SUPER_ADMIN
+        assert 111 in app.bot_data["whitelist_user_ids"]
+        assert app.bot_data["admin_roles"][111] == UserRole.STAFF
+        assert app.bot_data["active_model_id"] == "custom-synced-model"
