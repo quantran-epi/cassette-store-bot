@@ -7,6 +7,8 @@ import zoneinfo
 from datetime import datetime
 
 import aiosqlite
+from telegram import Bot
+from telegram.error import NetworkError, TimedOut
 
 logger = logging.getLogger(__name__)
 
@@ -88,3 +90,46 @@ async def execute_backup(
         "customer_count": customer_count,
         "is_oversized": gz_size >= SAFE_SIZE_LIMIT,
     }
+
+
+async def send_backup_document(
+    bot: Bot,
+    chat_id: int,
+    file_path: str,
+    caption: str,
+    retries: int = 3,
+    delays: tuple[float, ...] = (2.0, 5.0, 10.0),
+) -> bool:
+    """Send backup document with exponential backoff on transient network failures."""
+    for attempt in range(retries):
+        try:
+            with open(file_path, "rb") as doc:
+                await bot.send_document(
+                    chat_id=chat_id,
+                    document=doc,
+                    filename=os.path.basename(file_path),
+                    caption=caption,
+                    parse_mode="HTML",
+                    read_timeout=60.0,
+                    write_timeout=60.0,
+                    connect_timeout=30.0,
+                )
+            logger.info("Backup document %s successfully delivered to chat %s", file_path, chat_id)
+            return True
+        except (TimedOut, NetworkError) as err:
+            delay = delays[attempt] if attempt < len(delays) else delays[-1]
+            logger.warning(
+                "Telegram document upload attempt %d/%d failed: %s. Retrying in %ss...",
+                attempt + 1,
+                retries,
+                err,
+                delay,
+            )
+            if attempt < retries - 1:
+                await asyncio.sleep(delay)
+        except Exception as err:
+            logger.exception("Unexpected error uploading backup document: %s", err)
+            break
+
+    return False
+

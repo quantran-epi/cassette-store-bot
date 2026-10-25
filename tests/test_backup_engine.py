@@ -2,15 +2,18 @@ import gzip
 import os
 import shutil
 import sqlite3
+from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
+from telegram.error import NetworkError, TimedOut
 
 from src.services.backup import (
     DEFAULT_RETENTION_COUNT,
     SAFE_SIZE_LIMIT,
     execute_backup,
     prune_old_backups,
+    send_backup_document,
 )
 
 
@@ -141,3 +144,84 @@ async def test_oversized_backup_detection(sample_db, tmp_path, monkeypatch):
 
     assert result["is_oversized"] is True
     assert result["gz_size"] >= SAFE_SIZE_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_send_backup_document_success(tmp_path):
+    """Verify send_backup_document sends file with custom timeouts and returns True."""
+    file_path = tmp_path / "test_backup.sqlite3.gz"
+    file_path.write_bytes(b"dummy compressed content")
+
+    mock_bot = MagicMock()
+    mock_bot.send_document = AsyncMock(return_value=True)
+
+    success = await send_backup_document(
+        bot=mock_bot,
+        chat_id=12345678,
+        file_path=str(file_path),
+        caption="<b>Test Backup</b>",
+    )
+
+    assert success is True
+    mock_bot.send_document.assert_awaited_once()
+    call_kwargs = mock_bot.send_document.await_args.kwargs
+    assert call_kwargs["chat_id"] == 12345678
+    assert call_kwargs["filename"] == "test_backup.sqlite3.gz"
+    assert call_kwargs["caption"] == "<b>Test Backup</b>"
+    assert call_kwargs["parse_mode"] == "HTML"
+    assert call_kwargs["read_timeout"] == 60.0
+    assert call_kwargs["write_timeout"] == 60.0
+
+
+@pytest.mark.asyncio
+async def test_send_backup_document_retry_on_network_error(tmp_path):
+    """Verify send_backup_document retries with backoff on TimedOut/NetworkError and succeeds."""
+    file_path = tmp_path / "test_backup.sqlite3.gz"
+    file_path.write_bytes(b"dummy compressed content")
+
+    mock_bot = MagicMock()
+    mock_bot.send_document = AsyncMock(
+        side_effect=[
+            TimedOut("Connection timed out"),
+            NetworkError("Network unreachable"),
+            True,
+        ]
+    )
+
+    # Use short delays for fast test execution
+    success = await send_backup_document(
+        bot=mock_bot,
+        chat_id=12345678,
+        file_path=str(file_path),
+        caption="<b>Test Backup</b>",
+        retries=3,
+        delays=(0.01, 0.02, 0.03),
+    )
+
+    assert success is True
+    assert mock_bot.send_document.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_send_backup_document_failure_preserves_file(tmp_path):
+    """Verify send_backup_document returns False and preserves file when all retries fail."""
+    file_path = tmp_path / "test_backup.sqlite3.gz"
+    file_path.write_bytes(b"dummy compressed content")
+
+    mock_bot = MagicMock()
+    mock_bot.send_document = AsyncMock(side_effect=NetworkError("Persistent network outage"))
+
+    success = await send_backup_document(
+        bot=mock_bot,
+        chat_id=12345678,
+        file_path=str(file_path),
+        caption="<b>Test Backup</b>",
+        retries=3,
+        delays=(0.01, 0.02, 0.03),
+    )
+
+    assert success is False
+    assert mock_bot.send_document.await_count == 3
+    # File must still exist on disk per D-10
+    assert os.path.exists(str(file_path))
+
