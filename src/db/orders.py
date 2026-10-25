@@ -6,6 +6,20 @@ import aiosqlite
 
 from src.models.order import Order, OrderStatus
 
+
+def _normalize_ts(ts: object) -> str:
+    """Normalize timestamp string/datetime to millisecond precision for safe equality comparison."""
+    if not ts:
+        return ""
+    s = str(ts).strip().replace("T", " ")
+    if "." in s:
+        base, frac = s.split(".", 1)
+        # Extract fractional digits, pad/truncate to 3 digits (milliseconds)
+        frac_digits = "".join(c for c in frac if c.isdigit())[:3].ljust(3, "0")
+        return f"{base}.{frac_digits}"
+    return s
+
+
 _order_photo_locks: dict[int, asyncio.Lock] = {}
 
 
@@ -383,10 +397,7 @@ async def mutate_order_with_lock(
             return False, None, None
 
     # 2. Compare updated_at
-    current_updated_at_str = str(row["updated_at"] or "")
-    expected_updated_at_str = str(expected_updated_at or "")
-
-    if current_updated_at_str != expected_updated_at_str:
+    if _normalize_ts(row["updated_at"]) != _normalize_ts(expected_updated_at):
         # Conflict! Read latest history record per D-17
         async with db.execute(
             "SELECT * FROM order_history WHERE order_id = ? ORDER BY id DESC LIMIT 1",

@@ -335,4 +335,100 @@ async def test_mutate_order_with_lock_deduplicates_columns():
         assert "status" in changes
 
 
+@pytest.mark.asyncio
+async def test_mutate_order_with_lock_consecutive_mutations():
+    """Verify consecutive mutations on the same order succeed without false-positive conflict."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Bác Ba",
+            customer_phone="0911223344",
+            shipping_address="Hải Phòng",
+            items_text="1 cuốn",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+        fetched1 = await get_order_by_id(db, order_id)
+        assert fetched1 is not None
+
+        # Mutation 1: Change address
+        s1, c1, o1 = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=fetched1.updated_at,
+            delta_dict={"shipping_address": "Hà Nội"},
+            user_id=1,
+            user_name="Admin",
+        )
+        assert s1 is True
+        assert o1 is not None
+        assert o1.shipping_address == "Hà Nội"
+
+        # Mutation 2: Consecutive change immediately using o1.updated_at
+        # In actual Telegram flow, o1.updated_at is a Python datetime object or string with 6 microsecond digits
+        # while SQLite stored it with strftime 3 millisecond digits.
+        fetched2 = await get_order_by_id(db, order_id)
+        assert fetched2 is not None
+
+        s2, c2, o2 = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=str(fetched2.updated_at),
+            delta_dict={"status": OrderStatus.DANG_LAM},
+            user_id=1,
+            user_name="Admin",
+        )
+        assert s2 is True, "Second consecutive mutation must not fail with false optimistic lock conflict"
+        assert o2 is not None
+        assert o2.status == OrderStatus.DANG_LAM
+
+
+@pytest.mark.asyncio
+async def test_mutate_order_with_lock_microsecond_vs_millisecond_normalization():
+    """Verify 6-digit microsecond string matches 3-digit SQLite timestamp without conflict."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Bác Ba",
+            customer_phone="0911223344",
+            shipping_address="Hải Phòng",
+            items_text="1 cuốn",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+
+        # Force a 3-digit millisecond timestamp into SQLite
+        await db.execute(
+            "UPDATE orders SET updated_at = '2026-10-25 10:05:37.024' WHERE id = ?",
+            (order_id,),
+        )
+        await db.commit()
+
+        # Pass 6-digit microsecond format as expected_updated_at (e.g. from Python str(datetime))
+        s, c, updated = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at="2026-10-25 10:05:37.024000",
+            delta_dict={"items_text": "3 cuốn"},
+            user_id=1,
+            user_name="Admin",
+        )
+        assert s is True
+        assert updated is not None
+        assert updated.items_text == "3 cuốn"
+
+
+
 
