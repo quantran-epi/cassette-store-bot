@@ -672,6 +672,11 @@ def build_whitelist_user_detail_keyboard(
                 ],
                 [
                     InlineKeyboardButton(
+                        "✏️ Đổi tên", callback_data=f"adm:wl:rename_prompt:{target_id}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
                         "⬅️ Quay lại danh sách", callback_data="adm:wl:list:1"
                     )
                 ],
@@ -697,13 +702,17 @@ def build_whitelist_user_detail_keyboard(
         )
     buttons.append(role_row)
 
-    # Remove button
+    # Action row: Rename & Remove
     buttons.append(
         [
             InlineKeyboardButton(
+                "✏️ Đổi tên",
+                callback_data=f"adm:wl:rename_prompt:{target_id}",
+            ),
+            InlineKeyboardButton(
                 "🗑️ Xoá khỏi Whitelist",
                 callback_data=f"adm:wl:rm_req:{target_id}",
-            )
+            ),
         ]
     )
 
@@ -741,7 +750,7 @@ def build_whitelist_confirm_delete_keyboard(target_id: int) -> InlineKeyboardMar
 def build_model_switcher_keyboard(
     available_models: list[str], active_model: str
 ) -> InlineKeyboardMarkup:
-    """Build model switcher keyboard with active indicator and custom input option."""
+    """Build model switcher keyboard with active indicator, custom input, and delete option per D-17."""
     buttons: list[list[InlineKeyboardButton]] = []
     model_buttons: list[InlineKeyboardButton] = []
 
@@ -755,13 +764,17 @@ def build_model_switcher_keyboard(
     for i in range(0, len(model_buttons), 2):
         buttons.append(model_buttons[i : i + 2])
 
-    buttons.append(
-        [
-            InlineKeyboardButton(
-                "✏️ Nhập tên model khác", callback_data="adm:mdl:input_prompt"
-            )
-        ]
-    )
+    action_row = [
+        InlineKeyboardButton("✏️ Nhập tên model khác", callback_data="adm:mdl:input_prompt")
+    ]
+    # Show delete button if there are models other than the active model
+    other_models = [m for m in available_models if m != active_model]
+    if other_models:
+        action_row.append(
+            InlineKeyboardButton("🗑️ Xoá model", callback_data="adm:mdl:del_menu")
+        )
+    buttons.append(action_row)
+
     buttons.append(
         [
             InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:dash:refresh"),
@@ -769,6 +782,24 @@ def build_model_switcher_keyboard(
         ]
     )
 
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_model_delete_keyboard(
+    models: list[str], active_model: str
+) -> InlineKeyboardMarkup:
+    """Build keyboard to delete non-active models per D-17."""
+    deletable = [m for m in models if m != active_model]
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for m in deletable:
+        buttons.append(
+            [InlineKeyboardButton(f"🗑️ {m}", callback_data=f"adm:mdl:del:{m}")]
+        )
+
+    buttons.append(
+        [InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:mdl:menu")]
+    )
     return InlineKeyboardMarkup(buttons)
 
 

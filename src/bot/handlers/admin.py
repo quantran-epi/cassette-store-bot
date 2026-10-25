@@ -15,6 +15,7 @@ from src.bot.keyboards import (
     TZ_VN,
     build_admin_main_keyboard,
     build_backup_schedule_keyboard,
+    build_model_delete_keyboard,
     build_model_switcher_keyboard,
     build_whitelist_confirm_delete_keyboard,
     build_whitelist_keyboard,
@@ -26,6 +27,7 @@ from src.db.admin import (
     delete_admin_user,
     get_admin_user,
     list_admin_users,
+    update_admin_user_name,
 )
 from src.db.connection import get_db_connection
 from src.db.orders import count_orders_by_date
@@ -453,6 +455,30 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     raise
             return
 
+        if data.startswith("adm:wl:rename_prompt:"):
+            await query.answer()
+            target_id = int(data.split(":")[3])
+            context.user_data["action_state"] = {
+                "action": "await_user_rename",
+                "target_id": target_id,
+                "expires_at": time.time() + 60,
+            }
+            card_text = (
+                f"✏️ <b>ĐỔI TÊN NGƯỜI DÙNG</b>\n"
+                f"────────────────────\n"
+                f"Gửi tin nhắn chứa tên mới cho ID: <code>{target_id}</code>.\n\n"
+                f"⏳ <i>Hết hạn sau 60 giây.</i>"
+            )
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton("❌ Huỷ", callback_data=f"adm:wl:view:{target_id}")]]
+            )
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
+
         if data == "adm:wl:add_prompt":
             await query.answer()
             context.user_data["action_state"] = {
@@ -537,13 +563,74 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if data == "adm:mdl:menu":
             await query.answer()
             available_models = (
-                await get_json_setting(db, "available_models", default=DEFAULT_MODELS)
+                await get_json_setting(db, "available_models", default=[])
                 if db
-                else DEFAULT_MODELS
+                else []
             )
             active_model = context.bot_data.get("active_model_id") or (
                 getattr(settings, "nine_router_model_id", "gpt-4o-mini") if settings else "gpt-4o-mini"
             )
+            card_text = (
+                f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
+                f"────────────────────\n"
+                f"Model đang kích hoạt: <code>{html.escape(active_model)}</code>\n"
+                f"Trạng thái gateway: ✅ Sẵn sàng\n\n"
+                f"<i>Chọn model khả dụng bên dưới hoặc nhập model mới:</i>"
+            )
+            keyboard = build_model_switcher_keyboard(available_models, active_model)
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
+
+        if data == "adm:mdl:del_menu":
+            await query.answer()
+            available_models = (
+                await get_json_setting(db, "available_models", default=[])
+                if db
+                else []
+            )
+            active_model = context.bot_data.get("active_model_id") or (
+                getattr(settings, "nine_router_model_id", "gpt-4o-mini") if settings else "gpt-4o-mini"
+            )
+            card_text = (
+                f"🗑️ <b>XOÁ MODEL KHỎI DANH SÁCH</b>\n"
+                f"────────────────────\n"
+                f"Model đang kích hoạt: <code>{html.escape(active_model)}</code> <i>(được bảo vệ)</i>\n\n"
+                f"<i>Bấm vào model bên dưới để gỡ bỏ:</i>"
+            )
+            keyboard = build_model_delete_keyboard(available_models, active_model)
+            try:
+                await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
+
+        if data.startswith("adm:mdl:del:"):
+            target_model = data.split("adm:mdl:del:")[1]
+            active_model = context.bot_data.get("active_model_id") or (
+                getattr(settings, "nine_router_model_id", "gpt-4o-mini") if settings else "gpt-4o-mini"
+            )
+            if target_model == active_model:
+                await query.answer("⚠️ Không thể xoá model đang được kích hoạt!", show_alert=True)
+                return
+
+            available_models = (
+                await get_json_setting(db, "available_models", default=[])
+                if db
+                else []
+            )
+            if target_model in available_models:
+                available_models = [m for m in available_models if m != target_model]
+                if db:
+                    await set_json_setting(db, "available_models", available_models, description="Selectable models")
+                await query.answer(f"✅ Đã xoá {target_model}", show_alert=True)
+            else:
+                await query.answer()
+
             card_text = (
                 f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
                 f"────────────────────\n"
@@ -639,9 +726,9 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("Đã huỷ nhập model")
             context.user_data.pop("action_state", None)
             available_models = (
-                await get_json_setting(db, "available_models", default=DEFAULT_MODELS)
+                await get_json_setting(db, "available_models", default=[])
                 if db
-                else DEFAULT_MODELS
+                else []
             )
             active_model = context.bot_data.get("active_model_id") or "gpt-4o-mini"
             card_text = (
@@ -741,15 +828,15 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
                     await set_setting(db, "active_model_id", candidate_model, description="Active LLM model")
                     # Add to available_models if not already present
                     models = list(
-                        await get_json_setting(db, "available_models", default=DEFAULT_MODELS)
-                        or DEFAULT_MODELS
+                        await get_json_setting(db, "available_models", default=[])
+                        or []
                     )
                     if candidate_model not in models:
                         models.append(candidate_model)
                         await set_json_setting(db, "available_models", models, description="Selectable models")
                     display_models = models
                 else:
-                    display_models = list(DEFAULT_MODELS)
+                    display_models = [candidate_model]
 
             context.bot_data["active_model_id"] = candidate_model
             card_text = (
@@ -804,6 +891,44 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
             f"Hệ thống sẽ thực hiện sao lưu vào lúc <code>{raw_text}</code> (UTC+7) hàng ngày.",
             parse_mode="HTML",
         )
+        return True
+
+    if action == "await_user_rename":
+        target_id = action_state.get("target_id")
+        new_name = raw_text.strip()
+        context.user_data.pop("action_state", None)
+
+        async with _get_active_db_context(context) as db:
+            if db and target_id is not None:
+                await update_admin_user_name(db, target_id, new_name)
+                target_user = await get_admin_user(db, target_id)
+            else:
+                target_user = None
+
+        if not target_user:
+            target_user = {
+                "telegram_id": target_id,
+                "name": new_name,
+                "role": "STAFF",
+                "created_at": "Không xác định",
+            }
+
+        super_admin_id = getattr(context.bot_data.get("settings"), "telegram_super_admin_id", None)
+        is_root = super_admin_id is not None and target_id == super_admin_id
+        trole = target_user.get("role", "STAFF")
+        tname = target_user.get("name", "") or "Chưa đặt tên"
+        badge = "👑" if trole == "SUPER_ADMIN" else ("🛡️" if trole == "ADMIN" else "👤")
+        card_text = (
+            f"👤 <b>THÔNG TIN TÀI KHOẢN</b>\n"
+            f"────────────────────\n"
+            f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
+            f"👤 <b>Tên hiển thị:</b> {html.escape(tname)}\n"
+            f"🛡️ <b>Vai trò hiện tại:</b> {badge} <b>{trole}</b>\n"
+            f"🕒 <b>Ngày cấp quyền:</b> {target_user.get('created_at', 'Không xác định')}\n"
+            f"────────────────────"
+        )
+        keyboard = build_whitelist_user_detail_keyboard(target_user, is_root=is_root)
+        await update.effective_message.reply_text(card_text, reply_markup=keyboard, parse_mode="HTML")
         return True
 
     return False

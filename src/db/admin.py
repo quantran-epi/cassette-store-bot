@@ -86,3 +86,20 @@ async def sync_root_super_admin(
             )
 
     await db.commit()
+
+
+async def update_admin_user_name(
+    db: aiosqlite.Connection, telegram_id: int, new_name: str
+) -> bool:
+    """Update display name for an existing admin user per D-18."""
+    cursor = await db.execute(
+        """
+        UPDATE admin_users
+        SET name = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_id = ?
+        """,
+        (new_name, telegram_id),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
