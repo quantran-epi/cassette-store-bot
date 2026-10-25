@@ -1,7 +1,8 @@
 ---
 phase: 5
 slug: role-based-access-control-telegram-admin-suite
-status: draft
+status: approved
+reviewed_at: 2026-10-25
 shadcn_initialized: false
 preset: none
 created: 2026-10-25
@@ -275,4 +276,4 @@ Trạng thái gateway: ✅ Sẵn sàng
 - [x] Dimension 5 Spacing: PASS (2-column grid button layout for elderly low-tech clarity, 1-newline field gaps, 2-newline section breaks)
 - [x] Dimension 6 Registry Safety: PASS (No web registry used, pure standard stack)
 
-**Approval:** pending (gsd-ui-checker review)
+**Approval:** approved 2026-10-25
