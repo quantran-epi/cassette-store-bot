@@ -1,7 +1,9 @@
 import asyncio
-from dataclasses import dataclass
 import logging
 import time
+import zoneinfo
+from dataclasses import dataclass
+from datetime import time as dt_time
 
 import aiosqlite
 from openai import AsyncOpenAI
@@ -11,6 +13,7 @@ from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
+    ContextTypes,
     MessageHandler,
     TypeHandler,
     filters,
@@ -32,6 +35,94 @@ from src.bot.security import UserRole, whitelist_gate
 from src.config import Settings
 from src.db.admin import list_admin_users, sync_root_super_admin
 from src.db.settings import get_setting
+
+VN_TZ = zoneinfo.ZoneInfo("Asia/Ho_Chi_Minh")
+JOB_BACKUP_NAME = "daily_database_backup"
+
+
+async def daily_backup_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Scheduled background job: execute hot backup and upload to Super Admin."""
+    settings = context.bot_data.get("settings")
+    if not settings:
+        return
+    super_admin_id = getattr(settings, "telegram_super_admin_id", None)
+    if not super_admin_id:
+        return
+
+    try:
+        from src.bot.handlers.admin import _get_active_db_context
+        from src.services.backup import execute_backup, send_backup_document
+
+        async with _get_active_db_context(context) as db:
+            if not db:
+                return
+            stats = await execute_backup(db)
+
+        if stats["is_oversized"]:
+            await context.bot.send_message(
+                chat_id=super_admin_id,
+                text=(
+                    f"⚠️ <b>[Sao lưu tự động] File nén >= 48MB</b>\n"
+                    f"Dung lượng: <code>{stats['gz_size'] / (1024*1024):.2f} MB</code> (Giới hạn Telegram: 50MB)\n"
+                    f"Đường dẫn server: <code>{stats['gz_path']}</code>"
+                ),
+                parse_mode="HTML",
+            )
+            return
+
+        reduction = (1 - (stats["gz_size"] / max(stats["raw_size"], 1))) * 100
+        caption = (
+            f"💾 <b>BẢN SAO LƯU ĐỊNH KỲ TỰ ĐỘNG</b>\n"
+            f"────────────────────\n"
+            f"⏱️ <b>Thời gian:</b> {stats['timestamp_str']} (UTC+7)\n"
+            f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024*1024):.2f} MB ➔ {stats['gz_size'] / (1024*1024):.2f} MB (Giảm {reduction:.1f}%)\n"
+            f"📊 <b>Dữ liệu:</b> {stats['order_count']} đơn hàng | {stats['customer_count']} khách hàng\n"
+            f"────────────────────"
+        )
+
+        sent = await send_backup_document(
+            bot=context.bot,
+            chat_id=super_admin_id,
+            file_path=stats["gz_path"],
+            caption=caption,
+        )
+        if not sent:
+            await context.bot.send_message(
+                chat_id=super_admin_id,
+                text=(
+                    f"❌ <b>[Sao lưu tự động] Gửi file thất bại sau 3 lần thử</b>\n"
+                    f"Bản sao lưu đã được giữ lại trên máy chủ: <code>{stats['gz_path']}</code>"
+                ),
+                parse_mode="HTML",
+            )
+    except Exception as e:
+        logging.getLogger(__name__).exception("Scheduled backup failed: %s", e)
+        try:
+            await context.bot.send_message(
+                chat_id=super_admin_id,
+                text=f"❌ <b>[Sao lưu tự động] Gặp lỗi nghiêm trọng:</b> {e}",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+
+def schedule_daily_backup(app: Application, time_str: str = "02:00") -> None:
+    """Schedule or replace daily backup in JobQueue at target HH:MM UTC+7."""
+    jq = getattr(app, "job_queue", None)
+    if not jq:
+        return
+    for job in jq.get_jobs_by_name(JOB_BACKUP_NAME):
+        job.schedule_removal()
+
+    h, m = map(int, time_str.split(":"))
+    target_time = dt_time(h, m, tzinfo=VN_TZ)
+    jq.run_daily(
+        daily_backup_job_callback,
+        time=target_time,
+        name=JOB_BACKUP_NAME,
+    )
+
 
 
 @dataclass
@@ -58,6 +149,9 @@ async def _do_sync(app: Application, db: aiosqlite.Connection, settings: Setting
     active_model = await get_setting(db, "active_model_id")
     if active_model:
         app.bot_data["active_model_id"] = active_model
+
+    backup_time = await get_setting(db, "backup_schedule_time", default="02:00")
+    schedule_daily_backup(app, backup_time or "02:00")
 
 
 async def startup_sync(app: Application) -> None:
