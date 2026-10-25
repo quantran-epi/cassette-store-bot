@@ -21,6 +21,7 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
     keys = set(row.keys())
     created_by_user_id = row["created_by_user_id"] if "created_by_user_id" in keys else None
     created_by_name = row["created_by_name"] if "created_by_name" in keys else None
+    notes = row["notes"] if "notes" in keys else ""
 
     return Order(
         id=row["id"],
@@ -36,6 +37,7 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
         tracking_code=row["tracking_code"],
         photo_file_ids=photos,
         raw_text=row["raw_text"],
+        notes=notes,
         created_by_user_id=created_by_user_id,
         created_by_name=created_by_name,
         created_at=row["created_at"],
@@ -50,10 +52,10 @@ async def create_order(db: aiosqlite.Connection, order: Order) -> int:
         INSERT INTO orders (
             customer_id, customer_name, customer_phone, shipping_address,
             items_text, total_amount, cod_amount, payment_method,
-            status, tracking_code, photo_file_ids, raw_text,
+            status, tracking_code, photo_file_ids, raw_text, notes,
             created_by_user_id, created_by_name
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             order.customer_id,
@@ -68,6 +70,7 @@ async def create_order(db: aiosqlite.Connection, order: Order) -> int:
             order.tracking_code,
             json.dumps(order.photo_file_ids, ensure_ascii=False),
             order.raw_text,
+            order.notes,
             order.created_by_user_id,
             order.created_by_name,
         ),

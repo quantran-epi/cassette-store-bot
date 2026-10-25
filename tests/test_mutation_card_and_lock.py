@@ -167,6 +167,7 @@ async def test_mutate_order_with_lock_success():
             "shipping_address": "456 Nguyễn Huệ, Q1",
             "cod_amount": 200000,
             "status": OrderStatus.DANG_LAM,
+            "new_notes": "Giao sau 18h tối",
         }
 
         success, changes, updated_order = await mutate_order_with_lock(
@@ -185,11 +186,13 @@ async def test_mutate_order_with_lock_success():
         assert changes["shipping_address"]["new"] == "456 Nguyễn Huệ, Q1"
         assert changes["cod_amount"]["new"] == 200000
         assert changes["status"]["new"] == "DANG_LAM"
+        assert changes["notes"]["new"] == "Giao sau 18h tối"
 
         assert updated_order is not None
         assert updated_order.shipping_address == "456 Nguyễn Huệ, Q1"
         assert updated_order.cod_amount == 200000
         assert updated_order.status == OrderStatus.DANG_LAM
+        assert updated_order.notes == "Giao sau 18h tối"
 
         # Verify audit history row inserted
         async with db.execute(

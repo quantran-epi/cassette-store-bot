@@ -33,6 +33,7 @@ class Order(BaseModel):
     tracking_code: str | None = None
     photo_file_ids: list[str] = Field(default_factory=list)
     raw_text: str = ""
+    notes: str = ""
     created_by_user_id: int | None = None
     created_by_name: str | None = None
     created_at: datetime | None = None

@@ -48,6 +48,7 @@ async def init_db(db: aiosqlite.Connection) -> None:
             tracking_code TEXT,
             photo_file_ids TEXT NOT NULL DEFAULT '[]',
             raw_text TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
             created_by_user_id INTEGER,
             created_by_name TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -62,6 +63,8 @@ async def init_db(db: aiosqlite.Connection) -> None:
             await db.execute("ALTER TABLE orders ADD COLUMN created_by_user_id INTEGER;")
         if "created_by_name" not in cols:
             await db.execute("ALTER TABLE orders ADD COLUMN created_by_name TEXT;")
+        if "notes" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
     await db.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
