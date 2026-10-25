@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from telegram import InlineKeyboardMarkup
 
-from src.bot.handlers.admin import admin_command, handle_admin_callback, handle_admin_text_input
+from src.bot.handlers.admin import (
+    DEFAULT_MODELS,
+    admin_command,
+    handle_admin_callback,
+    handle_admin_text_input,
+)
 from src.bot.handlers.logs import handle_logs_callback, logs_command
 from src.bot.keyboards import (
     build_admin_main_keyboard,
@@ -281,6 +286,39 @@ async def test_admin_handlers_resolve_db_when_bot_data_db_is_none():
         mock_get_conn.assert_called_once_with("test.db")
         rendered_text = update.effective_message.reply_text.call_args[0][0]
         assert "12 đơn hàng" in rendered_text
+
+
+@pytest.mark.asyncio
+async def test_handle_admin_text_input_add_model_does_not_mutate_default_models():
+    initial_default_len = len(DEFAULT_MODELS)
+    candidate = "meta-llama/llama-3.3-70b-instruct"
+
+    context = make_mock_context(user_role=UserRole.ADMIN)
+    context.user_data["action_state"] = {
+        "action": "await_model_name",
+        "expires_at": time.time() + 60,
+    }
+    update = make_mock_update(user_id=123456, text=candidate)
+
+    with patch(
+        "src.bot.handlers.admin.probe_model_reachability",
+        new=AsyncMock(return_value=(True, "OK")),
+    ), patch(
+        "src.bot.handlers.admin.get_json_setting",
+        new=AsyncMock(return_value=DEFAULT_MODELS),
+    ), patch(
+        "src.bot.handlers.admin.set_setting",
+        new=AsyncMock(),
+    ), patch(
+        "src.bot.handlers.admin.set_json_setting",
+        new=AsyncMock(),
+    ):
+        handled = await handle_admin_text_input(update, context)
+
+    assert handled is True
+    assert len(DEFAULT_MODELS) == initial_default_len
+    assert candidate not in DEFAULT_MODELS
+    assert context.bot_data["active_model_id"] == candidate
 
 
 @pytest.mark.asyncio

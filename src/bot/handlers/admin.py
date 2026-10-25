@@ -611,13 +611,16 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
                 if db:
                     await set_setting(db, "active_model_id", candidate_model, description="Active LLM model")
                     # Add to available_models if not already present
-                    models = await get_json_setting(db, "available_models", default=DEFAULT_MODELS)
+                    models = list(
+                        await get_json_setting(db, "available_models", default=DEFAULT_MODELS)
+                        or DEFAULT_MODELS
+                    )
                     if candidate_model not in models:
                         models.append(candidate_model)
                         await set_json_setting(db, "available_models", models, description="Selectable models")
                     display_models = models
                 else:
-                    display_models = DEFAULT_MODELS
+                    display_models = list(DEFAULT_MODELS)
 
             context.bot_data["active_model_id"] = candidate_model
             card_text = (
