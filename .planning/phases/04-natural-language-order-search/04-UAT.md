@@ -1,11 +1,11 @@
 ---
-status: partial
+status: diagnosed
 phase: 04-natural-language-order-search
 source:
   - .planning/phases/04-natural-language-order-search/04-01-SUMMARY.md
   - .planning/phases/04-natural-language-order-search/04-02-SUMMARY.md
 started: "2026-10-25T01:30:00Z"
-updated: "2026-10-25T01:40:00Z"
+updated: "2026-10-25T01:45:00Z"
 ---
 
 ## Current Test
@@ -75,5 +75,13 @@ blocked: 5
   reason: "User reported: bấm Tra cứu, hỏi a Biên đã mua băng bao giờ chưa nhỉ? bot trả lời Hej thống tra cứu đang bận hoặc gián đoạn ..., log 2026-10-25 08:22:48,141 - src.bot.handlers.search - ERROR - OpenAI client, settings, or db missing from application data. nếu hỏi luôn câu hỏi kia mà không ấn tra cứu, hệ thống không nhận ra, trả lời là Em không nhận diện được đơn hàng tư tin nhắn ..."
   severity: blocker
   test: 3
-  artifacts: []
-  missing: []
+  root_cause: "1) `main.py` calls `build_application(settings)` without passing `db`, leaving `app.bot_data['db']` as None, and `src/bot/handlers/search.py` (lines 104 and 354) strictly requires `db` instead of using the fallback `_get_active_db_context(context)` (`nullcontext(db) if db else get_db_connection(db_path)`) used by all other handlers; 2) `is_search_intent` in `src/services/order_search.py` only checks `trimmed.startswith(prefix)` against 5 static keywords ('tìm', 'tra cứu', 'kiểm tra', 'xem lại đơn', 'hỏi đơn'), missing natural conversational inquiries (e.g. 'a Biên đã mua băng bao giờ chưa nhỉ?') which fall through to order ingestion and fail without a phone number."
+  artifacts:
+    - path: "src/bot/handlers/search.py"
+      issue: "Lacks _get_active_db_context fallback for database connection in process_search_query and handle_search_callback"
+    - path: "src/services/order_search.py"
+      issue: "is_search_intent uses strict startswith prefix matching only, missing natural Vietnamese inquiry question patterns"
+  missing:
+    - "Add _get_active_db_context helper in src/bot/handlers/search.py and use dynamic db connection context manager"
+    - "Broaden is_search_intent in src/services/order_search.py with regex/keyword matching for conversational inquiry questions ('đã...bao giờ chưa', 'chưa nhỉ', 'có mua...không', 'mấy đơn', 'bao nhiêu đơn')"
+  debug_session: ".planning/debug/search-application-data-missing.md"
