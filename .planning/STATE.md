@@ -4,13 +4,13 @@ milestone: v1.1
 milestone_name: NL Mutation, Telegram Admin, Telegram Backup & Container Deployment
 status: executing
 stopped_at: Phase 7 UI-SPEC approved
-last_updated: "2026-10-25T08:55:24.092Z"
-last_activity: 2026-10-25 -- Completed 06-02-PLAN.md
+last_updated: "2026-10-25T09:03:50.717Z"
+last_activity: 2026-10-25 -- Phase 07 execution started
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
   percent: 50
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-25)
 
 **Core value:** Người lớn tuổi nhập tự do một đoạn tin nhắn đặt hàng bất kỳ qua Telegram, bot dùng LLM tự bóc tách chính xác thông tin (khách, hàng hoá, tiền COD, hình thức), hiển thị nút bấm xác nhận trực quan và lưu trữ an toàn vào DB mà không cần thao tác biểu mẫu phức tạp.
-**Current focus:** Phase 06 — telegram-database-backup-engine-scheduled-tasks (Complete)
+**Current focus:** Phase 07 — natural-language-order-mutation-pipeline
 
 ## Current Position
 
-Phase: 06 (telegram-database-backup-engine-scheduled-tasks) — COMPLETE
+Phase: 07 (natural-language-order-mutation-pipeline) — EXECUTING
 Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-10-25 -- Completed 06-02-PLAN.md
+Last activity: 2026-10-25 -- Phase 07 execution started
 
 Progress: [██████████] 100%
 
@@ -61,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 05 P02 | 6min | 3 tasks | 9 files |
 | Phase 06 P01 | 4min | 2 tasks | 2 files |
 | Phase 06 P02 | 6min | 3 tasks | 7 files |
+| Phase 07 P01 | 4m | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 8: Deployment]: Multi-stage Dockerfile non-root, Docker Compose, and Kubernetes manifests (replicas: 1 + Recreate strategy) with graceful SIGTERM checkpoint trap.
 - [Phase 05]: LLM reachability probe verifies 9router connectivity with 1 token prompt before persisting model change
 - [Phase 05]: Root Super Admin ID deletion and demotion is rejected with alert popup and blocked at database layer
+- [Phase 07]: Intent classification combines zero-latency regex prefixes, reply context, and 5-token LLM fallback.
+- [Phase 07]: find_orders_for_mutation prioritizes active lifecycle states before completed ones.
+- [Phase 07]: order_history table and creator columns in orders provide full auditability.
 
 ### Pending Todos
 
@@ -106,7 +110,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-25T08:43:19.110Z
+Last session: 2026-10-25T09:03:34.385Z
 Stopped at: Phase 7 UI-SPEC approved
 Resume file: .planning/phases/07-natural-language-order-mutation-pipeline/07-UI-SPEC.md
 

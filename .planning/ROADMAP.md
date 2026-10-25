@@ -86,7 +86,7 @@
 **Plans**: 2 plans
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Database audit migration, 3-Way Intent Router, and 2-tier LLM delta extractor (MUT-01, MUT-02, MUT-03)
+- [x] 07-01-PLAN.md — Database audit migration, 3-Way Intent Router, and 2-tier LLM delta extractor (MUT-01, MUT-02, MUT-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -119,5 +119,5 @@
 | 4. Natural Language Order Search | v1.0 | 3/3 | Completed | 2026-10-25 |
 | 5. Role-Based Access Control & Telegram Admin Suite | v1.1 | 2/2 | Complete   | 2026-10-25 |
 | 6. Telegram Database Backup Engine & Scheduled Tasks | v1.1 | 2/2 | Completed | 2026-10-25 |
-| 7. Natural Language Order Mutation Pipeline | v1.1 | 0/2 | Planned | - |
+| 7. Natural Language Order Mutation Pipeline | v1.1 | 1/2 | In Progress|  |
 | 8. Containerization & Kubernetes Deployment | v1.1 | 0/TBD | Not started | - |
