@@ -1,6 +1,6 @@
 ---
 phase: 07-natural-language-order-mutation-pipeline
-reviewed: 2026-10-25T16:45:00Z
+reviewed: 2026-10-25T11:00:00Z
 depth: standard
 files_reviewed: 17
 files_reviewed_list:
@@ -24,139 +24,163 @@ files_reviewed_list:
 findings:
   critical: 2
   warning: 3
-  info: 2
-  total: 7
+  info: 4
+  total: 9
 status: issues_found
 ---
 
-# Phase 7: Code Review Report
+# Phase 07: Code Review Report
 
-**Reviewed:** 2026-10-25T16:45:00Z
+**Reviewed:** 2026-10-25T11:00:00Z
 **Depth:** standard
 **Files Reviewed:** 17
 **Status:** issues_found
 
 ## Summary
 
-Adversarial review of Phase 7 (Natural Language Order Mutation Pipeline) identified 2 BLOCKER bugs, 3 WARNING defects, and 2 INFO quality issues.
+Code review conducted across 17 files covering Phase 7 Natural Language Order Mutation Pipeline. Core architecture is well structured: 3-way intent routing, active-first order lookup, dual-tier extraction, visual diff card with 14-char divider, and optimistic locking audit trails.
 
-The primary issues are:
-1. `find_orders_for_mutation` receives `phone=delta.new_customer_phone`, which causes order search to fail when updating a customer's phone number because the search queries for the *new* unpersisted phone instead of searching by keyword/existing phone.
-2. `new_notes` (Group 3 per MUT-03) is extracted and displayed on the Visual Diff Card, but the `orders` SQLite table and `Order` domain model lack a `notes` column. `mutate_order_with_lock` silently drops `notes`, leading to data loss on confirmation.
+However, adversarial analysis revealed 2 Critical defects and 3 Warnings that risk functional correctness, order creation interception, and false-positive concurrency conflicts:
+1. **CR-01 (Blocker):** Step 5 of `classify_intent` uses unconditional substring search `cue in trimmed` for `"sửa"`, `"đổi"`, `"huỷ"`, `"hủy"` before checking `PHONE_PATTERN`. Real new order messages containing common address landmarks (e.g. `"tiệm sửa xe"`, `"sửa khoá"`, or telex typo `"đổi diện"`) are misrouted to MUTATE, dropping the order creation pipeline.
+2. **CR-02 (Blocker):** `find_orders_for_mutation` without criteria (`order_id=None, keyword=None, phone=None`) builds an empty SQL filter and fetches the latest active orders. A mutation query without target identifiers (e.g. "sửa ghi chú giao sau 18h") silently targets an arbitrary recent order.
+3. **WR-01 (Warning):** `_normalize_ts` does not match timestamps when one string lacks fractional seconds (`2026-10-25 08:30:00`) and the other contains `.000` or `.000000`, causing false optimistic lock conflicts.
+4. **WR-02 (Warning):** `target_order_id` in `OrderMutationDelta` lacks `mode="before"` string cleaning, causing Tier 2 fallback to fail when models return `"#12"`.
+5. **WR-03 (Warning):** Cancellation and TTL expiry in `handle_mutation_callback` print `Đơn hàng # được giữ nguyên` when triggered on disambiguation keyboards where `order_id` is empty.
 
 ## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: `new_customer_phone` Passed as Search Filter Breaks Order Discovery on Phone Updates
+### CR-01: Intent router misclassifies new orders containing common landmark words as MUTATE
 
-**File:** `/Users/tranducquan/Working/cassette-store/src/bot/handlers/mutation.py:128`
-**Issue:** Line 128 calls `find_orders_for_mutation(..., phone=delta.new_customer_phone)`. `delta.new_customer_phone` contains the *new* phone number to be applied to the order, not the current phone number on the existing order. In `find_orders_for_mutation`, the presence of `phone` takes priority over `keyword`, executing `customer_phone LIKE '%new_phone%'`. The existing order has the old phone number, so 0 orders match and the user receives "KHÔNG TÌM THẤY ĐƠN HÀNG CẦN SỬA".
+**File:** `src/services/intent_router.py:83-84`
+**Issue:** Step 5 of `classify_intent` tests `if any(cue in trimmed for cue in ("sửa", "đổi", "huỷ", "hủy")):` across the entire trimmed text without word boundary checks and before checking `PHONE_PATTERN` at Step 6. Any new order containing address landmark words like `"gần tiệm sửa xe"`, `"đối diện tiệm sửa khoá"`, or common Vietnamese keyboard typos like `"đổi diện"` is misclassified as `IntentType.MUTATE`. The bot sends the message to `handle_mutation_flow`, dropping new order creation.
 **Fix:**
 ```python
-        matches = await find_orders_for_mutation(
-            db,
-            order_id=effective_order_id,
-            keyword=delta.target_customer_keyword,
-            limit=5,
-        )
+    # Step 5: Ambiguity check (mutation phrase with field/order intent) -> prioritize MUTATE per D-02
+    MUTATION_ACTION_REGEX = re.compile(
+        r"\b(?:sửa|đổi|huỷ|hủy|cập nhật|thay)\s+(?:đơn|địa chỉ|sđt|số điện thoại|tiền|cod|ghi chú|trạng thái|mã vận đơn|băng|sang|lại)\b",
+        re.IGNORECASE,
+    )
+    if MUTATION_ACTION_REGEX.search(trimmed):
+        return IntentType.MUTATE
+
+    # Step 6: Contains Vietnamese phone number -> CREATE
+    if PHONE_PATTERN.search(text):
+        return IntentType.CREATE
 ```
 
-### CR-02: `new_notes` Extracted and Displayed on Confirmation Card but Silently Dropped by Database Layer
+### CR-02: `find_orders_for_mutation` with empty criteria matches arbitrary active orders
 
-**File:** `/Users/tranducquan/Working/cassette-store/src/db/orders.py:366`, `/Users/tranducquan/Working/cassette-store/src/models/order.py:20`, `/Users/tranducquan/Working/cassette-store/src/db/schema.py:26`
-**Issue:** `OrderMutationDelta` models `new_notes` (Group 3 per MUT-03), and `render_mutation_diff_card` displays `📝 Ghi chú mới: {new_notes}`. However, neither the `orders` table in SQLite nor the `Order` model contains a `notes` column (only `customers` table has `notes`). In `mutate_order_with_lock`, `target_col = "notes"` is filtered out by `if target_col in row_keys:`. The notes update is silently ignored; no SQL update is run, no audit history is written, and notes changes are lost upon confirmation.
+**File:** `src/db/orders.py:340-384`
+**Issue:** If `order_id`, `keyword`, and `phone` are all `None`, `conds` remains empty, making `where_filter = ""` in `find_orders_for_mutation`. The query executes `SELECT * FROM orders WHERE status IN ('CHO_LAM', ...) LIMIT 5`. When a user sends a command without target identifiers (e.g. `"sửa ghi chú giao sau 18h"` without replying to an order), `handle_mutation_flow` receives the newest active orders. If exactly 1 active order exists, it silently targets that order, leading to unintended data mutation on unrelated orders.
 **Fix:**
-1. In `src/db/schema.py`, add column migration:
 ```python
-        if "notes" not in cols:
-            await db.execute("ALTER TABLE orders ADD COLUMN notes TEXT DEFAULT '';")
+async def find_orders_for_mutation(
+    db: aiosqlite.Connection,
+    order_id: int | None = None,
+    keyword: str | None = None,
+    phone: str | None = None,
+    limit: int = 5,
+) -> list[Order]:
+    """Retrieve orders for mutation prioritizing active lifecycle states before completed ones (D-07)."""
+    if order_id is not None:
+        ord_obj = await get_order_by_id(db, order_id)
+        return [ord_obj] if ord_obj else []
+
+    if not phone and not keyword:
+        return []
 ```
-2. In `src/models/order.py`, add `notes: str = ""` to `Order`.
-3. In `src/db/orders.py`, map `notes=row["notes"] if "notes" in keys else ""` in `_row_to_order`.
 
 ## Warnings
 
-### WR-01: Duplicate SQL Column Assignment in `mutate_order_with_lock`
+### WR-01: `_normalize_ts` fails equality comparison between timestamps with and without `.000`
 
-**File:** `/Users/tranducquan/Working/cassette-store/src/db/orders.py:360-374`
-**Issue:** If `delta_dict` contains both `"new_status"` (from extractor) and `"status"` (set by `handle_status_suggestion_selection` or fast-path), both map to `target_col = "status"`. `mutate_order_with_lock` appends `status = ?` twice to `fields` and appends `val_to_save` twice to `params`, generating `UPDATE orders SET status = ?, status = ? WHERE ...`.
-**Fix:** Deduplicate target columns before building SQL parameters:
+**File:** `src/db/orders.py:11-21`
+**Issue:** When an order is created or updated via `CURRENT_TIMESTAMP`, SQLite stores `"2026-10-25 08:30:00"` (no fractional seconds). If caller supplies `expected_updated_at` formatted from Python `datetime` with microsecond 0 (`"2026-10-25 08:30:00.000000"`), `_normalize_ts` returns `"2026-10-25 08:30:00"` for the database row and `"2026-10-25 08:30:00.000"` for expected. The string comparison fails, triggering a false-positive optimistic concurrency conflict.
+**Fix:**
 ```python
-    seen_cols: set[str] = set()
-    for col, new_val in delta_dict.items():
-        target_col = col[4:] if col.startswith("new_") else col
-        if target_col in row_keys and target_col not in seen_cols:
-            seen_cols.add(target_col)
-            val_to_save = new_val.value if hasattr(new_val, "value") else new_val
-            current_val = row[target_col]
-            if current_val != val_to_save:
-                fields.append(f"{target_col} = ?")
-                params.append(val_to_save)
-                changes[target_col] = {"old": current_val, "new": val_to_save}
+def _normalize_ts(ts: object) -> str:
+    """Normalize timestamp string/datetime to millisecond precision for safe equality comparison."""
+    if not ts:
+        return ""
+    s = str(ts).strip().replace("T", " ")
+    if "." in s:
+        base, frac = s.split(".", 1)
+        frac_digits = "".join(c for c in frac if c.isdigit())[:3].ljust(3, "0")
+        if frac_digits == "000":
+            return base
+        return f"{base}.{frac_digits}"
+    return s
 ```
 
-### WR-02: `update_order_status` and `update_order_tracking` Do Not Write Audit Trail to `order_history`
+### WR-02: `target_order_id` in `OrderMutationDelta` fails validation on `"#12"` string from LLM
 
-**File:** `/Users/tranducquan/Working/cassette-store/src/db/orders.py:101-133`
-**Issue:** `update_order_status` and `update_order_tracking` update `orders.updated_at = CURRENT_TIMESTAMP` without creating a record in `order_history`. When concurrent conflict occurs in `mutate_order_with_lock`, it fetches the most recent history row from `order_history` per D-17. Because button actions leave no audit records, the conflict dialog attributes the collision to an older action (such as the initial `CREATE`) rather than the actual status transition.
-**Fix:** Insert an audit record in `update_order_status` and `update_order_tracking` using `record_order_history`.
-
-### WR-03: Status Suggestion Keyboard Back Button Misleadingly Triggers Cancellation
-
-**File:** `/Users/tranducquan/Working/cassette-store/src/bot/keyboards.py:1056-1062`
-**Issue:** In `build_mutation_status_keyboard`, the bottom button displays `"⬅️ Quay lại thẻ đơn"`, but its callback is `ord_mut_ca:{draft_id}`. Clicking it clears the mutation draft and permanently cancels the request with `"❌ ĐÃ HUỶ YÊU CẦU SỬA ĐƠN"`.
-**Fix:** Change button text to `"❌ Huỷ bỏ"` or support proper back navigation:
+**File:** `src/models/mutation.py:23-25`
+**Issue:** `target_order_id` is typed `int | None`. In Tier 2 JSON fallback mode, models frequently output strings with prefix like `"#12"` or `"đơn 12"`. Without a pre-validator, Pydantic throws `ValidationError`, causing Tier 2 extraction to abort and presenting an error to the user.
+**Fix:**
 ```python
-    buttons.append(
-        [
-            InlineKeyboardButton(
-                "❌ Huỷ bỏ",
-                callback_data=f"ord_mut_ca:{draft_id}",
-            )
-        ]
-    )
+    @field_validator("target_order_id", mode="before")
+    @classmethod
+    def validate_order_id(cls, v: object) -> int | None:
+        if v is None:
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, str):
+            digits = re.sub(r"\D", "", v)
+            return int(digits) if digits else None
+        return None
+```
+
+### WR-03: Mutation cancellation and TTL expiry display empty order ID `#` on disambiguation cards
+
+**File:** `src/bot/handlers/callbacks.py:203, 215`
+**Issue:** During disambiguation, `order_id` is not yet set in `pending_mutations[draft_id]`. If the user taps `[❌ Huỷ]` or the draft expires (120s TTL), the message formats `f"Đơn hàng #{oid} được giữ nguyên"`, displaying `Đơn hàng # được giữ nguyên` with an empty number.
+**Fix:**
+```python
+    # Handle cancellation (ord_mut_ca) per D-12
+    if action == "ca":
+        oid = draft.get("order_id")
+        oid_str = f" #{oid}" if oid else ""
+        pending_mutations.pop(draft_id, None)
+        await query.edit_message_text(
+            f"❌ <b>ĐÃ HUỶ YÊU CẦU SỬA ĐƠN</b>\n"
+            f"<i>Đơn hàng{oid_str} được giữ nguyên, không có thay đổi nào được lưu.</i>",
+            reply_markup=None,
+            parse_mode="HTML",
+        )
+        return
 ```
 
 ## Info
 
-### IN-01: Redundant LLM Call When Fast-Path Matches Non-Existent Order ID
+### IN-01: Order detail card omits `order.notes` field
 
-**File:** `/Users/tranducquan/Working/cassette-store/src/bot/handlers/mutation.py:57-77`
-**Issue:** When `parse_fast_path_status(text)` successfully parses an order ID and status (e.g. `huỷ đơn 9999`), but `target_order` is not found, the function falls through to the LLM extraction step rather than immediately replying with the empty guidance message.
-**Fix:** Return empty guidance immediately when `fast_path` matches but the order is not in DB:
-```python
-    fast_path = parse_fast_path_status(text)
-    if fast_path:
-        target_oid, new_status = fast_path
-        async with db_ctx as db:
-            target_order = await get_order_by_id(db, target_oid) if db else None
-        if not target_order:
-            empty_msg = (
-                f"🔍 <b>KHÔNG TÌM THẤY ĐƠN HÀNG CẦN SỬA</b>\n\n"
-                f"Dạ em tìm trong sổ không thấy đơn hàng #{target_oid} để sửa!"
-            )
-            await update.message.reply_text(empty_msg, parse_mode="HTML")
-            return
-```
+**File:** `src/bot/keyboards.py:82-124`
+**Issue:** `render_order_detail_card` does not include `order.notes`. Order mutations modify `notes` (MUT-03 Group 3), but the card never displays them to staff.
+**Fix:** Include `notes_line = f"📝 <b>Ghi chú:</b> {html.escape(order.notes)}\n" if order.notes else ""` in `render_order_detail_card`.
 
-### IN-02: Dangling `#` in Cancel Message When Cancelled from Disambiguation View
+### IN-02: Fast-path status falls through to LLM when order ID does not exist
 
-**File:** `/Users/tranducquan/Working/cassette-store/src/bot/handlers/callbacks.py:214-222`
-**Issue:** Cancelling from disambiguation view leaves `oid = ""` because `order_id` has not been picked yet. Message renders as `Đơn hàng # được giữ nguyên`.
-**Fix:** Format message conditionally:
-```python
-    target_desc = f"Đơn hàng #{oid}" if oid else "Yêu cầu sửa đơn"
-    await query.edit_message_text(
-        f"❌ <b>ĐÃ HUỶ YÊU CẦU SỬA ĐƠN</b>\n"
-        f"<i>{target_desc} được giữ nguyên, không có thay đổi nào được lưu.</i>",
-        reply_markup=None,
-        parse_mode="HTML",
-    )
-```
+**File:** `src/bot/handlers/mutation.py:56-76`
+**Issue:** When `parse_fast_path_status` matches (e.g. `"huỷ đơn 9999"`) but the order does not exist in SQLite, `handle_mutation_flow` falls through to LLM delta extraction. The LLM extracts order 9999 again, taking 15s and consuming tokens, only to confirm that order 9999 does not exist.
+**Fix:** If `fast_path` matches and `target_order` is `None`, immediately reply with the friendly not-found message using `target_oid` without calling the LLM.
+
+### IN-03: Unused imports in mutation and callback handlers
+
+**File:** `src/bot/handlers/mutation.py:21-22`, `src/bot/handlers/callbacks.py:19`
+**Issue:** `OrderMutationDelta` and `Order` imported in `mutation.py`, and `STATUS_NAMES` imported in `callbacks.py` are unused, causing linter warnings.
+**Fix:** Remove unused imports.
+
+### IN-04: `render_mutation_diff_card` displays notes diff when notes are unchanged
+
+**File:** `src/bot/keyboards.py:986-989`
+**Issue:** Diff card checks `if new_notes:` without verifying `new_notes != order.notes`, displaying a diff line even if notes remain identical.
+**Fix:** Change to `if new_notes and new_notes != order.notes:`.
 
 ---
 
-_Reviewed: 2026-10-25T16:45:00Z_
+_Reviewed: 2026-10-25T11:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
