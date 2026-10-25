@@ -96,6 +96,11 @@ def test_is_search_intent_conversational_questions():
     assert is_search_intent("Khách Tuấn 0903123456 2 cuốn Tuấn Vũ 200k") is False
     assert is_search_intent("Bác Ba 0903123456 2 cuốn Chế Linh") is False
     assert is_search_intent("Khách mua 2 cuốn Tuấn Vũ gửi 123 Lê Lợi") is False
+    # CR-01 regression cases: orders with conversational phrases but containing phone numbers
+    assert is_search_intent("Khách mua 2 cuốn Tuấn Vũ (hỏi xem có chưa nhỉ) gửi 123 Lê Lợi 0903123456") is False
+    assert is_search_intent("Đơn anh Tuấn 2 cuốn ship hôm nay được không nhỉ 0912345678") is False
+    # Explicit prefix with phone number should still be treated as search
+    assert is_search_intent("tìm đơn số 0903123456 xem mua gì chưa nhỉ") is True
 
 
 def test_generate_sql_from_query_prompt():

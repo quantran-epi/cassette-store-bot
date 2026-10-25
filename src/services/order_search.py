@@ -23,6 +23,8 @@ SEARCH_PREFIX_KEYWORDS: tuple[str, ...] = (
     "hỏi đơn",
 )
 
+PHONE_PATTERN = re.compile(r"(?:(?:\+84|84|0)[35789])\d{8}\b")
+
 SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
     # "đã/từng mua ... chưa / bao giờ chưa / không"
     re.compile(r"\b(?:đã|từng)\s+mua\b.*?\b(?:chưa|bao\s+giờ\s+chưa|không)\b", re.IGNORECASE),
@@ -139,8 +141,15 @@ class SearchResult:
 def is_search_intent(text: str) -> bool:
     """Check if text indicates order search intent via keywords or conversational inquiry patterns (G-04-3)."""
     trimmed = text.strip().lower()
+    # Explicit search prefix commands always take precedence
     if any(trimmed.startswith(prefix) for prefix in SEARCH_PREFIX_KEYWORDS):
         return True
+
+    # Do not treat conversational text as search if it contains a valid phone number,
+    # unless it explicitly starts with search prefix keywords
+    if PHONE_PATTERN.search(text):
+        return False
+
     return any(pattern.search(trimmed) for pattern in SEARCH_CONVERSATIONAL_PATTERNS)
 
 
