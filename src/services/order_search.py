@@ -23,6 +23,23 @@ SEARCH_PREFIX_KEYWORDS: tuple[str, ...] = (
     "hỏi đơn",
 )
 
+SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
+    # "đã/từng mua ... chưa / bao giờ chưa / không"
+    re.compile(r"\b(?:đã|từng)\s+mua\b.*?\b(?:chưa|bao\s+giờ\s+chưa|không)\b", re.IGNORECASE),
+    # "có mua ... không / chưa / bao giờ chưa"
+    re.compile(r"\bcó\s+mua\b.*?\b(?:không|chưa|bao\s+giờ\s+chưa)\b", re.IGNORECASE),
+    # "mấy đơn / bao nhiêu đơn"
+    re.compile(r"\b(?:mấy|bao\s+nhiêu)\s+đơn\b", re.IGNORECASE),
+    # "bán được bao nhiêu / mấy"
+    re.compile(r"\bbán\s+(?:được\s+)?(?:bao\s+nhiêu|mấy)\b", re.IGNORECASE),
+    # "lịch sử mua / lịch sử đơn"
+    re.compile(r"\blịch\s+sử\s+(?:mua|đơn)\b", re.IGNORECASE),
+    # "tra cứu / tìm kiếm / xem lại đơn / kiểm tra đơn"
+    re.compile(r"\b(?:tra\s+cứu|tìm\s+kiếm|xem\s+lại\s+đơn|kiểm\s+tra\s+đơn)\b", re.IGNORECASE),
+    # question markers with customer or order inquiry
+    re.compile(r"\b(?:mua|đơn)\b.*?\b(?:bao\s+giờ\s+chưa|chưa\s+nhỉ|chưa\s+bác|chưa\s+shop|không\s+nhỉ)\b", re.IGNORECASE),
+)
+
 FORBIDDEN_SQL_KEYWORDS: set[str] = {
     "INSERT",
     "UPDATE",
@@ -120,9 +137,11 @@ class SearchResult:
 
 
 def is_search_intent(text: str) -> bool:
-    """Check if trimmed text starts with any search prefix keyword (case-insensitive)."""
+    """Check if text indicates order search intent via keywords or conversational inquiry patterns (G-04-3)."""
     trimmed = text.strip().lower()
-    return any(trimmed.startswith(prefix) for prefix in SEARCH_PREFIX_KEYWORDS)
+    if any(trimmed.startswith(prefix) for prefix in SEARCH_PREFIX_KEYWORDS):
+        return True
+    return any(pattern.search(trimmed) for pattern in SEARCH_CONVERSATIONAL_PATTERNS)
 
 
 def sanitize_and_validate_sql(raw_sql: str) -> str:

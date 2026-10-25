@@ -2,6 +2,7 @@ import asyncio
 import logging
 import time
 import uuid
+from contextlib import nullcontext
 from math import ceil
 from typing import Any, Coroutine
 
@@ -19,9 +20,19 @@ from src.bot.keyboards import (
     render_search_multi_card,
     render_search_single_order_card,
 )
+from src.db.connection import get_db_connection
 from src.services.order_search import SearchResultType, run_order_search
 
 logger = logging.getLogger(__name__)
+
+
+def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
+    """Resolve active database connection or create context connection per G-04-3."""
+    app_context = context.application.bot_data.get("app_context")
+    db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
+    settings = context.application.bot_data.get("settings")
+    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
+    return nullcontext(db) if db else get_db_connection(db_path)
 
 
 async def run_with_typing(chat: Chat, coro: Coroutine[Any, Any, Any]) -> Any:
@@ -95,14 +106,12 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
     if not app_context:
         settings = context.application.bot_data.get("settings")
         openai_client = context.application.bot_data.get("openai_client")
-        db = context.application.bot_data.get("db")
     else:
         settings = getattr(app_context, "settings", None)
         openai_client = getattr(app_context, "openai_client", None)
-        db = getattr(app_context, "db", None)
 
-    if not openai_client or not settings or not db:
-        logger.error("OpenAI client, settings, or db missing from application data")
+    if not openai_client or not settings:
+        logger.error("OpenAI client or settings missing from application data")
         if update.effective_message:
             await update.effective_message.reply_text(
                 "⚠️ Hệ thống tra cứu đang bận hoặc gián đoạn kết nối. Bác vui lòng thử lại sau giây lát nhé!"
@@ -111,23 +120,33 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
 
     chat = update.effective_chat
     try:
-        if chat:
-            result = await run_with_typing(
-                chat,
-                run_order_search(
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                logger.error("Database connection unavailable for process_search_query")
+                if update.effective_message:
+                    await update.effective_message.reply_text(
+                        "⚠️ Hệ thống tra cứu đang bận hoặc gián đoạn kết nối. Bác vui lòng thử lại sau giây lát nhé!"
+                    )
+                return
+
+            if chat:
+                result = await run_with_typing(
+                    chat,
+                    run_order_search(
+                        client=openai_client,
+                        model_id=settings.nine_router_model_id,
+                        db=active_db,
+                        query=query_text,
+                    ),
+                )
+            else:
+                result = await run_order_search(
                     client=openai_client,
                     model_id=settings.nine_router_model_id,
-                    db=db,
+                    db=active_db,
                     query=query_text,
-                ),
-            )
-        else:
-            result = await run_order_search(
-                client=openai_client,
-                model_id=settings.nine_router_model_id,
-                db=db,
-                query=query_text,
-            )
+                )
     except Exception:
         logger.exception("Natural language order search failed")
         if update.effective_message:
@@ -348,32 +367,31 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
         search_id = parts[1]
         order_id = int(parts[2])
 
-        app_context = context.application.bot_data.get("app_context")
-        db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await query.edit_message_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return
 
-        if not db:
-            await query.edit_message_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
-            return
+            order = await get_order_by_id(active_db, order_id)
+            if not order:
+                await query.edit_message_text("⚠️ Đơn hàng không tồn tại hoặc đã bị xoá.")
+                return
 
-        order = await get_order_by_id(db, order_id)
-        if not order:
-            await query.edit_message_text("⚠️ Đơn hàng không tồn tại hoặc đã bị xoá.")
-            return
-
-        card_text = render_order_detail_card(order)
-        detail_kb = build_order_detail_keyboard(
-            order=order,
-            date_str="search",
-            page=1,
-            back_callback_data=f"sch_bk:{search_id}",
-        )
-        try:
-            await query.edit_message_text(
-                text=card_text,
-                reply_markup=detail_kb,
-                parse_mode="HTML",
+            card_text = render_order_detail_card(order)
+            detail_kb = build_order_detail_keyboard(
+                order=order,
+                date_str="search",
+                page=1,
+                back_callback_data=f"sch_bk:{search_id}",
             )
-        except BadRequest as e:
-            if "Message is not modified" not in str(e):
-                raise
-        return
+            try:
+                await query.edit_message_text(
+                    text=card_text,
+                    reply_markup=detail_kb,
+                    parse_mode="HTML",
+                )
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+            return
