@@ -1056,7 +1056,7 @@ def build_mutation_status_keyboard(
     buttons.append(
         [
             InlineKeyboardButton(
-                "⬅️ Quay lại thẻ đơn",
+                "❌ Huỷ bỏ",
                 callback_data=f"ord_mut_ca:{draft_id}",
             )
         ]

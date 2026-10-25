@@ -84,7 +84,7 @@ def test_build_mutation_status_keyboard():
     # Should have suggestion buttons and back button
     assert len(rows) >= 2
     last_row = rows[-1]
-    assert last_row[0].text == "⬅️ Quay lại thẻ đơn"
+    assert last_row[0].text == "❌ Huỷ bỏ"
     assert last_row[0].callback_data == "ord_mut_ca:draft123"
 
     all_cbs = [btn.callback_data for r in rows for btn in r]
