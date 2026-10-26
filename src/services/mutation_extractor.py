@@ -37,6 +37,9 @@ HƯỚNG DẪN TRÍCH XUẤT 5 NHÓM TRƯỜNG BIẾN ĐỔI:
    - `new_shipping_address`: Địa chỉ giao hàng mới.
    - `new_customer_name`: Tên khách mới nếu có.
    - `new_items_text`: Danh sách băng cassette thay đổi hoặc bổ sung/bớt.
+   - Khi trích `new_items_text`, ĐỒNG THỜI điền `new_tapes` (breakdown phôi mỗi item `{"label": ..., "qty": ...}`), `new_tape_artists` (tên ca sĩ xuất hiện) và `new_tape_genres` (thể loại nội dung). Nếu chỉ sửa field khác thì để null.
+   - Không đưa tên ca sĩ vào `new_tapes` hay `new_tape_genres`; không đưa thể loại vào `new_tape_artists`.
+   - Quy tắc ngoặc: "(6 sony 90p)", "(1 băng)" là phôi cho các băng đã liệt kê — qty là số trong ngoặc, KHÔNG cộng dồn với số khác. Không trả `tape_quantity`; hệ thống tự tính tổng.
 
 Chỉ điền các trường có sự thay đổi. Các trường không thay đổi để null.
 """.strip()

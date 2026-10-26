@@ -1,9 +1,21 @@
 import json
+import re
 from collections.abc import Sequence
 
 import aiosqlite
 
+from src.db.connection import remove_accents
 from src.models.customer import Customer
+
+# Words that carry no lookup value in "tìm khách <...>" phrasing.
+_CUSTOMER_FILLERS = {
+    "khach", "khách", "tim", "tìm", "tra", "cuu", "cứu", "kiem", "kiểm", "xem",
+    "cua", "của", "cho", "sdt", "so", "số", "dien", "điện", "thoai", "thoại",
+    "ten", "tên", "dia", "địa", "chi", "chỉ", "hang", "hàng",
+}
+_HONORIFICS = {"anh", "chi", "chị", "bac", "bác", "ong", "ông", "co", "cô", "chu", "chú", "em"}
+
+_CUSTOMER_SEARCH_PREFIXES = ("khach", "tim", "tra cuu", "kiem tra", "xem")
 
 
 def _row_to_customer(row: aiosqlite.Row) -> Customer:
@@ -61,6 +73,69 @@ async def get_customer_by_phone(db: aiosqlite.Connection, phone: str) -> Custome
         if not row:
             return None
         return _row_to_customer(row)
+
+
+def is_customer_search(query: str) -> bool:
+    """True when the query asks to look a customer up (no LLM involved)."""
+    clean = remove_accents(query).strip()
+    if "khach" not in clean:
+        return False
+    return clean.startswith(_CUSTOMER_SEARCH_PREFIXES)
+
+
+async def search_customers(
+    db: aiosqlite.Connection, query: str, limit: int = 5
+) -> list[Customer]:
+    """Find customers by name/phone/address tokens (accent-insensitive, ANDed).
+
+    Every substantive token must match the concatenated profile or appear as a substring of
+    one of the customer's phones (partial phone lookup). Tokens are bound as SQL parameters.
+    """
+    tokens = [t for t in re.split(r"\s+", remove_accents(query)) if t]
+    tokens = [t for t in tokens if t not in _CUSTOMER_FILLERS and t not in _HONORIFICS]
+    if not tokens:
+        fallback = remove_accents(query).strip()
+        tokens = [fallback] if fallback else []
+    if not tokens:
+        return []
+
+    haystack = "(c.name || ' ' || c.phones || ' ' || c.addresses || ' ' || c.notes)"
+    conds: list[str] = []
+    params: list[str] = []
+    for tok in tokens:
+        conds.append(
+            f"(word_match({haystack}, ?) = 1 "
+            "OR EXISTS (SELECT 1 FROM json_each(c.phones) p WHERE p.value LIKE ?))"
+        )
+        params.extend([tok, f"%{tok}%"])
+
+    params.append(limit)
+    sql = (
+        f"SELECT c.* FROM customers c WHERE {' AND '.join(conds)} "
+        "ORDER BY c.id LIMIT ?"
+    )
+    async with db.execute(sql, params) as cursor:
+        rows = await cursor.fetchall()
+
+    # Whole-word AND is strict: "hà nội" misses "Hanoi cũ" (one token). Retry per-token as
+    # accent-insensitive substring before giving up — same field set, still parameterized.
+    if not rows and len(tokens) > 1:
+        sub_conds = [
+            f"(unaccent({haystack}) LIKE ? "
+            "OR EXISTS (SELECT 1 FROM json_each(c.phones) p WHERE p.value LIKE ?))"
+            for _ in tokens
+        ]
+        sub_params: list[str] = []
+        for tok in tokens:
+            sub_params.extend([f"%{tok}%", f"%{tok}%"])
+        sub_params.append(limit)
+        async with db.execute(
+            f"SELECT c.* FROM customers c WHERE {' AND '.join(sub_conds)} ORDER BY c.id LIMIT ?",
+            sub_params,
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return [_row_to_customer(row) for row in rows]
 
 
 async def update_customer(db: aiosqlite.Connection, customer: Customer) -> bool:

@@ -1,6 +1,7 @@
 import html
+import json
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -15,6 +16,11 @@ from telegram import (
 from src.bot.security import UserRole
 from src.models.customer import Customer
 from src.models.order import Order, OrderStatus
+from src.services.tape_parser import (
+    build_tape_columns,
+    format_artist_summary,
+    format_tape_summary,
+)
 
 # Timezone Vietnam UTC+7
 TZ_VN = timezone(timedelta(hours=7))
@@ -139,6 +145,8 @@ def render_order_detail_card(
         f"📞 <b>SĐT:</b> <code>{html.escape(order.customer_phone)}</code> <i>(chạm để copy)</i>\n"
         f"📍 <b>ĐỊA CHỈ:</b> <code>{html.escape(order.shipping_address)}</code>\n"
         f"📼 <b>BĂNG CASSETTE:</b> {html.escape(order.items_text)}\n"
+        f"📼 <b>PHÔI BĂNG:</b> {html.escape(format_tape_summary(order.tape_quantity, order.tapes))}\n"
+        f"🎤 <b>CA SĨ:</b> {html.escape(format_artist_summary(order.tape_artists))}\n"
         f"💰 <b>TỔNG TIỀN:</b> <b>{total_fmt}</b>\n"
         f"💵 <b>TIỀN COD THU:</b> <b>{cod_fmt}</b>\n"
         f"🚚 <b>MÃ VẬN ĐƠN:</b> {tracking_str}\n"
@@ -583,7 +591,7 @@ def build_search_multi_keyboard(
             ]
         )
 
-    # Pagination navigation row: [◀️ Trang trước] [Trang X/Y] [Trang sau ▶️]
+    # Pagination navigation row: [◀️ Trang trước] [Trang X/Y] [Xem thêm ➡️]
     if total_pages > 1:
         nav_row: list[InlineKeyboardButton] = []
         if page > 1:
@@ -599,7 +607,7 @@ def build_search_multi_keyboard(
         if page < total_pages:
             nav_row.append(
                 InlineKeyboardButton(
-                    "Trang sau ▶️",
+                    "Xem thêm ➡️",
                     callback_data=f"sch_pg:{search_id}:{page + 1}",
                 )
             )
@@ -1043,6 +1051,19 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
         old_it = html.escape(order.items_text or "(Chưa có)")
         new_it = html.escape(str(new_items))
         diff_lines.append(f"📼 <b>BĂNG CASSETTE:</b> {old_it} ➡️ <b>{new_it}</b>")
+        cols = build_tape_columns(
+            str(new_items),
+            delta_dict.get("new_tapes") or delta_dict.get("tapes"),
+            delta_dict.get("new_tape_genres") or delta_dict.get("tape_genres"),
+            delta_dict.get("new_tape_artists") or delta_dict.get("tape_artists"),
+        )
+        old_display = order.tape_quantity if order.tape_quantity is not None else "—"
+        diff_lines.append(f"📼 <b>SỐ BĂNG:</b> {old_display} ➡️ <b>{cols.quantity}</b>")
+        new_artists = json.loads(cols.artists_json)
+        diff_lines.append(
+            f"🎤 <b>CA SĨ:</b> {html.escape(format_artist_summary(order.tape_artists))} "
+            f"➡️ <b>{html.escape(format_artist_summary(new_artists))}</b>"
+        )
 
     # 8. Notes
     new_notes = delta_dict.get("notes") or delta_dict.get("new_notes")
@@ -1152,8 +1173,15 @@ def render_customer_detail_card(
     page: int,
     total_pages: int,
     draft_id: str | None = None,
+    *,
+    nav_callback: Callable[[int], str] | None = None,
+    back_callback: str | None = None,
 ) -> tuple[str, InlineKeyboardMarkup]:
-    """Render customer profile and paginated order history card with navigation keyboard."""
+    """Render customer profile and paginated order history card with navigation keyboard.
+
+    ``nav_callback`` overrides the draft-based paging callbacks; ``back_callback`` replaces the
+    "back to draft" button. Defaults keep the original draft-flow behaviour intact.
+    """
     cust_name = html.escape(customer.name or "Khách hàng")
     phones_str = (
         ", ".join(f"<code>{html.escape(p)}</code>" for p in customer.phones)
@@ -1226,14 +1254,15 @@ def render_customer_detail_card(
     keyboard: list[list[InlineKeyboardButton]] = []
     safe_draft_id = draft_id or "00000000"
 
+    def _page_cb(target_page: int) -> str:
+        return nav_callback(target_page) if nav_callback else f"ord:cs:{safe_draft_id}:{target_page}"
+
     # Pagination row
     if total_pages > 1:
         nav_row: list[InlineKeyboardButton] = []
         if page > 1:
             nav_row.append(
-                InlineKeyboardButton(
-                    "⬅️ Trước", callback_data=f"ord:cs:{safe_draft_id}:{page - 1}"
-                )
+                InlineKeyboardButton("⬅️ Trước", callback_data=_page_cb(page - 1))
             )
         nav_row.append(
             InlineKeyboardButton(
@@ -1243,14 +1272,16 @@ def render_customer_detail_card(
         )
         if page < total_pages:
             nav_row.append(
-                InlineKeyboardButton(
-                    "Sau ➡️", callback_data=f"ord:cs:{safe_draft_id}:{page + 1}"
-                )
+                InlineKeyboardButton("Sau ➡️", callback_data=_page_cb(page + 1))
             )
         keyboard.append(nav_row)
 
-    # Back to draft preview button
-    if draft_id:
+    # Back button: custom target for customer search, or the draft preview as before.
+    if back_callback:
+        keyboard.append(
+            [InlineKeyboardButton("🔙 Quay lại kết quả", callback_data=back_callback)]
+        )
+    elif draft_id:
         keyboard.append(
             [
                 InlineKeyboardButton(

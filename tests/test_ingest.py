@@ -25,10 +25,15 @@ def test_render_preview_card_layout_and_buttons():
         "total_amount": 350000,
         "cod_amount": 300000,
         "deposit_amount": 50000,
+        "tape_quantity": 2,
+        "tapes": [{"label": "sony 90p", "qty": 2}],
     }
     stats = {"total_orders": 3, "total_spent": 1200000, "bom_count": 0}
 
     text, reply_markup = render_preview_card(draft, stats)
+    # Task 261026-tpe: preview card shows the tape breakdown line.
+    assert "PHÔI BĂNG:" in text
+    assert "sony 90p" in text
 
     # HTML escapes check
     assert "&amp;" in text
@@ -169,6 +174,9 @@ async def test_order_callback_confirm_saves_to_db(test_db):
     assert saved_order.total_amount == 450000
     assert saved_order.cod_amount == 400000
     assert saved_order.photo_file_ids == ["photo_id_test"]
+    # Task 261026-tpe: confirm persists derived tape columns.
+    assert saved_order.tape_quantity == 3
+    assert saved_order.tapes[0].qty == 3
 
 
 @pytest.mark.asyncio
@@ -242,6 +250,9 @@ async def test_handle_text_order_flow(test_db):
     draft = list(pending.values())[0]
     assert draft["customer_phone"] == "0912345678"
     assert draft["total_amount"] == 250000
+    # Task 261026-tpe: draft must carry derived tape columns.
+    assert draft["tape_quantity"] == 2
+    assert draft["tapes"][0]["qty"] == 2
 
 
 @pytest.mark.asyncio
@@ -672,6 +683,8 @@ async def test_media_group_album_bundled_single_preview(test_db):
             handle_photo_order(update2, context),
             handle_photo_order(update3, context),
         )
+        # Debounce finalizer now runs as a background task; let it finish before undoing patches.
+        await asyncio.sleep(0.2)
     finally:
         monkeypatch.undo()
 
@@ -691,6 +704,70 @@ async def test_media_group_album_bundled_single_preview(test_db):
     assert len(pending) == 1
     draft = list(pending.values())[0]
     assert draft["customer_name"] == "Khách Mai"
+    assert draft["photo_file_ids"] == ["photo_1", "photo_2", "photo_3"]
+
+
+@pytest.mark.asyncio
+async def test_media_group_sequential_updates_do_not_drop_photos(test_db):
+    """Sequential pump (real production order) still collects all 3 album photos into 1 draft."""
+    media_group_id = "album_seq_789"
+
+    def _make_update(file_id: str, caption: str | None):
+        upd = MagicMock(spec=Update)
+        msg = MagicMock()
+        msg.media_group_id = media_group_id
+        msg.caption = caption
+        msg.photo = [MagicMock(file_id=file_id)]
+        msg.chat.send_action = AsyncMock()
+        msg.reply_text = AsyncMock()
+        upd.message = msg
+        return upd
+
+    update1 = _make_update("photo_1", "Khách Mai 0988112233 456 Lê Lợi 2 băng Chế Linh 300k")
+    update2 = _make_update("photo_2", None)
+    update3 = _make_update("photo_3", None)
+
+    extracted_mock = ExtractedOrder(
+        customer_name="Khách Mai",
+        customer_phone="0988112233",
+        shipping_address="456 Lê Lợi",
+        items_text="2 băng Chế Linh",
+        total_amount=300000,
+        cod_amount=300000,
+    )
+
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = MagicMock()
+    context.application.bot_data = {"app_context": app_context}
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        AsyncMock(return_value=extracted_mock),
+    )
+    monkeypatch.setattr("src.bot.handlers.ingest.MEDIA_GROUP_DEBOUNCE_SECONDS", 0.05)
+
+    try:
+        # Await one at a time: this is how PTB's sequential pump delivers album updates.
+        await handle_photo_order(update1, context)
+        await handle_photo_order(update2, context)
+        await handle_photo_order(update3, context)
+        await asyncio.sleep(0.2)
+    finally:
+        monkeypatch.undo()
+
+    update1.message.reply_text.assert_awaited_once()
+    update2.message.reply_text.assert_not_awaited()
+    update3.message.reply_text.assert_not_awaited()
+    assert "3 ảnh" in update1.message.reply_text.call_args[1]["text"]
+
+    pending = context.user_data.get("pending_orders", {})
+    assert len(pending) == 1
+    draft = list(pending.values())[0]
     assert draft["photo_file_ids"] == ["photo_1", "photo_2", "photo_3"]
 
 
@@ -734,6 +811,8 @@ async def test_media_group_album_missing_all_captions(test_db):
             handle_photo_order(update2, context),
             handle_photo_order(update3, context),
         )
+        # Wait for the background finalizer to emit its single warning.
+        await asyncio.sleep(0.2)
     finally:
         monkeypatch.undo()
 

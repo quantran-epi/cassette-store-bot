@@ -155,6 +155,56 @@ def test_render_mutation_diff_card_only_changed_fields():
     assert "MÃ VẬN ĐƠN:" not in card and "Mã vận đơn:" not in card
 
 
+def test_render_mutation_diff_card_tape_quantity_line():
+    """When items change, diff shows SỐ BĂNG old ➡️ new."""
+    order = Order(
+        id=22,
+        customer_name="Bác Sửa",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="1 cuốn",
+        tape_quantity=1,
+    )
+    card = render_mutation_diff_card(order, {"new_items_text": "6 sony 90p"})
+    assert "SỐ BĂNG:" in card
+    assert "➡️" in card
+    assert "<b>6</b>" in card
+
+
+def test_render_mutation_diff_card_artist_change():
+    """When items change, diff shows CA SĨ old ➡️ new."""
+    order = Order(
+        id=24,
+        customer_name="Bác Ca Sĩ",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="1 cuốn Chế Linh",
+        tape_quantity=1,
+        tape_artists=["Chế Linh"],
+    )
+    card = render_mutation_diff_card(
+        order,
+        {"new_items_text": "2 cuốn Thanh Tuyền", "new_tape_artists": ["Thanh Tuyền"]},
+    )
+    assert "CA SĨ:" in card
+    assert "Chế Linh" in card
+    assert "Thanh Tuyền" in card
+
+
+def test_render_mutation_diff_card_no_tape_line_when_items_unchanged():
+    """Unchanged items_text must not add a SỐ BĂNG line."""
+    order = Order(
+        id=23,
+        customer_name="Bác Khác",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="1 cuốn",
+    )
+    card = render_mutation_diff_card(order, {"new_shipping_address": "Đà Nẵng"})
+    assert "SỐ BĂNG:" not in card
+    assert "CA SĨ:" not in card
+
+
 def test_render_mutation_diff_card_html_escaping():
     """Verify HTML special characters in old/new values are escaped."""
     order = Order(
@@ -464,6 +514,81 @@ async def test_mutate_order_with_lock_microsecond_vs_millisecond_normalization()
         assert s is True
         assert updated is not None
         assert updated.items_text == "3 cuốn"
+
+
+@pytest.mark.asyncio
+async def test_mutation_items_change_recomputes_tape_columns():
+    """Changing items_text recomputes all 3 columns; old tapes are gone."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order_id = await create_order(
+            db,
+            Order(
+                customer_name="Khách Phôi",
+                customer_phone="0911223344",
+                shipping_address="Hà Nội",
+                items_text="1 cuốn",
+                total_amount=100000,
+            ),
+        )
+        fetched = await get_order_by_id(db, order_id)
+        assert fetched is not None
+
+        success, changes, updated = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=fetched.updated_at,
+            delta_dict={"new_items_text": "6 sony 90p"},
+            user_name="Admin",
+        )
+        assert success is True
+        assert updated is not None
+        assert updated.tape_quantity == 6
+        assert "sony 90p" in updated.tapes[0].label
+        assert "cuon" not in updated.tapes[0].label  # old value not merged
+
+
+@pytest.mark.asyncio
+async def test_mutation_unrelated_field_preserves_tape_columns():
+    """Changing shipping_address leaves the tape columns untouched."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order_id = await create_order(
+            db,
+            Order(
+                customer_name="Khách Phôi",
+                customer_phone="0911223344",
+                shipping_address="Hà Nội",
+                items_text="6 sony 90p",
+                total_amount=100000,
+            ),
+        )
+        fetched = await get_order_by_id(db, order_id)
+        assert fetched is not None
+        assert fetched.tape_quantity == 6
+
+        success, _, updated = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=fetched.updated_at,
+            delta_dict={"new_shipping_address": "Đà Nẵng"},
+            user_name="Admin",
+        )
+        assert success is True
+        assert updated is not None
+        assert updated.shipping_address == "Đà Nẵng"
+        assert updated.tape_quantity == 6
+        assert updated.tapes == fetched.tapes
 
 
 @pytest.mark.asyncio

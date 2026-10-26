@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 
 import aiosqlite
 
+from src.services.tape_parser import parse_tapes_deterministic
+
 
 def remove_accents(input_str: str | None) -> str:
     """Normalize Vietnamese text to lowercase unaccented ASCII string."""
@@ -13,6 +15,15 @@ def remove_accents(input_str: str | None) -> str:
     nfkd = unicodedata.normalize("NFKD", input_str)
     cleaned = "".join([c for c in nfkd if not unicodedata.combining(c)])
     return cleaned.replace("đ", "d").replace("Đ", "D").lower()
+
+
+def tape_count(items_text: str | None) -> int:
+    """Estimate cassette quantity from free-text items.
+
+    Single implementation lives in ``src.services.tape_parser``; this SQLite function
+    is a thin delegate so the heuristic is not duplicated.
+    """
+    return parse_tapes_deterministic(items_text).quantity
 
 
 def sqlite_word_match(haystack: str | None, needle: str | None) -> int:
@@ -41,6 +52,7 @@ async def get_db_connection(db_path: str) -> AsyncIterator[aiosqlite.Connection]
     await db.execute("PRAGMA foreign_keys = ON;")
     await db.create_function("unaccent", 1, remove_accents)
     await db.create_function("word_match", 2, sqlite_word_match)
+    await db.create_function("tape_count", 1, tape_count)
     try:
         yield db
     finally:

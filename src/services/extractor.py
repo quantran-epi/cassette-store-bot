@@ -36,6 +36,12 @@ NGUYÊN TẮC BÓC TÁCH TOÀN DIỆN (Bắt buộc tuân theo):
 4. **items_text**: TẤT CẢ hàng hoá còn lại.
    - Áp dụng nguyên tắc loại trừ: Sau khi tách Tên, SĐT, Địa chỉ, và Số tiền COD/Tổng, TOÀN BỘ phần còn lại là hàng hoá (tên ca sĩ, bài hát, album, phôi băng UD/UR/HF, số lượng, thời lượng 60p/90p).
    - Tuyệt đối không để trống nếu trong tin nhắn có tên ca sĩ/bài hát hoặc phôi băng.
+4b. **tapes, tape_artists & tape_genres** (dữ liệu cấu trúc cho kho phôi):
+   - `tapes`: breakdown PHÔI băng shop phải lấy từ kho — mỗi item `{"label": ..., "qty": ...}`. Label là cụm hãng/loại + độ dài giữ nguyên văn ("sony 90p", "ud xám 90p", "maxell 90p"). Không bịa. TUYỆT ĐỐI không đưa tên ca sĩ vào `tapes`; nếu biết số lượng nhưng không biết phôi thì dùng label "không rõ".
+   - `tape_artists`: danh sách tên ca sĩ / nghệ sĩ xuất hiện trong đơn, giữ nguyên cách viết ("Chế Linh", "Thanh Tuyền"). Không suy diễn thêm nghệ sĩ không có trong tin nhắn; không đưa thể loại vào đây.
+   - `tape_genres`: thể loại nội dung best effort ("nhạc vàng", "hải ngoại", "bolero"). Không rõ thì để `[]`. Không đưa tên ca sĩ vào đây.
+   - Quy tắc ngoặc: "(6 sony 90p)", "(1 băng)" là phôi cho các băng đã liệt kê — qty của phôi đó là số trong ngoặc, KHÔNG cộng dồn với số khác.
+   - Tuyệt đối KHÔNG trả `tape_quantity`; hệ thống tự tính tổng từ danh sách tapes.
 5. **Tiền tệ (total_amount & cod_amount & deposit_amount)**:
    - "325k", "325 nghìn" -> 325000
    - "1tr2", "1.2tr" -> 1200000
@@ -63,6 +69,9 @@ JSON trích xuất:
   "customer_phone": "0903626566",
   "shipping_address": "22 trần quốc vượng , cầu giấy. (p dịch vọng hậu, quận cầu giấy, Hanoi cũ)",
   "items_text": "Khánh ly (hạ trắng), Duy khánh (mưa trên phố huế), Thanh thuý, 3 ud xám 90p",
+  "tapes": [{"label": "ud xám 90p", "qty": 3}],
+  "tape_artists": ["Khánh Ly", "Duy Khánh", "Thanh Thúy"],
+  "tape_genres": ["nhạc vàng"],
   "total_amount": 325000,
   "cod_amount": 325000,
   "deposit_amount": 0,
@@ -80,6 +89,9 @@ JSON trích xuất:
   "customer_phone": "0912345678",
   "shipping_address": "số 12 ngõ 45 Lý Thường Kiệt Hoàn Kiếm Hà Nội",
   "items_text": "2 cuốn Chế Linh",
+  "tapes": [{"label": "không rõ", "qty": 2}],
+  "tape_artists": ["Chế Linh"],
+  "tape_genres": ["nhạc vàng", "bolero"],
   "total_amount": 300000,
   "cod_amount": 300000,
   "deposit_amount": 0,

@@ -46,6 +46,10 @@ async def init_db(db: aiosqlite.Connection) -> None:
                 )
             ),
             tracking_code TEXT,
+            tape_quantity INTEGER,
+            tapes_json TEXT,
+            tape_genre_json TEXT,
+            tape_artist_json TEXT,
             photo_file_ids TEXT NOT NULL DEFAULT '[]',
             raw_text TEXT NOT NULL DEFAULT '',
             notes TEXT NOT NULL DEFAULT '',
@@ -65,6 +69,14 @@ async def init_db(db: aiosqlite.Connection) -> None:
             await db.execute("ALTER TABLE orders ADD COLUMN created_by_name TEXT;")
         if "notes" not in cols:
             await db.execute("ALTER TABLE orders ADD COLUMN notes TEXT NOT NULL DEFAULT '';")
+        if "tape_quantity" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN tape_quantity INTEGER;")
+        if "tapes_json" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN tapes_json TEXT;")
+        if "tape_genre_json" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN tape_genre_json TEXT;")
+        if "tape_artist_json" not in cols:
+            await db.execute("ALTER TABLE orders ADD COLUMN tape_artist_json TEXT;")
     await db.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);

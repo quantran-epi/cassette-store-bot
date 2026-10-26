@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import time
 import uuid
@@ -12,16 +13,31 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from src.bot.keyboards import (
+    DIVIDER,
     build_search_empty_keyboard,
     build_search_multi_keyboard,
     build_search_prompt_keyboard,
     build_search_single_order_keyboard,
+    render_customer_detail_card,
     render_search_empty_card,
     render_search_multi_card,
     render_search_single_order_card,
 )
 from src.db.connection import get_db_connection
-from src.services.order_search import SearchResultType, run_order_search
+from src.db.customers import get_customer_by_id, is_customer_search, search_customers
+from src.db.orders import (
+    count_orders_by_customer_id,
+    get_customer_order_stats,
+    get_orders_by_customer_id,
+)
+from src.models.customer import Customer
+from src.models.order import Order
+from src.services.order_search import (
+    SearchResult,
+    SearchResultType,
+    fetch_search_page,
+    run_order_search,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +49,91 @@ def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
     settings = getattr(app_context, "settings", None) if app_context else context.application.bot_data.get("settings")
     db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
     return nullcontext(db) if db else get_db_connection(db_path)
+
+
+def _summary_prefix(result: SearchResult) -> str:
+    """Escape aggregate summary so it can be prepended to a HTML list card (MIXED only)."""
+    if not result.summary_text:
+        return ""
+    return html.escape(result.summary_text).strip() + "\n\n"
+
+
+def _has_db_pagination(result: SearchResult) -> bool:
+    """True when the snapshot carries a validated list SQL and a known total count."""
+    return isinstance(result.list_sql, str) and isinstance(result.total_count, int)
+
+
+def _total_pages(result: SearchResult) -> int:
+    """Page count for a paginated result, clamped to at least one page."""
+    total = result.total_count if isinstance(result.total_count, int) else len(result.orders)
+    page_size = result.page_size if isinstance(result.page_size, int) and result.page_size > 0 else 5
+    return max(1, ceil(total / page_size))
+
+
+def _clamp_page(result: SearchResult, page: int) -> int:
+    """Keep a requested page inside the current result range."""
+    return min(max(page, 1), _total_pages(result))
+
+
+async def _safe_edit(query, text: str, reply_markup=None) -> None:
+    """Edit a callback message, ignoring Telegram's 'message is not modified' rejection."""
+    try:
+        await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="HTML")
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise
+
+
+async def _load_page_orders(
+    context: ContextTypes.DEFAULT_TYPE, result: SearchResult, page: int
+) -> list[Order] | None:
+    """Fetch a page of orders from the DB using the stored list SQL, or None for legacy snapshots."""
+    if not _has_db_pagination(result):
+        return None
+    db_ctx = _get_active_db_context(context)
+    async with db_ctx as active_db:
+        if not active_db:
+            return None
+        return await fetch_search_page(active_db, result.list_sql, page, result.page_size)
+
+
+def _render_list_view(
+    result: SearchResult,
+    query_text: str,
+    search_id: str,
+    page: int,
+    page_orders: list[Order],
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Render empty/single/multi list card plus prefix for MIXED results."""
+    total = result.total_count if isinstance(result.total_count, int) else len(result.orders)
+    total_pages = _total_pages(result)
+    page = min(max(page, 1), total_pages)
+    prefix = _summary_prefix(result) if result.result_type == SearchResultType.MIXED else ""
+
+    if total == 0:
+        return prefix + render_search_empty_card(query_text), build_search_empty_keyboard()
+    if total == 1 and page_orders and page_orders[0].id is not None:
+        return (
+            prefix + render_search_single_order_card(page_orders[0], query_text),
+            build_search_single_order_keyboard(page_orders[0].id, search_id),
+        )
+
+    return (
+        prefix
+        + render_search_multi_card(
+            orders=page_orders,
+            query=query_text,
+            page=page,
+            total_pages=total_pages,
+            total_orders=total,
+        ),
+        build_search_multi_keyboard(
+            orders=page_orders,
+            search_id=search_id,
+            page=page,
+            total_pages=total_pages,
+        ),
+    )
 
 
 async def run_with_typing(chat: Chat, coro: Coroutine[Any, Any, Any]) -> Any:
@@ -97,6 +198,82 @@ async def handle_search_cancel_callback(update: Update, context: ContextTypes.DE
         await update.effective_message.reply_text(text=msg)
 
 
+CUSTOMER_PAGE_SIZE = 5
+
+
+def _render_customer_empty_card(query: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Friendly empty customer lookup card."""
+    esc_query = html.escape(query.strip())
+    text = (
+        f"👤 <b>TÌM KHÁCH HÀNG</b>\n"
+        f"<i>(Tìm theo: '{esc_query}')</i>\n\n"
+        f"Dạ em tìm trong sổ khách không thấy ai như bác tả rồi!\n\n"
+        f"💡 <b>Bác có thể tìm theo:</b>\n"
+        f"• Tên khách: <code>tìm khách anh Tuấn</code>\n"
+        f"• Số điện thoại: <code>tìm khách 0903626566</code>\n"
+        f"• Địa chỉ: <code>tìm khách Hà Nội</code>"
+    )
+    return text, InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔍 Thử tìm lại", callback_data="sch_new")]]
+    )
+
+
+def _render_customer_chooser(
+    customers: list[Customer], search_id: str
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Compact chooser: one button per matched customer."""
+    lines = [
+        "👤 <b>TÌM THẤY NHIỀU KHÁCH HÀNG</b>",
+        f"Dạ em tìm thấy <b>{len(customers)} khách</b>, bác chọn đúng người nhé:",
+        DIVIDER,
+    ]
+    buttons: list[list[InlineKeyboardButton]] = []
+    for c in customers:
+        phone = c.phones[0] if c.phones else "Chưa có SĐT"
+        label = f"👤 {c.name} - {phone}"
+        if len(label) > 60:
+            label = label[:57] + "..."
+        lines.append(f"• <b>{html.escape(c.name)}</b> - <code>{html.escape(phone)}</code>")
+        buttons.append(
+            [InlineKeyboardButton(label, callback_data=f"cus_v:{c.id}:{search_id}")]
+        )
+    buttons.append([InlineKeyboardButton("❌ Huỷ", callback_data="sch_cancel")])
+    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
+async def _render_customer_detail(
+    context: ContextTypes.DEFAULT_TYPE, customer_id: int, page: int, search_id: str
+) -> tuple[str, InlineKeyboardMarkup] | None:
+    """Load one customer profile + stats + one history page and render the detail card."""
+    db_ctx = _get_active_db_context(context)
+    async with db_ctx as active_db:
+        if not active_db:
+            return None
+        customer = await get_customer_by_id(active_db, customer_id)
+        if not customer:
+            return None
+        stats = await get_customer_order_stats(active_db, customer_id)
+        total_orders = await count_orders_by_customer_id(active_db, customer_id)
+        total_pages = max(1, ceil(total_orders / CUSTOMER_PAGE_SIZE))
+        page = max(1, min(page, total_pages))
+        orders = await get_orders_by_customer_id(
+            active_db,
+            customer_id,
+            limit=CUSTOMER_PAGE_SIZE,
+            offset=(page - 1) * CUSTOMER_PAGE_SIZE,
+        )
+    return render_customer_detail_card(
+        customer=customer,
+        stats=stats,
+        orders=orders,
+        page=page,
+        total_pages=total_pages,
+        draft_id=None,
+        nav_callback=lambda p: f"cus_pg:{customer_id}:{p}",
+        back_callback=f"cus_bk:{search_id}",
+    )
+
+
 async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str) -> None:
     """Process natural language search query and reply with confirmation/result card per D-04..D-11."""
     # Clear search state upon receiving query
@@ -110,20 +287,43 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
         settings = getattr(app_context, "settings", None)
         openai_client = getattr(app_context, "openai_client", None)
 
-    if not openai_client or not settings:
-        logger.error("OpenAI client or settings missing from application data")
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                "⚠️ Hệ thống tra cứu đang bận hoặc gián đoạn kết nối. Bác vui lòng thử lại sau giây lát nhé!"
-            )
-        return
-
     chat = update.effective_chat
     try:
         db_ctx = _get_active_db_context(context)
         async with db_ctx as active_db:
             if not active_db:
                 logger.error("Database connection unavailable for process_search_query")
+                if update.effective_message:
+                    await update.effective_message.reply_text(
+                        "⚠️ Hệ thống tra cứu đang bận hoặc gián đoạn kết nối. Bác vui lòng thử lại sau giây lát nhé!"
+                    )
+                return
+
+            # Deterministic customer lookup: no LLM, no typing action, works without a client.
+            if is_customer_search(query_text):
+                matches = await search_customers(active_db, query_text)
+                search_id = uuid.uuid4().hex[:8]
+                context.user_data.setdefault("customer_searches", {})[search_id] = {
+                    "query": query_text,
+                    "ids": [c.id for c in matches],
+                }
+                if len(matches) == 1:
+                    rendered = await _render_customer_detail(
+                        context, matches[0].id, 1, search_id
+                    )
+                    text, kb = rendered or _render_customer_empty_card(query_text)
+                elif matches:
+                    text, kb = _render_customer_chooser(matches, search_id)
+                else:
+                    text, kb = _render_customer_empty_card(query_text)
+                if update.effective_message:
+                    await update.effective_message.reply_text(
+                        text=text, reply_markup=kb, parse_mode="HTML"
+                    )
+                return
+
+            if not openai_client or not settings:
+                logger.error("OpenAI client or settings missing from application data")
                 if update.effective_message:
                     await update.effective_message.reply_text(
                         "⚠️ Hệ thống tra cứu đang bận hoặc gián đoạn kết nối. Bác vui lòng thử lại sau giây lát nhé!"
@@ -186,50 +386,78 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         return
 
-    # Handle ORDERS result per D-08, D-09, D-10
-    orders = result.orders
-    if len(orders) == 0:
-        empty_card = render_search_empty_card(query_text)
-        empty_kb = build_search_empty_keyboard()
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                text=empty_card,
-                reply_markup=empty_kb,
-                parse_mode="HTML",
-            )
-    elif len(orders) == 1:
-        single_card = render_search_single_order_card(orders[0], query_text)
-        single_kb = build_search_single_order_keyboard(orders[0].id, search_id)
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                text=single_card,
-                reply_markup=single_kb,
-                parse_mode="HTML",
-            )
-    else:
-        # Multiple orders: 5 orders per page
-        total = len(orders)
-        total_pages = max(1, ceil(total / 5))
-        page_orders = orders[0:5]
-        multi_card = render_search_multi_card(
-            orders=page_orders,
-            query=query_text,
-            page=1,
-            total_pages=total_pages,
-            total_orders=total,
+    # Handle ORDERS and MIXED results per D-08, D-09, D-10 with DB-backed pagination
+    card_text, kb = _render_list_view(
+        result=result,
+        query_text=query_text,
+        search_id=search_id,
+        page=1,
+        page_orders=result.orders,
+    )
+    if update.effective_message:
+        await update.effective_message.reply_text(
+            text=card_text,
+            reply_markup=kb,
+            parse_mode="HTML",
         )
-        multi_kb = build_search_multi_keyboard(
-            orders=page_orders,
-            search_id=search_id,
-            page=1,
-            total_pages=total_pages,
-        )
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                text=multi_card,
-                reply_markup=multi_kb,
-                parse_mode="HTML",
-            )
+
+
+async def handle_customer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle cus_v / cus_pg / cus_bk callbacks from customer search cards."""
+    query = update.callback_query
+    if not query or not query.data:
+        return
+    await query.answer()
+
+    parts = query.data.split(":")
+    action = parts[0]
+
+    if action == "cus_v" and len(parts) >= 3:
+        try:
+            customer_id = int(parts[1])
+        except ValueError:
+            return
+        search_id = parts[2]
+        context.user_data["customer_search_active"] = search_id
+        rendered = await _render_customer_detail(context, customer_id, 1, search_id)
+        if not rendered:
+            await _safe_edit(query, "⚠️ Không tìm thấy hồ sơ khách hàng này.")
+            return
+        await _safe_edit(query, rendered[0], rendered[1])
+        return
+
+    if action == "cus_pg" and len(parts) >= 3:
+        try:
+            customer_id, page = int(parts[1]), int(parts[2])
+        except ValueError:
+            return
+        search_id = context.user_data.get("customer_search_active", "")
+        rendered = await _render_customer_detail(context, customer_id, page, search_id)
+        if not rendered:
+            await _safe_edit(query, "⚠️ Không tìm thấy hồ sơ khách hàng này.")
+            return
+        await _safe_edit(query, rendered[0], rendered[1])
+        return
+
+    if action == "cus_bk" and len(parts) >= 2:
+        search_id = parts[1]
+        snap = context.user_data.get("customer_searches", {}).get(search_id)
+        if not snap:
+            await _safe_edit(query, "⚠️ Kết quả tìm khách đã hết hạn. Bác hãy tìm lại nhé!")
+            return
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await _safe_edit(query, "⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return
+            customers = [
+                c
+                for cid in snap["ids"]
+                if (c := await get_customer_by_id(active_db, cid))
+            ]
+        text, kb = _render_customer_chooser(customers, search_id)
+        await _safe_edit(query, text, kb)
+        return
 
 
 async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -275,33 +503,60 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
             await query.edit_message_text("⚠️ Kết quả tìm kiếm đã hết hạn. Bác hãy thử tìm lại nhé!")
             return
 
-        orders = snap["result"].orders
+        result = snap["result"]
+        orders = result.orders
         query_text = snap["query"]
-        total = len(orders)
-        total_pages = max(1, ceil(total / 5))
 
-        if target_page < 1:
-            target_page = 1
-        elif target_page > total_pages:
-            target_page = total_pages
+        if _has_db_pagination(result):
+            target_page = _clamp_page(result, target_page)
+            if target_page == 1:
+                # Page 1 is already in the snapshot; avoid a redundant DB round-trip.
+                page_orders = orders
+            else:
+                try:
+                    page_orders = await _load_page_orders(context, result, target_page)
+                except Exception:
+                    logger.exception("Failed to fetch search results page from DB")
+                    page_orders = None
+                if page_orders is None:
+                    await _safe_edit(query, "⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                    return
+            snap["page"] = target_page
+            card_text, kb = _render_list_view(
+                result=result,
+                query_text=query_text,
+                search_id=search_id,
+                page=target_page,
+                page_orders=page_orders,
+            )
+        else:
+            # Legacy in-memory snapshot pagination (no list_sql)
+            total = len(orders)
+            page_size = result.page_size if result.page_size > 0 else 5
+            total_pages = max(1, ceil(total / page_size))
 
-        snap["page"] = target_page
-        start_idx = (target_page - 1) * 5
-        page_orders = orders[start_idx : start_idx + 5]
+            if target_page < 1:
+                target_page = 1
+            elif target_page > total_pages:
+                target_page = total_pages
 
-        card_text = render_search_multi_card(
-            orders=page_orders,
-            query=query_text,
-            page=target_page,
-            total_pages=total_pages,
-            total_orders=total,
-        )
-        kb = build_search_multi_keyboard(
-            orders=page_orders,
-            search_id=search_id,
-            page=target_page,
-            total_pages=total_pages,
-        )
+            snap["page"] = target_page
+            start_idx = (target_page - 1) * page_size
+            page_orders = orders[start_idx : start_idx + page_size]
+
+            card_text = render_search_multi_card(
+                orders=page_orders,
+                query=query_text,
+                page=target_page,
+                total_pages=total_pages,
+                total_orders=total,
+            )
+            kb = build_search_multi_keyboard(
+                orders=page_orders,
+                search_id=search_id,
+                page=target_page,
+                total_pages=total_pages,
+            )
         try:
             await query.edit_message_text(
                 text=card_text,
@@ -339,36 +594,33 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
                     raise
             return
 
+        # ORDERS and MIXED restore saved page (DB-backed when list_sql available)
+        page = _clamp_page(result, snap.get("page", 1))
         orders = result.orders
-        if len(orders) == 1:
-            card_text = render_search_single_order_card(orders[0], query_text)
-            kb = build_search_single_order_keyboard(orders[0].id, search_id)
-            try:
-                await query.edit_message_text(text=card_text, reply_markup=kb, parse_mode="HTML")
-            except BadRequest as e:
-                if "Message is not modified" not in str(e):
-                    raise
-            return
+        page_orders = orders
 
-        # Multi-orders: restore saved page
-        page = snap.get("page", 1)
-        total = len(orders)
-        total_pages = max(1, ceil(total / 5))
-        start_idx = (page - 1) * 5
-        page_orders = orders[start_idx : start_idx + 5]
+        if _has_db_pagination(result):
+            if page > 1:
+                try:
+                    loaded = await _load_page_orders(context, result, page)
+                except Exception:
+                    logger.exception("Failed to restore search results page from DB")
+                    loaded = None
+                if loaded is None:
+                    await _safe_edit(query, "⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                    return
+                page_orders = loaded
+        else:
+            page_size = result.page_size if result.page_size > 0 else 5
+            start_idx = (page - 1) * page_size
+            page_orders = orders[start_idx : start_idx + page_size]
 
-        card_text = render_search_multi_card(
-            orders=page_orders,
-            query=query_text,
-            page=page,
-            total_pages=total_pages,
-            total_orders=total,
-        )
-        kb = build_search_multi_keyboard(
-            orders=page_orders,
+        card_text, kb = _render_list_view(
+            result=result,
+            query_text=query_text,
             search_id=search_id,
             page=page,
-            total_pages=total_pages,
+            page_orders=page_orders,
         )
         try:
             await query.edit_message_text(text=card_text, reply_markup=kb, parse_mode="HTML")
@@ -386,8 +638,12 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
         from src.db.orders import get_order_by_id
 
         parts = data.split(":")
-        search_id = parts[1]
-        order_id = int(parts[2])
+        search_id = parts[1] if len(parts) > 1 else ""
+        try:
+            order_id = int(parts[2])
+        except (IndexError, ValueError):
+            await _safe_edit(query, "⚠️ Không xác định được đơn hàng. Bác hãy tìm lại nhé!")
+            return
 
         db_ctx = _get_active_db_context(context)
         async with db_ctx as active_db:

@@ -2,6 +2,8 @@ import re
 
 from pydantic import BaseModel, Field, field_validator
 
+from src.models.order import TapeItem
+
 # Vietnamese mobile numbers: 10 digits starting with 03, 05, 07, 08, 09
 VN_PHONE_REGEX = re.compile(r"^0[35789]\d{8}$")
 
@@ -13,6 +15,18 @@ class ExtractedOrder(BaseModel):
     customer_phone: str | None = Field(default=None, description="Số điện thoại khách hàng (10 chữ số)")
     shipping_address: str | None = Field(default=None, description="Địa chỉ giao hàng chi tiết")
     items_text: str | None = Field(default=None, description="Danh sách các cuốn băng cassette kèm số lượng")
+    tapes: list[TapeItem] = Field(
+        default_factory=list,
+        description="Phôi băng shop phải lấy từ kho: mỗi item {label, qty} (VD: sony 90p x6)",
+    )
+    tape_genres: list[str] = Field(
+        default_factory=list,
+        description="Thể loại nội dung best effort (VD: nhạc vàng, hải ngoại); [] khi không rõ",
+    )
+    tape_artists: list[str] = Field(
+        default_factory=list,
+        description="Tên ca sĩ / nghệ sĩ xuất hiện trong đơn (VD: Chế Linh, Thanh Tuyền); không đoán",
+    )
     total_amount: int = Field(default=0, ge=0, description="Tổng giá trị đơn hàng tính theo VNĐ")
     cod_amount: int = Field(default=0, ge=0, description="Số tiền COD cần thu khách khi giao tính theo VNĐ")
     deposit_amount: int = Field(default=0, ge=0, description="Số tiền khách đã chuyển khoản đặt cọc trước")
@@ -48,3 +62,56 @@ class ExtractedOrder(BaseModel):
             return cleaned
 
         return None
+
+    @field_validator("tapes", mode="before")
+    @classmethod
+    def normalize_tapes(cls, v: object) -> list:
+        """Normalize LLM tape items: strip labels, drop empty labels and qty < 1."""
+        if not v:
+            return []
+        raw = v if isinstance(v, list) else []
+        if isinstance(raw, dict):
+            raw = [raw]
+        items: list = []
+        for item in raw:
+            data = item.model_dump() if isinstance(item, TapeItem) else item
+            if not isinstance(data, dict):
+                continue
+            label = str(data.get("label") or "").strip()
+            try:
+                qty = int(data.get("qty"))
+            except (TypeError, ValueError):
+                continue
+            if not label or qty < 1:
+                continue
+            items.append({"label": label, "qty": qty})
+        return items
+
+    @field_validator("tape_genres", mode="before")
+    @classmethod
+    def normalize_tape_genres(cls, v: object) -> list[str]:
+        """Strip genre strings and drop empties."""
+        if not v or not isinstance(v, list):
+            return []
+        return [g.strip() for g in v if isinstance(g, str) and g.strip()]
+
+    @field_validator("tape_artists", mode="before")
+    @classmethod
+    def normalize_tape_artists(cls, v: object) -> list[str]:
+        """Strip artist names, drop empties, dedupe case-insensitively."""
+        if not v or not isinstance(v, list):
+            return []
+        seen: set[str] = set()
+        out: list[str] = []
+        for item in v:
+            if not isinstance(item, str):
+                continue
+            name = item.strip()
+            if not name:
+                continue
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(name)
+        return out

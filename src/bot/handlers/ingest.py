@@ -1,5 +1,6 @@
 import asyncio
 import html
+import json
 import logging
 import time
 import uuid
@@ -7,7 +8,7 @@ from contextlib import nullcontext
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-from telegram.ext import ContextTypes
+from telegram.ext import Application, ContextTypes
 
 from src.db.connection import get_db_connection
 from src.db.customers import get_customer_by_phone
@@ -17,6 +18,7 @@ from src.models.mutation import IntentType
 from src.services.extractor import extract_order_from_text
 from src.services.intent_router import classify_intent, extract_order_id_from_reply
 from src.services.order_search import is_search_intent
+from src.services.tape_parser import build_tape_columns
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,26 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
     if draft.get("notes"):
         notes_tag = f"\n📝 <b>GHI CHÚ:</b> {html.escape(draft['notes'])}"
 
+    tape_tag = ""
+    if draft.get("tape_quantity") is not None or draft.get("tapes"):
+        from src.models.order import TapeItem
+        from src.services.tape_parser import format_tape_summary
+
+        tape_summary = format_tape_summary(
+            draft.get("tape_quantity"),
+            [TapeItem(**t) for t in draft.get("tapes") or []],
+        )
+        tape_tag = f"\n📼 <b>PHÔI BĂNG:</b> {html.escape(tape_summary)}"
+
+    artist_tag = ""
+    if draft.get("tape_artists"):
+        from src.services.tape_parser import format_artist_summary
+
+        artist_tag = (
+            f"\n🎤 <b>CA SĨ:</b> "
+            f"{html.escape(format_artist_summary(draft.get('tape_artists') or []))}"
+        )
+
     reminder_tag = ""
     if draft.get("reminder_at"):
         r_note = html.escape(draft.get("reminder_note") or "Yêu cầu nhắc việc")
@@ -69,7 +91,7 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
         f"👤 <b>KHÁCH:</b> {name}{history_tag}\n"
         f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
         f"{address_label} {html.escape(address_val)}\n"
-        f"📼 <b>BĂNG CASSETTE:</b> {items}\n"
+        f"📼 <b>BĂNG CASSETTE:</b> {items}{tape_tag}{artist_tag}\n"
         f"💰 <b>TỔNG TIỀN:</b> <b>{total}</b>\n"
         f"💵 <b>TIỀN COD THU:</b> <b>{cod}</b>{deposit_info}"
         f"{notes_tag}"
@@ -170,6 +192,13 @@ async def process_extracted_order(
     except Exception as e:
         logger.warning("Customer history lookup failed: %s", e)
 
+    cols = build_tape_columns(
+        extracted.items_text,
+        extracted.tapes,
+        extracted.tape_genres,
+        extracted.tape_artists,
+    )
+
     draft_id = uuid.uuid4().hex[:8]
     draft_data = {
         "draft_id": draft_id,
@@ -178,6 +207,10 @@ async def process_extracted_order(
         "customer_phone": extracted.customer_phone,
         "shipping_address": extracted.shipping_address,
         "items_text": extracted.items_text,
+        "tape_quantity": cols.quantity,
+        "tapes": json.loads(cols.tapes_json),
+        "tape_genres": json.loads(cols.genres_json),
+        "tape_artists": json.loads(cols.artists_json),
         "total_amount": extracted.total_amount,
         "cod_amount": extracted.cod_amount,
         "deposit_amount": extracted.deposit_amount,
@@ -368,6 +401,51 @@ async def _extract_and_process_photo_order(
     )
 
 
+async def _finalize_media_group(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    media_group_id: str,
+) -> None:
+    """Wait out the album debounce then process the collected photos (runs in the background)."""
+    try:
+        await asyncio.sleep(MEDIA_GROUP_DEBOUNCE_SECONDS)
+
+        buf = _MEDIA_GROUP_BUFFERS.get(media_group_id)
+        if not buf:
+            return
+
+        effective_update = buf["caption_update"] or buf["first_update"]
+        final_caption = buf["caption"]
+        photos = list(buf["photos"])
+
+        if not final_caption:
+            await effective_update.message.reply_text(
+                "Bác vui lòng gửi kèm ảnh với phần chú thích (caption) là thông tin đơn hàng nhé!"
+            )
+            return
+
+        await _extract_and_process_photo_order(
+            effective_update,
+            context,
+            final_caption,
+            photos,
+        )
+    except Exception:
+        # Background task: log instead of dying silently or taking down sibling tasks.
+        logger.exception("Failed to finalize media group %s", media_group_id)
+    finally:
+        _MEDIA_GROUP_BUFFERS.pop(media_group_id, None)
+        _PROCESSED_MEDIA_GROUPS[media_group_id] = time.time()
+
+
+def _spawn_finalizer(context: ContextTypes.DEFAULT_TYPE, coro) -> asyncio.Task:
+    """Schedule the debounce finalizer without blocking the sequential update pump."""
+    application = getattr(context, "application", None)
+    if isinstance(application, Application):
+        return application.create_task(coro)
+    return asyncio.create_task(coro)
+
+
 async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming photo or photo album with caption as an order message."""
     if not update.message or not update.message.photo:
@@ -434,34 +512,16 @@ async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
             buf["caption_update"] = update
         return
 
-    # First photo in album: initialize buffer and start debounce window
+    # First photo in album: initialize buffer and schedule the debounce finalizer in the
+    # background so the sequential update pump keeps draining photos 2..N immediately.
     buf = {
         "photos": [photo_file_id],
         "caption": caption,
         "caption_update": update if caption else None,
         "first_update": update,
+        "task": None,
     }
     _MEDIA_GROUP_BUFFERS[media_group_id] = buf
-
-    try:
-        await asyncio.sleep(MEDIA_GROUP_DEBOUNCE_SECONDS)
-
-        effective_update = buf["caption_update"] or buf["first_update"]
-        final_caption = buf["caption"]
-        photos = list(buf["photos"])
-
-        if not final_caption:
-            await effective_update.message.reply_text(
-                "Bác vui lòng gửi kèm ảnh với phần chú thích (caption) là thông tin đơn hàng nhé!"
-            )
-            return
-
-        await _extract_and_process_photo_order(
-            effective_update,
-            context,
-            final_caption,
-            photos,
-        )
-    finally:
-        _MEDIA_GROUP_BUFFERS.pop(media_group_id, None)
-        _PROCESSED_MEDIA_GROUPS[media_group_id] = time.time()
+    buf["task"] = _spawn_finalizer(
+        context, _finalize_media_group(update, context, media_group_id)
+    )

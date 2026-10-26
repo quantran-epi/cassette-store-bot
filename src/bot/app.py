@@ -30,7 +30,7 @@ from src.bot.handlers.order_actions import (
     handle_order_status_callback,
 )
 from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
-from src.bot.handlers.search import handle_search_callback
+from src.bot.handlers.search import handle_customer_callback, handle_search_callback
 from src.bot.logging_handler import RingBufferLogHandler
 from src.bot.security import UserRole, whitelist_gate
 from src.config import Settings
@@ -330,6 +330,13 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
         CallbackQueryHandler(
             handle_search_callback,
             pattern=r"^sch_",
+        ),
+        group=0,
+    )
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_customer_callback,
+            pattern=r"^cus_",
         ),
         group=0,
     )

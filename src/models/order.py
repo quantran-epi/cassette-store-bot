@@ -4,6 +4,13 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+class TapeItem(BaseModel):
+    """One physical tape medium (phôi) line: label + count."""
+
+    label: str
+    qty: int = Field(ge=1)
+
+
 class OrderStatus(str, Enum):
     """Order lifecycle status enum (8 states)."""
 
@@ -31,6 +38,10 @@ class Order(BaseModel):
     payment_method: str = "COD"
     status: OrderStatus = OrderStatus.CHO_LAM
     tracking_code: str | None = None
+    tape_quantity: int | None = None
+    tapes: list[TapeItem] = Field(default_factory=list)
+    tape_genres: list[str] = Field(default_factory=list)
+    tape_artists: list[str] = Field(default_factory=list)
     photo_file_ids: list[str] = Field(default_factory=list)
     raw_text: str = ""
     notes: str = ""

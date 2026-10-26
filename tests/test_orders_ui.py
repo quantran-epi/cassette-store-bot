@@ -810,3 +810,41 @@ async def test_handle_action_state_photo_appends_photos(test_db):
 
 
 
+
+
+def test_render_order_detail_card_shows_tape_breakdown():
+    """Detail card shows PHÔI BĂNG with count and breakdown."""
+    from src.models.order import TapeItem
+
+    order = Order(
+        id=20,
+        customer_name="Bác Phôi",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="6 sony 90p",
+        tape_quantity=6,
+        tapes=[TapeItem(label="sony 90p", qty=6)],
+        tape_artists=["Chế Linh", "Thanh Tuyền"],
+    )
+    card = render_order_detail_card(order)
+    assert "PHÔI BĂNG:" in card
+    assert "6 cuốn" in card
+    assert "sony 90p" in card
+    assert "CA SĨ:" in card
+    assert "Chế Linh, Thanh Tuyền" in card
+
+
+def test_render_order_detail_card_legacy_null_shows_dash():
+    """Legacy row (NULL tape_quantity) shows em dash, never 0."""
+    order = Order(
+        id=21,
+        customer_name="Bác Cũ",
+        customer_phone="0900111222",
+        shipping_address="Đà Nẵng",
+        items_text="3 băng maxell 90p",
+    )
+    card = render_order_detail_card(order)
+    assert "PHÔI BĂNG:" in card
+    assert "PHÔI BĂNG:</b> —" in card
+    assert "CA SĨ:</b> —" in card
+    assert "PHÔI BĂNG:</b> 0" not in card

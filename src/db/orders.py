@@ -5,7 +5,8 @@ from collections.abc import Sequence
 
 import aiosqlite
 
-from src.models.order import Order, OrderStatus
+from src.models.order import Order, OrderStatus, TapeItem
+from src.services.tape_parser import build_tape_columns
 
 
 def _normalize_ts(ts: object) -> str:
@@ -38,6 +39,28 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
     created_by_name = row["created_by_name"] if "created_by_name" in keys else None
     notes = row["notes"] if "notes" in keys else ""
 
+    tape_quantity = row["tape_quantity"] if "tape_quantity" in keys else None
+    tapes: list[TapeItem] = []
+    if "tapes_json" in keys and row["tapes_json"]:
+        try:
+            tapes = [TapeItem.model_validate(t) for t in json.loads(row["tapes_json"])]
+        except (json.JSONDecodeError, ValueError, TypeError):
+            tapes = []
+    tape_genres: list[str] = []
+    if "tape_genre_json" in keys and row["tape_genre_json"]:
+        try:
+            parsed = json.loads(row["tape_genre_json"])
+            tape_genres = [g for g in parsed if isinstance(g, str)] if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            tape_genres = []
+    tape_artists: list[str] = []
+    if "tape_artist_json" in keys and row["tape_artist_json"]:
+        try:
+            parsed = json.loads(row["tape_artist_json"])
+            tape_artists = [a for a in parsed if isinstance(a, str)] if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            tape_artists = []
+
     return Order(
         id=row["id"],
         customer_id=row["customer_id"],
@@ -50,6 +73,10 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
         payment_method=row["payment_method"],
         status=OrderStatus(row["status"]),
         tracking_code=row["tracking_code"],
+        tape_quantity=tape_quantity,
+        tapes=tapes,
+        tape_genres=tape_genres,
+        tape_artists=tape_artists,
         photo_file_ids=photos,
         raw_text=row["raw_text"],
         notes=notes,
@@ -62,15 +89,19 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
 
 async def create_order(db: aiosqlite.Connection, order: Order) -> int:
     """Insert order record storing snapshot and return generated ID."""
+    cols = build_tape_columns(
+        order.items_text, order.tapes, order.tape_genres, order.tape_artists
+    )
     cursor = await db.execute(
         """
         INSERT INTO orders (
             customer_id, customer_name, customer_phone, shipping_address,
             items_text, total_amount, cod_amount, payment_method,
             status, tracking_code, photo_file_ids, raw_text, notes,
-            created_by_user_id, created_by_name
+            created_by_user_id, created_by_name,
+            tape_quantity, tapes_json, tape_genre_json, tape_artist_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             order.customer_id,
@@ -88,6 +119,10 @@ async def create_order(db: aiosqlite.Connection, order: Order) -> int:
             order.notes,
             order.created_by_user_id,
             order.created_by_name,
+            cols.quantity,
+            cols.tapes_json,
+            cols.genres_json,
+            cols.artists_json,
         ),
     )
     order_id = cursor.lastrowid
@@ -539,6 +574,24 @@ async def mutate_order_with_lock(
     if not fields:
         # No actual fields changed
         return True, {}, _row_to_order(row)
+
+    # Recompute the derived tape columns in the same UPDATE when items_text changes.
+    # Never merge old tapes with new text; build from the new source only.
+    if "items_text" in changes:
+        new_text = changes["items_text"]["new"]
+        new_tapes = delta_dict.get("new_tapes") or delta_dict.get("tapes")
+        new_genres = delta_dict.get("new_tape_genres") or delta_dict.get("tape_genres")
+        new_artists = delta_dict.get("new_tape_artists") or delta_dict.get("tape_artists")
+        cols = build_tape_columns(new_text, new_tapes, new_genres, new_artists)
+        fields.extend(
+            [
+                "tape_quantity = ?",
+                "tapes_json = ?",
+                "tape_genre_json = ?",
+                "tape_artist_json = ?",
+            ]
+        )
+        params.extend([cols.quantity, cols.tapes_json, cols.genres_json, cols.artists_json])
 
     fields.append("updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')")
     sql = f"UPDATE orders SET {', '.join(fields)} WHERE id = ? AND updated_at = ?"

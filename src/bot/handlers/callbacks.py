@@ -37,7 +37,7 @@ from src.db.orders import (
     mutate_order_with_lock,
 )
 from src.models.customer import Customer
-from src.models.order import Order, OrderStatus
+from src.models.order import Order, OrderStatus, TapeItem
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +233,10 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 customer_phone=phone,
                 shipping_address=address,
                 items_text=draft.get("items_text") or "",
+                tape_quantity=draft.get("tape_quantity"),
+                tapes=[TapeItem(**t) for t in draft.get("tapes") or []],
+                tape_genres=draft.get("tape_genres") or [],
+                tape_artists=draft.get("tape_artists") or [],
                 total_amount=draft.get("total_amount", 0),
                 cod_amount=draft.get("cod_amount", 0),
                 payment_method=draft.get("payment_method", "COD"),

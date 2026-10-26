@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.models.order import OrderStatus
+from src.models.order import OrderStatus, TapeItem
 
 # Vietnamese mobile numbers: 10 digits starting with 03, 05, 07, 08, 09
 VN_PHONE_REGEX = re.compile(r"^0[35789]\d{8}$")
@@ -55,6 +55,18 @@ class OrderMutationDelta(BaseModel):
     )
     new_items_text: str | None = Field(
         default=None, description="Danh sách món/băng mới hoặc sửa đổi"
+    )
+    new_tapes: list[TapeItem] | None = Field(
+        default=None,
+        description="Breakdown phôi mới {label, qty}; chỉ điền khi new_items_text thay đổi",
+    )
+    new_tape_genres: list[str] | None = Field(
+        default=None,
+        description="Thể loại nội dung mới; chỉ điền khi new_items_text thay đổi",
+    )
+    new_tape_artists: list[str] | None = Field(
+        default=None,
+        description="Tên ca sĩ mới; chỉ điền khi new_items_text thay đổi",
     )
 
     @field_validator("new_customer_phone", mode="before")

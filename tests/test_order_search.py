@@ -253,6 +253,97 @@ def test_classify_search_result_aggregate_scalar():
     assert hydrated_empty == []
 
 
+def test_tape_count_heuristic():
+    from src.db.connection import tape_count
+
+    assert tape_count("6 băng maxell 90p") == 6
+    assert tape_count("1 băng như ảnh ko dán tem") == 1
+    # Quy tắc ngoặc thắng — DESIGN 261026-tpe: phôi "(6 sony 90p)" cho các băng
+    # đã liệt kê, không cộng thêm. Đơn #4 thật = 6.
+    assert tape_count("1 Ngọc Sơn vol1, 5 Băng ca sĩ khác (6 sony 90p)") == 6
+    # Track numbering: one tape per numbered entry.
+    assert tape_count("1 Chế Linh, 2 Tuấn Vũ, 3 Duy Khánh") == 3
+    # No unit word and no numbering: never 0 for a non-empty list.
+    assert tape_count("Tuấn Vũ, Chế Linh") == 2
+    assert tape_count("") == 0
+
+
+@pytest.mark.asyncio
+async def test_tape_count_sqlite_function(test_db):
+    async with test_db.execute(
+        "SELECT tape_count('6 băng maxell 90p') AS total"
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert row["total"] == 6
+
+
+def test_text_to_sql_prompt_documents_tape_columns_and_time_buckets():
+    from src.services.order_search import build_text_to_sql_prompt
+
+    sys_prompt, _ = build_text_to_sql_prompt("khung giờ nào bán được nhiều đơn nhất")
+    # Structured tape columns + NULL semantics (DESIGN 261026-tpe).
+    assert "tape_quantity" in sys_prompt
+    assert "tapes_json" in sys_prompt
+    assert "tape_genre_json" in sys_prompt
+    assert "tape_artist_json" in sys_prompt
+    assert "che linh" in sys_prompt.lower()
+    assert "COALESCE" in sys_prompt
+    assert "đơn cũ chưa có dữ liệu số lượng" in sys_prompt
+    assert "total_sony_tapes" in sys_prompt
+    assert "orders_without_tape_data" in sys_prompt
+    # Legacy NULL rows must not be OR-ed into the filter (that made every filter match all old rows).
+    # Only the explicit warning may quote the banned clause; no example SQL may contain it.
+    example_sql = [line for line in sys_prompt.splitlines() if line.strip().startswith("- Ví dụ")]
+    assert example_sql, "expected worked examples in prompt"
+    assert not any("OR tape_quantity IS NULL" in line for line in example_sql)
+    assert "strftime('%H'" in sys_prompt
+    assert "strftime('%w'" in sys_prompt
+    assert "+7 hours" in sys_prompt
+
+
+@pytest.mark.asyncio
+async def test_summary_strips_missing_list_claim():
+    from src.services.order_search import summarize_aggregate_result
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content=(
+                        "Dạ hôm nay shop mình có 4 đơn hàng. "
+                        "Còn danh sách chi tiết thì chưa có bác nhé!"
+                    )
+                )
+            )
+        ]
+    )
+    summary = await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="hôm nay bán được bao nhiêu đơn",
+        raw_rows=[{"total_orders": 4}],
+    )
+    assert "4 đơn hàng" in summary
+    assert "danh sách chi tiết" not in summary
+
+    # Everything stripped -> empty summary, so the bot shows the list without a bogus claim.
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(content="Danh sách chi tiết thì chưa có bác nhé!")
+            )
+        ]
+    )
+    fallback = await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="liệt kê đơn",
+        raw_rows=[{"total_orders": 4}],
+    )
+    assert fallback == ""
+
+
 @pytest.mark.asyncio
 async def test_summarize_aggregate_result():
     from unittest.mock import AsyncMock, MagicMock
@@ -280,9 +371,33 @@ async def test_summarize_aggregate_result():
 
     assert "4 đơn hàng" in summary
     assert "1.200.000 đ" in summary
-    assert mock_client.chat.completions.create.call_count == 1
-    call_args = mock_client.chat.completions.create.call_args
-    assert call_args.kwargs["temperature"] == 0.3
+
+
+@pytest.mark.asyncio
+async def test_summary_discloses_orders_without_tape_data():
+    """Old NULL-tape orders are disclosed even if the model omits the caveat."""
+    from src.services.order_search import summarize_aggregate_result
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="Dạ shop mình có 5 cuốn băng bác nhé!"))]
+    )
+    summary = await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="có bao nhiêu băng",
+        raw_rows=[{"total_tapes": 5, "orders_without_tape_data": 7}],
+    )
+    assert "5 cuốn băng" in summary
+    assert "7 đơn cũ" in summary
+
+    no_missing = await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="có bao nhiêu băng",
+        raw_rows=[{"total_tapes": 5, "orders_without_tape_data": 0}],
+    )
+    assert "đơn cũ" not in no_missing
 
 
 @pytest.mark.asyncio

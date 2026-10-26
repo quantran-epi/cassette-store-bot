@@ -352,3 +352,52 @@ async def test_list_and_count_orders_by_date_utc7(test_db):
     assert len(paged) == 1
     assert paged[0].customer_name == "Khách Khuya 23"
 
+
+@pytest.mark.asyncio
+async def test_create_order_persists_and_reads_tape_columns(test_db):
+    """create_order writes the derived 3 columns; get_order_by_id round-trips them."""
+    from src.models.order import TapeItem
+
+    order_id = await create_order(
+        test_db,
+        Order(
+            customer_name="Khách Phôi",
+            customer_phone="0911222333",
+            shipping_address="Hà Nội",
+            items_text="6 sony 90p",
+            tapes=[TapeItem(label="sony 90p", qty=6)],
+            tape_genres=["nhạc vàng"],
+            tape_artists=["Chế Linh", "Thanh Tuyền"],
+        ),
+    )
+
+    saved = await get_order_by_id(test_db, order_id)
+    assert saved is not None
+    assert saved.tape_quantity == 6
+    assert saved.tapes[0].label == "sony 90p"
+    assert saved.tapes[0].qty == 6
+    assert saved.tape_genres == ["nhạc vàng"]
+    assert saved.tape_artists == ["Chế Linh", "Thanh Tuyền"]
+
+
+@pytest.mark.asyncio
+async def test_legacy_row_with_null_tape_columns_reads_as_none(test_db):
+    """Old orders keep NULL columns; they read as tape_quantity None and tapes []."""
+    cursor = await test_db.execute(
+        """
+        INSERT INTO orders (
+            customer_name, customer_phone, shipping_address, items_text
+        )
+        VALUES ('Khách Cũ', '0900111222', 'Đà Nẵng', '3 băng maxell 90p')
+        """
+    )
+    legacy_id = cursor.lastrowid
+    await test_db.commit()
+
+    legacy = await get_order_by_id(test_db, legacy_id)
+    assert legacy is not None
+    assert legacy.tape_quantity is None
+    assert legacy.tapes == []
+    assert legacy.tape_genres == []
+    assert legacy.tape_artists == []
+

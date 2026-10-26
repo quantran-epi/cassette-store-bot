@@ -58,6 +58,39 @@ def test_vietnamese_currency_normalization_model_defaults():
     assert order.payment_method == "COD"
 
 
+def test_extracted_order_has_tapes_but_no_tape_quantity():
+    """LLM tape_quantity=99 is discarded; tapes/genres are kept."""
+    res = ExtractedOrder.model_validate_json(
+        '{"customer_phone": "0912345678", "items_text": "6 sony 90p",'
+        ' "tape_quantity": 99, "tapes": [{"label": " sony 90p ", "qty": 6}],'
+        ' "tape_genres": [" nhạc vàng ", ""]}'
+    )
+    assert not hasattr(res, "tape_quantity")
+    assert res.tapes[0].label == "sony 90p"
+    assert res.tapes[0].qty == 6
+    assert res.tape_genres == ["nhạc vàng"]
+
+
+def test_extracted_order_drops_invalid_tapes():
+    """Empty labels and qty < 1 are dropped during normalization."""
+    res = ExtractedOrder.model_validate_json(
+        '{"tapes": [{"label": "  ", "qty": 2}, {"label": "sony", "qty": 0},'
+        ' {"label": "maxell 90p", "qty": 1}]}'
+    )
+    assert [t.label for t in res.tapes] == ["maxell 90p"]
+
+
+def test_build_tape_columns_fallback_when_llm_returns_no_tapes():
+    """No LLM tapes -> deterministic fallback is non-zero for non-empty text."""
+    from src.services.tape_parser import build_tape_columns
+
+    extracted = ExtractedOrder(customer_phone="0912345678", items_text="4 băng sony 90p")
+    cols = build_tape_columns(
+        extracted.items_text, extracted.tapes, extracted.tape_genres
+    )
+    assert cols.quantity == 4
+
+
 @pytest.mark.asyncio
 async def test_llm_extractor_tier1_success():
     """Tier 1: client.beta.chat.completions.parse succeeds and returns ExtractedOrder."""

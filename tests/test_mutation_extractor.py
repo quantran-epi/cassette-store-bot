@@ -5,7 +5,13 @@ from openai import BadRequestError
 
 from src.models.mutation import OrderMutationDelta
 from src.models.order import OrderStatus
-from src.services.mutation_extractor import extract_mutation_delta
+from src.services.mutation_extractor import MUTATION_SYSTEM_PROMPT, extract_mutation_delta
+
+
+def test_mutation_prompt_requests_tape_breakdown():
+    """Prompt must ask for new_tapes/new_tape_genres when items change."""
+    assert "new_tapes" in MUTATION_SYSTEM_PROMPT
+    assert "new_tape_genres" in MUTATION_SYSTEM_PROMPT
 
 
 def test_order_mutation_delta_phone_validation():
