@@ -40,6 +40,54 @@ from src.db.settings import get_maintenance_mode, get_setting
 VN_TZ = zoneinfo.ZoneInfo("Asia/Ho_Chi_Minh")
 JOB_BACKUP_NAME = "daily_database_backup"
 JOB_REMINDER_NAME = "check_due_reminders"
+HEARTBEAT_PATH = "/tmp/bot_heartbeat"
+JOB_HEARTBEAT_NAME = "bot_liveness_heartbeat"
+
+
+async def heartbeat_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Periodic job updating heartbeat timestamp file for container healthcheck."""
+    try:
+        now_ts = str(time.time())
+        with open(HEARTBEAT_PATH, "w", encoding="utf-8") as f:
+            f.write(now_ts)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Failed to update heartbeat file: %s", e)
+
+
+def schedule_heartbeat_job(app: Application) -> None:
+    """Schedule repeating heartbeat file touch every 30s."""
+    if not app.job_queue:
+        return
+    for job in app.job_queue.get_jobs_by_name(JOB_HEARTBEAT_NAME):
+        job.schedule_removal()
+    app.job_queue.run_repeating(
+        heartbeat_job_callback,
+        interval=30,
+        first=1,
+        name=JOB_HEARTBEAT_NAME,
+    )
+
+
+async def post_shutdown_cleanup(app: Application) -> None:
+    """Execute clean WAL checkpoint and close database resources on SIGTERM/SIGINT."""
+    logger = logging.getLogger(__name__)
+    logger.info("Initiating graceful shutdown sequence...")
+    settings = app.bot_data.get("settings")
+    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db")
+
+    start_t = time.perf_counter()
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            res = await cursor.fetchall()
+            dur = (time.perf_counter() - start_t) * 1000
+            logger.info("SQLite WAL checkpoint TRUNCATE completed in %.2fms: %s", dur, res)
+    except Exception as e:
+        logger.error("Error during WAL checkpoint in post_shutdown: %s", e)
+    finally:
+        logger.info("Graceful shutdown finished cleanly.")
+HEARTBEAT_PATH = "/tmp/bot_heartbeat"
+JOB_HEARTBEAT_NAME = "bot_liveness_heartbeat"
 
 
 async def daily_backup_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -216,6 +264,53 @@ async def _do_sync(app: Application, db: aiosqlite.Connection, settings: Setting
     backup_time = await get_setting(db, "backup_schedule_time", default="02:00")
     schedule_daily_backup(app, backup_time or "02:00")
     schedule_reminder_checker(app)
+    schedule_heartbeat_job(app)
+    schedule_heartbeat_job(app)
+
+
+async def heartbeat_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Periodic job updating heartbeat timestamp file for container healthcheck."""
+    try:
+        now_ts = str(time.time())
+        with open(HEARTBEAT_PATH, "w", encoding="utf-8") as f:
+            f.write(now_ts)
+    except Exception as e:
+        logging.getLogger(__name__).warning("Failed to update heartbeat file: %s", e)
+
+
+def schedule_heartbeat_job(app: Application) -> None:
+    """Schedule repeating heartbeat writer in JobQueue every 30 seconds."""
+    jq = getattr(app, "job_queue", None)
+    if not jq:
+        return
+    for job in jq.get_jobs_by_name(JOB_HEARTBEAT_NAME):
+        job.schedule_removal()
+    jq.run_repeating(
+        heartbeat_job_callback,
+        interval=30,
+        first=1,
+        name=JOB_HEARTBEAT_NAME,
+    )
+
+
+async def post_shutdown_cleanup(app: Application) -> None:
+    """Graceful shutdown hook: execute WAL checkpoint and flush SQLite journals."""
+    logger = logging.getLogger(__name__)
+    logger.info("Bot shutting down. Initiating clean SQLite WAL checkpoint...")
+    settings = app.bot_data.get("settings")
+    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db")
+
+    start_t = time.perf_counter()
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            cursor = await db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            res = await cursor.fetchall()
+            dur = (time.perf_counter() - start_t) * 1000
+            logger.info("WAL checkpoint TRUNCATE completed in %.2fms, result: %s", dur, res)
+    except Exception as e:
+        logger.error("Failed executing WAL checkpoint during shutdown: %s", e)
+    finally:
+        logger.info("Shutdown sequence finished cleanly.")
 
 
 async def startup_sync(app: Application) -> None:
@@ -243,6 +338,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
         ApplicationBuilder()
         .token(settings.telegram_bot_token.get_secret_value())
         .post_init(startup_sync)
+        .post_shutdown(post_shutdown_cleanup)
         .build()
     )
 
