@@ -38,12 +38,12 @@ created: 2026-10-27
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 08-01-01 | 01 | 0 | DEP-01, DEP-02, DEP-03, DEP-04, DEP-05 | — | Setup deployment tests scaffold | test | `.venv/bin/pytest tests/test_deployment_artifacts.py -x` | ❌ W0 | ⬜ pending |
-| 08-01-02 | 01 | 1 | DEP-01, DEP-02 | T-08-01 | Dockerfile multi-stage, non-root user 10001, TZ VN, .dockerignore | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_dockerfile_and_dockerignore -x` | ❌ W0 | ⬜ pending |
-| 08-02-01 | 02 | 1 | DEP-05 | T-08-03 | Healthcheck script stdlib + post_shutdown WAL checkpoint TRUNCATE | unit | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_healthcheck_script_and_graceful_shutdown -x` | ❌ W0 | ⬜ pending |
-| 08-02-02 | 02 | 2 | DEP-03 | T-08-02 | docker-compose.yml with named volume, healthcheck, stop_grace_period 30s | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_docker_compose_config -x` | ❌ W0 | ⬜ pending |
-| 08-03-01 | 03 | 2 | DEP-04 | T-08-04 | k8s/all-in-one.yaml with Recreate, replicas 1, PVC 2Gi, exec probes | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_k8s_manifest_specs -x` | ❌ W0 | ⬜ pending |
-| 08-03-02 | 03 | 2 | DEP-01 | T-08-02 | .github/workflows/docker-publish.yml multi-arch Buildx push Docker Hub | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_github_actions_workflow -x` | ❌ W0 | ⬜ pending |
+| 08-01-01 | 01 | 0 | DEP-01, DEP-02, DEP-03, DEP-04, DEP-05 | — | Setup deployment tests scaffold | test | `.venv/bin/pytest tests/test_deployment_artifacts.py -x` | ✅ | ✅ green |
+| 08-01-02 | 01 | 1 | DEP-01, DEP-02 | T-08-01 | Dockerfile multi-stage, non-root user 10001, TZ VN, .dockerignore | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_dockerfile_and_dockerignore -x` | ✅ | ✅ green |
+| 08-02-01 | 02 | 1 | DEP-05 | T-08-03 | Healthcheck script stdlib + post_shutdown WAL checkpoint TRUNCATE | unit | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_healthcheck_script_and_graceful_shutdown -x` | ✅ | ✅ green |
+| 08-02-02 | 02 | 2 | DEP-03 | T-08-02 | docker-compose.yml with named volume, healthcheck, stop_grace_period 30s | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_docker_compose_config -x` | ✅ | ✅ green |
+| 08-03-01 | 03 | 2 | DEP-04 | T-08-04 | k8s/all-in-one.yaml with Recreate, replicas 1, PVC 2Gi, exec probes | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_k8s_manifest_specs -x` | ✅ | ✅ green |
+| 08-03-02 | 03 | 2 | DEP-01 | T-08-02 | .github/workflows/docker-publish.yml multi-arch Buildx push Docker Hub | spec | `.venv/bin/pytest tests/test_deployment_artifacts.py -k test_github_actions_workflow -x` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -51,7 +51,7 @@ created: 2026-10-27
 
 ## Wave 0 Requirements
 
-- [ ] `tests/test_deployment_artifacts.py` — automated assertions for Dockerfile, docker-compose.yml, k8s/all-in-one.yaml, healthcheck script, and post_shutdown hook
+- [x] `tests/test_deployment_artifacts.py` — automated assertions for Dockerfile, docker-compose.yml, k8s/all-in-one.yaml, healthcheck script, and post_shutdown hook
 
 ---
 

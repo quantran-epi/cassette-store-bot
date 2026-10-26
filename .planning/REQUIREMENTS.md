@@ -30,11 +30,11 @@
 
 ### Containerization & Production Deployment (DEP)
 
-- [ ] **DEP-01**: `Dockerfile` tối ưu multi-stage trên nền `python:3.12-slim`, chạy với non-root user (UID 10001) và cấu hình múi giờ `TZ=Asia/Ho_Chi_Minh`
-- [ ] **DEP-02**: Thư mục dữ liệu `/app/data` được cấu hình volume mount để bảo toàn file SQLite chính và các file WAL (`-wal`, `-shm`) khi container khởi động lại
-- [ ] **DEP-03**: File cấu hình `docker-compose.yml` chuẩn production với biến môi trường, health check, chính sách restart và volume mount dữ liệu bền vững
-- [ ] **DEP-04**: Bộ manifest Kubernetes chuẩn: `Deployment` (enforce `replicas: 1` và `strategy.type: Recreate`), PersistentVolumeClaim (RWO), ConfigMap và Secret
-- [ ] **DEP-05**: Cơ chế tắt container an toàn (graceful shutdown) bắt tín hiệu `SIGTERM`/`SIGINT`, thực thi `PRAGMA wal_checkpoint(TRUNCATE)` và đóng kết nối DB sạch sẽ
+- [x] **DEP-01**: `Dockerfile` tối ưu multi-stage trên nền `python:3.12-slim`, chạy với non-root user (UID 10001) và cấu hình múi giờ `TZ=Asia/Ho_Chi_Minh`
+- [x] **DEP-02**: Thư mục dữ liệu `/app/data` được cấu hình volume mount để bảo toàn file SQLite chính và các file WAL (`-wal`, `-shm`) khi container khởi động lại
+- [x] **DEP-03**: File cấu hình `docker-compose.yml` chuẩn production với biến môi trường, health check, chính sách restart và volume mount dữ liệu bền vững
+- [x] **DEP-04**: Bộ manifest Kubernetes chuẩn: `Deployment` (enforce `replicas: 1` và `strategy.type: Recreate`), PersistentVolumeClaim (RWO), ConfigMap và Secret
+- [x] **DEP-05**: Cơ chế tắt container an toàn (graceful shutdown) bắt tín hiệu `SIGTERM`/`SIGINT`, thực thi `PRAGMA wal_checkpoint(TRUNCATE)` và đóng kết nối DB sạch sẽ
 
 ## Future Requirements (v2)
 
@@ -76,11 +76,11 @@
 | MUT-03 | Phase 7 | Complete |
 | MUT-04 | Phase 7 | Complete |
 | MUT-05 | Phase 7 | Complete |
-| DEP-01 | Phase 8 | Pending |
-| DEP-02 | Phase 8 | Pending |
-| DEP-03 | Phase 8 | Pending |
-| DEP-04 | Phase 8 | Pending |
-| DEP-05 | Phase 8 | Pending |
+| DEP-01 | Phase 8 | Complete |
+| DEP-02 | Phase 8 | Complete |
+| DEP-03 | Phase 8 | Complete |
+| DEP-04 | Phase 8 | Complete |
+| DEP-05 | Phase 8 | Complete |
 
 **Coverage:**
 
