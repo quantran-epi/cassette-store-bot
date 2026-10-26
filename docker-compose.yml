@@ -1,0 +1,28 @@
+services:
+  cassette-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cassette-store-bot:latest
+    container_name: cassette-store-bot
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - SQLITE_DB_PATH=/app/data/cassette_store.db
+    env_file:
+      - .env
+    volumes:
+      - cassette_data:/app/data
+      # To inspect database files directly on host, comment out the named volume above and use:
+      # - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.scripts.healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  cassette_data:
+    name: cassette_store_data
