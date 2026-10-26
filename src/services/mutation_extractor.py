@@ -34,7 +34,7 @@ HƯỚNG DẪN TRÍCH XUẤT 5 NHÓM TRƯỜNG BIẾN ĐỔI:
 
 6. **Nhóm 5: Khách hàng / Địa chỉ / Hàng hoá**:
    - `new_customer_phone`: SĐT nhận hàng mới (10 chữ số).
-   - `new_shipping_address`: Địa chỉ giao hàng mới.
+   - `new_shipping_address`: Địa chỉ giao hàng mới (chuẩn hoá đầy đủ ít nhất 3 cấp hành chính: Xã/Phường, Quận/Huyện, Tỉnh/Thành phố).
    - `new_customer_name`: Tên khách mới nếu có.
    - `new_items_text`: Danh sách băng cassette thay đổi hoặc bổ sung/bớt.
    - Khi trích `new_items_text`, ĐỒNG THỜI điền `new_tapes` (breakdown phôi mỗi item `{"label": ..., "qty": ...}`), `new_tape_artists` (tên ca sĩ xuất hiện) và `new_tape_genres` (thể loại nội dung). Nếu chỉ sửa field khác thì để null.

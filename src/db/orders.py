@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 from collections.abc import Sequence
+from typing import Any
 
 import aiosqlite
 
@@ -151,6 +152,13 @@ async def get_order_by_id(db: aiosqlite.Connection, order_id: int) -> Order | No
         return _row_to_order(row)
 
 
+async def delete_order(db: aiosqlite.Connection, order_id: int) -> bool:
+    """Delete an order by ID. Cascades to order_history and reminders via foreign keys."""
+    cursor = await db.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+    await db.commit()
+    return cursor.rowcount > 0
+
+
 async def update_order_status(
     db: aiosqlite.Connection,
     order_id: int,
@@ -193,29 +201,40 @@ async def update_order_tracking(
     user_id: int | None = None,
     user_name: str | None = None,
 ) -> bool:
-    """Update order tracking code and updated_at timestamp, recording audit trail."""
+    """Update order tracking code, auto-advance status to DA_TAO_DON, and record audit trail."""
     current_order = await get_order_by_id(db, order_id)
     if not current_order:
         return False
 
     old_tracking = current_order.tracking_code or ""
+    old_status = current_order.status
+
+    # Auto-advance to DA_TAO_DON if order is in early stages
+    new_status = old_status
+    if old_status in (OrderStatus.CHO_LAM, OrderStatus.DANG_LAM, OrderStatus.DA_DONG_GOI):
+        new_status = OrderStatus.DA_TAO_DON
+
     cursor = await db.execute(
         """
         UPDATE orders
         SET tracking_code = ?,
+            status = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
-        (tracking_code, order_id),
+        (tracking_code, new_status.value, order_id),
     )
     if cursor.rowcount > 0:
+        changes: dict[str, Any] = {"tracking_code": {"old": old_tracking, "new": tracking_code}}
+        if new_status != old_status:
+            changes["status"] = {"old": old_status.value, "new": new_status.value}
         await record_order_history(
             db,
             order_id=order_id,
             user_id=user_id,
             user_name=user_name,
             action="TRACKING_UPDATE",
-            changes={"tracking_code": {"old": old_tracking, "new": tracking_code}},
+            changes=changes,
         )
         return True
     return False

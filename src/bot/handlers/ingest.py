@@ -99,7 +99,7 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
         f"{photo_tag}"
         f"{warning_tag}\n"
         f"────────────────────\n"
-        f"Bác bấm nút bên dưới để xác nhận nhé:"
+        f"Bác bấm nút bên dưới để xác nhận (hoặc chat để sửa đơn) nhé:"
     )
 
     draft_id = draft["draft_id"]
@@ -227,6 +227,7 @@ async def process_extracted_order(
 
     pending_orders = context.user_data.setdefault("pending_orders", {})
     pending_orders[draft_id] = draft_data
+    context.user_data["active_draft_id"] = draft_id
 
     preview_text, reply_markup = render_preview_card(draft_data, stats)
     await update.message.reply_text(
@@ -266,6 +267,91 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             # Expired after 120s: clean up state and proceed to regular ingestion
             context.user_data.pop("action_state", None)
+
+    # Check for active preview draft editing session (no timeout - ends on confirm or cancel)
+    active_draft_id = context.user_data.get("active_draft_id")
+    pending_orders = context.user_data.get("pending_orders", {})
+    if active_draft_id and active_draft_id in pending_orders:
+        if text.lower() in ("huỷ", "hủy", "cancel", "bo", "bỏ", "thôi", "thoát", "không lưu", "khong luu"):
+            pending_orders.pop(active_draft_id, None)
+            context.user_data.pop("active_draft_id", None)
+            await update.message.reply_text(
+                text="❌ <b>ĐÃ HUỶ ĐƠN HÀNG</b>\n<i>Đơn nháp đã được huỷ bỏ.</i>",
+                parse_mode="HTML",
+            )
+            return
+
+        app_context = context.application.bot_data.get("app_context")
+        if not app_context:
+            settings = context.application.bot_data.get("settings")
+            openai_client = context.application.bot_data.get("openai_client")
+        else:
+            settings = getattr(app_context, "settings", None)
+            openai_client = getattr(app_context, "openai_client", None)
+
+        active_model = (
+            context.application.bot_data.get("active_model_id")
+            or (settings.nine_router_model_id if settings else "")
+        )
+
+        if openai_client:
+            from src.services.mutation_extractor import extract_mutation_delta
+            from src.services.tape_parser import build_tape_columns
+
+            await update.message.chat.send_action(ChatAction.TYPING)
+            delta = await extract_mutation_delta(
+                client=openai_client,
+                model_id=active_model,
+                text=text,
+            )
+            draft = pending_orders[active_draft_id]
+            if delta:
+                if delta.new_customer_name:
+                    draft["customer_name"] = delta.new_customer_name
+                if delta.new_customer_phone:
+                    draft["customer_phone"] = delta.new_customer_phone
+                if delta.new_shipping_address:
+                    draft["shipping_address"] = delta.new_shipping_address
+                    draft["address_auto_filled"] = False
+                if delta.new_items_text:
+                    draft["items_text"] = delta.new_items_text
+                    cols = build_tape_columns(
+                        items_text=delta.new_items_text,
+                        tapes=delta.new_tapes,
+                        genres=delta.new_tape_genres,
+                        artists=delta.new_tape_artists,
+                    )
+                    draft["tape_quantity"] = cols.quantity
+                    draft["tapes"] = json.loads(cols.tapes_json)
+                    draft["tape_genres"] = json.loads(cols.genres_json)
+                    draft["tape_artists"] = json.loads(cols.artists_json)
+                elif delta.new_tapes:
+                    cols = build_tape_columns(
+                        items_text=draft.get("items_text") or "",
+                        tapes=delta.new_tapes,
+                        genres=delta.new_tape_genres or draft.get("tape_genres"),
+                        artists=delta.new_tape_artists or draft.get("tape_artists"),
+                    )
+                    draft["tape_quantity"] = cols.quantity
+                    draft["tapes"] = json.loads(cols.tapes_json)
+                    if cols.genres_json != "[]":
+                        draft["tape_genres"] = json.loads(cols.genres_json)
+                    if cols.artists_json != "[]":
+                        draft["tape_artists"] = json.loads(cols.artists_json)
+                if delta.new_total_amount is not None:
+                    draft["total_amount"] = delta.new_total_amount
+                if delta.new_cod_amount is not None:
+                    draft["cod_amount"] = delta.new_cod_amount
+                if delta.new_notes:
+                    draft["notes"] = delta.new_notes
+
+            preview_text, reply_markup = render_preview_card(draft, draft.get("stats"))
+            await update.message.reply_text(
+                text=f"✏️ <b>ĐÃ CẬP NHẬT THEO YÊU CẦU CỦA BÁC:</b>\n\n{preview_text}",
+                reply_markup=reply_markup,
+                parse_mode="HTML",
+            )
+            return
 
     # 3-Way Intent Routing (CREATE vs SEARCH vs MUTATE) per MUT-01..MUT-05, D-01..D-05
     app_context = context.application.bot_data.get("app_context")

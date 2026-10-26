@@ -93,3 +93,4 @@ Recent decisions affecting current work:
 | 2026-10-26 | `261026-hnn-fix-photo-album-bug-on-order-creation-se` | Album nhiều ảnh lưu đủ ảnh (debounce nền), tra khách deterministic, `tape_count` cho câu hỏi số băng, prompt khung giờ/thứ, chặn summary "thiếu danh sách chi tiết" | Complete ✓ |
 | 2026-10-26 | `261026-tpe-structured-tape-quantity-and-type` | 3 cột băng có cấu trúc (`tape_quantity`, `tapes_json`, `tape_genre_json`), bóc tách lúc tạo/sửa đơn, đơn cũ NULL, prompt đếm băng/khung giờ | Complete ✓ |
 | 2026-10-26 | `261026-kt4-add-tape-artist-json-as-separate-structu` | Tách `tape_artist_json` khỏi thể loại; sửa lỗi tên ca sĩ lọt vào nhãn phôi; chặn filter NULL khớp mọi đơn; bắt buộc công bố đơn cũ thiếu dữ liệu | Complete ✓ |
+| 2026-10-27 | `20261027-order-delete-and-shipping-helper` | Xoá đơn xác nhận 2 bước, trợ giúp tạo đơn vận chuyển copy 1 chạm, auto chuyển DA_TAO_DON khi nhập mã, chuẩn hoá địa chỉ LLM, chat sửa draft preview | Complete ✓ |

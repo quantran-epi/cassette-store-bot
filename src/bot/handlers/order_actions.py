@@ -11,7 +11,10 @@ from telegram.ext import ContextTypes
 
 from src.bot.keyboards import (
     STATUS_NAMES,
+    TZ_VN,
     build_order_detail_keyboard,
+    build_shipping_helper_card,
+    build_shipping_helper_keyboard,
     build_status_selection_keyboard,
     render_order_detail_card,
     to_vn_datetime,
@@ -19,6 +22,7 @@ from src.bot.keyboards import (
 from src.db.connection import get_db_connection
 from src.db.orders import (
     append_order_photos,
+    delete_order,
     get_order_by_id,
     update_order_status,
     update_order_tracking,
@@ -29,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_CALLBACK_PATTERN = re.compile(r"^ord_st(_menu|_cf)?:(\d+)(?::([A-Z_]+))?$")
 ACTION_CALLBACK_PATTERN = re.compile(
-    r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel)(?::(\d+))?$"
+    r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm)(?::(\d+))?$"
 )
 SENSITIVE_STATUSES = {OrderStatus.BOM_HANG, OrderStatus.HUY_DON}
 
@@ -466,6 +470,109 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             )
         return
 
+    # 6. Shipping helper card & copy buttons
+    if action_type == "ship_helper":
+        await query.answer()
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await query.answer("Lỗi kết nối cơ sở dữ liệu!", show_alert=True)
+                return
+            order = await get_order_by_id(active_db, order_id)
+            if not order:
+                await query.edit_message_text("⚠️ Đơn hàng không tồn tại hoặc đã bị xoá.")
+                return
+            card_text = build_shipping_helper_card(order)
+            keyboard = build_shipping_helper_keyboard(order)
+            try:
+                await query.edit_message_text(text=card_text, reply_markup=keyboard, parse_mode="HTML")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+        return
+
+    # 7. Delete order prompt (step 1: confirmation dialog)
+    if action_type == "del_prompt":
+        await query.answer()
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await query.answer("Lỗi kết nối cơ sở dữ liệu!", show_alert=True)
+                return
+            order = await get_order_by_id(active_db, order_id)
+            if not order:
+                await query.edit_message_text("⚠️ Đơn hàng không tồn tại hoặc đã bị xoá.")
+                return
+            cust_name = html.escape(order.customer_name)
+            confirm_kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "🗑️ XÁC NHẬN XOÁ ĐƠN",
+                            callback_data=f"ord_act:del_confirm:{order_id}",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Huỷ, quay lại",
+                            callback_data=f"ord_v_cur:{order_id}",
+                        )
+                    ],
+                ]
+            )
+            try:
+                await query.edit_message_text(
+                    text=(
+                        f"⚠️ <b>XÁC NHẬN XOÁ ĐƠN HÀNG #{order_id}</b>\n\n"
+                        f"Bác có chắc chắn muốn xoá vĩnh viễn đơn hàng của khách <b>{cust_name}</b> không?\n\n"
+                        f"<i>(Hành động này sẽ xoá hoàn toàn đơn và lịch sử, không thể hoàn tác!)</i>"
+                    ),
+                    reply_markup=confirm_kb,
+                    parse_mode="HTML",
+                )
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+        return
+
+    # 8. Delete order confirm (step 2: execution & cascade delete)
+    if action_type == "del_confirm":
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await query.answer("Lỗi kết nối cơ sở dữ liệu!", show_alert=True)
+                return
+            success = await delete_order(active_db, order_id)
+            if not success:
+                await query.answer("Đơn hàng không tồn tại hoặc đã bị xoá trước đó!", show_alert=True)
+                return
+            await query.answer("✅ Đã xoá đơn hàng thành công!", show_alert=False)
+            now_vn = datetime.now(TZ_VN)
+            today_str = now_vn.strftime("%Y-%m-%d")
+            back_kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "📦 Về danh sách đơn hôm nay",
+                            callback_data=f"ord_dt:{today_str}",
+                        )
+                    ]
+                ]
+            )
+            try:
+                await query.edit_message_text(
+                    text=(
+                        f"🗑️ <b>ĐÃ XOÁ ĐƠN HÀNG #{order_id}</b>\n\n"
+                        f"Đơn hàng đã được xoá hoàn toàn khỏi hệ thống."
+                    ),
+                    reply_markup=back_kb,
+                    parse_mode="HTML",
+                )
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+        return
+
 
 async def handle_action_state_text(
     update: Update, context: ContextTypes.DEFAULT_TYPE, state: dict
@@ -506,12 +613,18 @@ async def handle_action_state_text(
                 card_text = (
                     f"✅ <b>ĐÃ CẬP NHẬT MÃ VẬN ĐƠN</b>\n\n"
                     f"📦 <b>Đơn:</b> <code>#{order_id}</code>\n"
-                    f"🚚 <b>Mã vận đơn:</b> <code>{escaped_code}</code>"
+                    f"🚚 <b>Mã vận đơn:</b> <code>{escaped_code}</code>\n"
+                    f"🔄 <b>Trạng thái:</b> <i>Đã tạo đơn</i>"
                 )
                 back_kb = None
                 if order:
                     back_kb = InlineKeyboardMarkup(
-                        [[InlineKeyboardButton("👁️ Xem lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}")]]
+                        [
+                            [
+                                InlineKeyboardButton("🚚 Xem đơn vận chuyển", callback_data=f"ord_act:ship_helper:{order_id}"),
+                                InlineKeyboardButton("👁️ Xem chi tiết đơn", callback_data=f"ord_v_cur:{order_id}"),
+                            ]
+                        ]
                     )
                 await update.message.reply_text(
                     text=card_text,

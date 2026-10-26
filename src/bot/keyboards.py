@@ -243,8 +243,17 @@ def build_order_detail_keyboard(
         ]
     )
 
-    # 6. Change status menu & Back navigation
-    back_cb = back_callback_data or f"ord_bk:{date_str}:{page}"
+    # 6. Shipping helper row (1-tap dispatch copy for carrier apps)
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "🚚 Tạo đơn vận chuyển",
+                callback_data=f"ord_act:ship_helper:{order.id}",
+            )
+        ]
+    )
+
+    # 7. Change status menu & Delete order
     buttons.append(
         [
             InlineKeyboardButton(
@@ -252,12 +261,105 @@ def build_order_detail_keyboard(
                 callback_data=f"ord_st_menu:{order.id}",
             ),
             InlineKeyboardButton(
+                "🗑️ Xoá đơn",
+                callback_data=f"ord_act:del_prompt:{order.id}",
+            ),
+        ]
+    )
+
+    # 8. Back navigation
+    back_cb = back_callback_data or f"ord_bk:{date_str}:{page}"
+    buttons.append(
+        [
+            InlineKeyboardButton(
                 "⬅️ Quay lại",
                 callback_data=back_cb,
             ),
         ]
     )
 
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_shipping_helper_card(order: Order) -> str:
+    """Render shipping dispatch helper card with copyable info for carrier apps."""
+    cust_name = html.escape(order.customer_name)
+    phone = html.escape(order.customer_phone) if order.customer_phone else "(Chưa có SĐT)"
+    addr = html.escape(order.shipping_address) if order.shipping_address else "(Chưa có địa chỉ)"
+    cod_fmt = f"{order.cod_amount:,} đ".replace(",", ".")
+    is_cod = order.payment_method.upper() == "COD" or order.cod_amount > 0
+    shipping_note = "Cho xem hàng, KHÔNG DÙNG THỬ" if is_cod else "Cho xem hàng"
+
+    lines = [
+        f"🚚 <b>HỖ TRỢ TẠO ĐƠN VẬN CHUYỂN #{order.id}</b>",
+        DIVIDER,
+        f"👤 <b>Khách hàng:</b> {cust_name}",
+        f"📞 <b>Số điện thoại:</b> <code>{phone}</code>",
+        f"📍 <b>Địa chỉ:</b> <code>{addr}</code>",
+        "📦 <b>Tên hàng hoá:</b> <code>băng cát sét</code>",
+        f"💰 <b>Tiền COD:</b> <b>{cod_fmt}</b>",
+        f"📝 <b>Ghi chú giao hàng:</b> <code>{html.escape(shipping_note)}</code>",
+    ]
+    if order.tracking_code:
+        lines.append(f"🚚 <b>Mã vận đơn hiện tại:</b> <code>{html.escape(order.tracking_code)}</code>")
+    lines.append(DIVIDER)
+    lines.append("<i>Bác chạm vào từng nút bên dưới để sao chép nhanh và dán sang app vận chuyển nhé:</i>")
+    return "\n".join(lines)
+
+
+def build_shipping_helper_keyboard(order: Order) -> InlineKeyboardMarkup:
+    """Build keyboard with 1-tap copy buttons and tracking action for carrier dispatch."""
+    safe_name = (order.customer_name or "").strip()[:256] or "Khách hàng"
+    safe_phone = (order.customer_phone or "").strip()[:256] or ""
+    safe_addr = (order.shipping_address or "").strip()[:256] or ""
+    is_cod = order.payment_method.upper() == "COD" or order.cod_amount > 0
+    shipping_note = "Cho xem hàng, KHÔNG DÙNG THỬ" if is_cod else "Cho xem hàng"
+    cod_raw = str(order.cod_amount)
+    cod_fmt = f"{order.cod_amount:,} đ".replace(",", ".")
+
+    buttons: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("👤 Copy Tên khách", copy_text=CopyTextButton(text=safe_name)),
+            InlineKeyboardButton("📞 Copy SĐT", copy_text=CopyTextButton(text=safe_phone)),
+        ],
+        [
+            InlineKeyboardButton("📍 Copy Địa chỉ", copy_text=CopyTextButton(text=safe_addr)),
+        ],
+        [
+            InlineKeyboardButton("📦 Copy Hàng hoá (băng cát sét)", copy_text=CopyTextButton(text="băng cát sét")),
+        ],
+        [
+            InlineKeyboardButton(f"💰 Copy Tiền COD ({cod_fmt})", copy_text=CopyTextButton(text=cod_raw)),
+        ],
+        [
+            InlineKeyboardButton("📝 Copy Ghi chú giao hàng", copy_text=CopyTextButton(text=shipping_note)),
+        ],
+    ]
+
+    track_row: list[InlineKeyboardButton] = []
+    if order.tracking_code:
+        track_row.append(
+            InlineKeyboardButton(
+                "🚚 Copy Mã vận đơn",
+                copy_text=CopyTextButton(text=order.tracking_code.strip()[:256]),
+            )
+        )
+    track_row.append(
+        InlineKeyboardButton(
+            "🚚 Đổi mã vận đơn" if order.tracking_code else "🚚 Nhập mã vận đơn",
+            callback_data=f"ord_act:track:{order.id}",
+        )
+    )
+    buttons.append(track_row)
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ Quay lại chi tiết đơn",
+                callback_data=f"ord_v_cur:{order.id}",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(buttons)
 
 

@@ -181,6 +181,8 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # Handle cancellation (0 DB writes)
     if action == "ca":
         pending_orders.pop(draft_id, None)
+        if context.user_data:
+            context.user_data.pop("active_draft_id", None)
         await query.edit_message_text(
             "❌ <b>ĐÃ HUỶ ĐƠN HÀNG</b>\n<i>Đơn nháp đã được huỷ bỏ.</i>",
             parse_mode="HTML",
@@ -190,6 +192,8 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # Handle confirmation (persist customer & order to SQLite)
     if action == "cf":
         pending_orders.pop(draft_id, None)
+        if context.user_data:
+            context.user_data.pop("active_draft_id", None)
 
         db_ctx = _get_active_db_context(context)
 
@@ -309,12 +313,20 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 [
                     [
                         InlineKeyboardButton(
+                            "🚚 Nhập mã vận đơn", callback_data=f"ord_act:track:{order_id}"
+                        ),
+                        InlineKeyboardButton(
+                            "🚚 Tạo đơn vận chuyển", callback_data=f"ord_act:ship_helper:{order_id}"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
                             "⏰ Thêm nhắc lịch", callback_data=f"ord_act:remind:{order_id}"
                         ),
                         InlineKeyboardButton(
                             "📦 Xem chi tiết", callback_data=f"ord_v:{order_id}"
                         ),
-                    ]
+                    ],
                 ]
             )
 
