@@ -299,11 +299,16 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             from src.services.tape_parser import build_tape_columns
 
             await update.message.chat.send_action(ChatAction.TYPING)
-            delta = await extract_mutation_delta(
-                client=openai_client,
-                model_id=active_model,
-                text=text,
-            )
+            try:
+                delta = await extract_mutation_delta(
+                    client=openai_client,
+                    model_id=active_model,
+                    text=text,
+                )
+            except Exception:
+                logger.exception("Failed to extract mutation delta for active draft")
+                delta = None
+
             draft = pending_orders[active_draft_id]
             if delta:
                 if delta.new_customer_name:
@@ -317,9 +322,9 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     draft["items_text"] = delta.new_items_text
                     cols = build_tape_columns(
                         items_text=delta.new_items_text,
-                        tapes=delta.new_tapes,
-                        genres=delta.new_tape_genres,
-                        artists=delta.new_tape_artists,
+                        llm_tapes=delta.new_tapes,
+                        llm_genres=delta.new_tape_genres,
+                        llm_artists=delta.new_tape_artists,
                     )
                     draft["tape_quantity"] = cols.quantity
                     draft["tapes"] = json.loads(cols.tapes_json)
@@ -328,9 +333,9 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 elif delta.new_tapes:
                     cols = build_tape_columns(
                         items_text=draft.get("items_text") or "",
-                        tapes=delta.new_tapes,
-                        genres=delta.new_tape_genres or draft.get("tape_genres"),
-                        artists=delta.new_tape_artists or draft.get("tape_artists"),
+                        llm_tapes=delta.new_tapes,
+                        llm_genres=delta.new_tape_genres or draft.get("tape_genres"),
+                        llm_artists=delta.new_tape_artists or draft.get("tape_artists"),
                     )
                     draft["tape_quantity"] = cols.quantity
                     draft["tapes"] = json.loads(cols.tapes_json)

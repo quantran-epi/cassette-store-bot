@@ -396,7 +396,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         CallbackQueryHandler(
             handle_order_action_callback,
-            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel)(:\d+)?$",
+            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm)(:\d+)?$",
         ),
         group=0,
     )

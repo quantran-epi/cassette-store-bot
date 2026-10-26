@@ -11,7 +11,7 @@ from src.bot.keyboards import (
 )
 from src.db.orders import create_order, delete_order, get_order_by_id, update_order_tracking
 from src.models.mutation import OrderMutationDelta
-from src.models.order import Order, OrderStatus
+from src.models.order import Order, OrderStatus, TapeItem
 
 
 @pytest.mark.asyncio
@@ -276,3 +276,91 @@ async def test_preview_nl_chat_cancel():
     assert "test1234" not in context.user_data["pending_orders"]
     update.message.reply_text.assert_called_once()
     assert "ĐÃ HUỶ ĐƠN HÀNG" in update.message.reply_text.call_args[1]["text"]
+
+
+def test_app_callback_pattern_matches_new_actions():
+    """Verify that build_application callback handler pattern matches ship_helper and del actions."""
+    import re
+
+    from telegram.ext import CallbackQueryHandler
+
+    from src.bot.app import build_application
+    from src.config import Settings
+
+    settings = Settings(
+        telegram_bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+        telegram_super_admin_id=123456789,
+        telegram_whitelist_user_ids=[123456789],
+        nine_router_base_url="https://test.9router.com/v1",
+        nine_router_api_key="test-key",
+        nine_router_model_id="test-model",
+    )
+    app = build_application(settings)
+    callback_handlers = [
+        h for h in app.handlers.get(0, []) if isinstance(h, CallbackQueryHandler)
+    ]
+
+    # Find order action handler
+    found = False
+    for h in callback_handlers:
+        pattern = h.pattern.pattern if hasattr(h.pattern, "pattern") else str(h.pattern)
+        if "ord_act" in pattern:
+            regex = re.compile(pattern)
+            assert regex.match("ord_act:ship_helper:123")
+            assert regex.match("ord_act:del_prompt:123")
+            assert regex.match("ord_act:del_confirm:123")
+            assert regex.match("ord_act:track:123")
+            found = True
+            break
+    assert found, "Order action CallbackQueryHandler not found in group 0"
+
+
+@pytest.mark.asyncio
+async def test_preview_nl_chat_items_update_build_tape_columns():
+    """Verify updating items_text in active draft correctly calls build_tape_columns without TypeError."""
+    update = MagicMock()
+    update.message.text = "đổi thành 3 cuốn chế linh phôi sony 90p"
+    update.message.chat.send_action = AsyncMock()
+    update.message.reply_text = AsyncMock()
+
+    context = MagicMock()
+    draft = {
+        "draft_id": "test_items",
+        "customer_name": "Bác Ba",
+        "customer_phone": "0912345678",
+        "shipping_address": "Hà Nội",
+        "items_text": "1 Băng",
+        "total_amount": 100000,
+        "cod_amount": 100000,
+        "deposit_amount": 0,
+        "tape_quantity": 1,
+        "tapes": [],
+        "tape_genres": [],
+        "tape_artists": [],
+        "notes": "",
+    }
+    context.user_data = {
+        "pending_orders": {"test_items": draft},
+        "active_draft_id": "test_items",
+    }
+    context.application.bot_data = {
+        "openai_client": AsyncMock(),
+        "settings": MagicMock(nine_router_model_id="test-model"),
+    }
+
+    from unittest.mock import patch
+    delta = OrderMutationDelta(
+        new_items_text="3 cuốn Chế Linh sony 90p",
+        new_tapes=[TapeItem(label="sony 90p", qty=3)],
+        new_tape_artists=["Chế Linh"],
+    )
+    with patch("src.services.mutation_extractor.extract_mutation_delta", AsyncMock(return_value=delta)):
+        await handle_text_order(update, context)
+
+    assert draft["items_text"] == "3 cuốn Chế Linh sony 90p"
+    assert draft["tape_quantity"] == 3
+    assert len(draft["tapes"]) == 1
+    assert draft["tapes"][0]["label"] == "sony 90p"
+    assert draft["tapes"][0]["qty"] == 3
+    update.message.reply_text.assert_called_once()
+

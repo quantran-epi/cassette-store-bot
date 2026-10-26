@@ -564,8 +564,8 @@ def test_sunday_weekday_formatting_and_thu2_tuan_sau():
 
 def test_cards_render_high_contrast_uppercase_labels():
     """Verify order detail, summary, and preview cards use uppercase labels for elderly clarity."""
-    from src.bot.keyboards import format_order_item_summary, render_order_detail_card
     from src.bot.handlers.ingest import render_preview_card
+    from src.bot.keyboards import format_order_item_summary, render_order_detail_card
 
     order = Order(
         id=99,
