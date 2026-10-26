@@ -89,4 +89,8 @@ Recent decisions affecting current work:
 |------|-----------|-------------|--------|
 | 2026-10-25 | `order-notes-maintenance-notifications-reminders` | Order notes to orders table, Super Admin maintenance mode + broadcast, lifecycle event broadcasts, NL reminders system | Complete ✓ |
 | 2026-10-25 | `261025-vo9-fix-reminder-weekday-parsing-and-enhance` | Fix reminder weekday parsing on Sundays and enhance high-contrast uppercase labels across all order cards | Complete ✓ |
+| 2026-10-26 | `261026-e7m-ch-nh-lu-ng-tra-c-u-nl-h-tr-aggregate-c-` | Mixed aggregate + order-list NL search: full aggregates, stable DB pagination with "Xem thêm", read-only SQL hardening | Complete ✓ |
+| 2026-10-26 | `261026-hnn-fix-photo-album-bug-on-order-creation-se` | Album nhiều ảnh lưu đủ ảnh (debounce nền), tra khách deterministic, `tape_count` cho câu hỏi số băng, prompt khung giờ/thứ, chặn summary "thiếu danh sách chi tiết" | Complete ✓ |
+| 2026-10-26 | `261026-tpe-structured-tape-quantity-and-type` | 3 cột băng có cấu trúc (`tape_quantity`, `tapes_json`, `tape_genre_json`), bóc tách lúc tạo/sửa đơn, đơn cũ NULL, prompt đếm băng/khung giờ | Complete ✓ |
+| 2026-10-26 | `261026-kt4-add-tape-artist-json-as-separate-structu` | Tách `tape_artist_json` khỏi thể loại; sửa lỗi tên ca sĩ lọt vào nhãn phôi; chặn filter NULL khớp mọi đơn; bắt buộc công bố đơn cũ thiếu dữ liệu | Complete ✓ |
 
