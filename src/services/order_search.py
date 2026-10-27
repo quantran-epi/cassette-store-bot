@@ -165,6 +165,7 @@ Ví dụ:
   -> Trả lời: "Dạ đơn gần nhất có băng Tuấn Vũ là hôm qua của anh Nam (2 cuốn Tuấn Vũ) bác nhé!"
 Không dùng từ ngữ kỹ thuật, không đề cập đến database hay SQL.
 LƯU Ý: Dữ liệu bạn nhận được chỉ là phần thống kê. Danh sách đơn hàng (nếu có) do bot hiển thị riêng bên dưới câu trả lời của bạn. Tuyệt đối KHÔNG nói rằng thiếu, chưa có, hay không có danh sách chi tiết.
+QUY TẮC SỐ ĐƠN KHỚP: Nếu dữ liệu có dòng matched_order_count với giá trị lớn hơn 0, nghĩa là có đơn khớp câu hỏi và bot đang hiển thị danh sách các đơn đó ngay bên dưới câu trả lời. Khi đó TUYỆT ĐỐI KHÔNG được nói shop không có, chưa bán được, không tìm thấy, hay không bán được đơn/băng nào khớp câu hỏi.
 """.strip()
 
 
@@ -779,14 +780,22 @@ async def summarize_aggregate_result(
     model_id: str,
     query: str,
     raw_rows: list[dict[str, Any]],
+    *,
+    list_total: int | None = None,
 ) -> str:
     """Summarize statistical/aggregate rows into natural Vietnamese sentence per D-07."""
+    user_content = (
+        f"Câu hỏi của bác chủ: \"{query}\"\n"
+        f"Dữ liệu kết quả: {json.dumps(raw_rows, ensure_ascii=False)}"
+    )
+    if list_total is not None and list_total > 0:
+        user_content += (
+            f"\nmatched_order_count: {list_total} (số đơn khớp câu hỏi; "
+            "bot hiển thị danh sách các đơn này bên dưới câu trả lời)"
+        )
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT_SUMMARY},
-        {
-            "role": "user",
-            "content": f"Câu hỏi của bác chủ: \"{query}\"\nDữ liệu kết quả: {json.dumps(raw_rows, ensure_ascii=False)}",
-        },
+        {"role": "user", "content": user_content},
     ]
     response = await client.chat.completions.create(
         model=model_id,
@@ -831,6 +840,8 @@ async def _run_aggregate(
     db: aiosqlite.Connection,
     query: str,
     statement: str,
+    *,
+    list_total: int | None = None,
 ) -> SearchResult:
     """Execute an aggregate/scalar statement and summarize it."""
     aggregate_sql = prepare_aggregate_sql(statement)
@@ -841,6 +852,7 @@ async def _run_aggregate(
         model_id=model_id,
         query=query,
         raw_rows=aggregate_rows,
+        list_total=list_total,
     )
     return SearchResult(
         result_type=SearchResultType.AGGREGATE,
@@ -921,11 +933,17 @@ async def _execute_search_statements(
             page_size=page_size,
         )
 
-    aggregate_result = await _run_aggregate(
-        client, model_id, db, query, aggregate_candidates[0]
-    )
+    # List first: its match count tells the summarizer the bot is showing those orders.
     _, list_sql, total_count, orders, rows_are_orders = await _run_list(
         db, list_candidates[0], page, page_size
+    )
+    aggregate_result = await _run_aggregate(
+        client,
+        model_id,
+        db,
+        query,
+        aggregate_candidates[0],
+        list_total=total_count if rows_are_orders else None,
     )
     if total_count and not rows_are_orders:
         # The "list" statement is not an order snapshot; report the aggregate alone.
