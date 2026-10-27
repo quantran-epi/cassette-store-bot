@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from src.db.connection import remove_accents
 from src.services.order_search import (
+    SYSTEM_PROMPT_SUMMARY,
     is_search_intent,
     sanitize_and_validate_sql,
 )
@@ -371,6 +372,49 @@ async def test_summarize_aggregate_result():
 
     assert "4 đơn hàng" in summary
     assert "1.200.000 đ" in summary
+
+
+def test_summary_prompt_forbids_absent_claim_when_list_matches():
+    assert "matched_order_count" in SYSTEM_PROMPT_SUMMARY
+    assert "TUYỆT ĐỐI KHÔNG" in SYSTEM_PROMPT_SUMMARY
+
+
+@pytest.mark.asyncio
+async def test_summarize_aggregate_result_injects_list_total():
+    from src.services.order_search import summarize_aggregate_result
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(
+                    content="Dạ hôm nay shop có 7 đơn, tổng 1.000.000 đ bác nhé!"
+                )
+            )
+        ]
+    )
+    raw_rows = [{"total_orders": 7}]
+
+    await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="nay bán tổng bao tiền, có bán được Chế Linh không",
+        raw_rows=raw_rows,
+        list_total=3,
+    )
+    user_content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert "matched_order_count: 3" in user_content
+    assert raw_rows == [{"total_orders": 7}]
+
+    mock_client.reset_mock()
+    await summarize_aggregate_result(
+        client=mock_client,
+        model_id="mock-model",
+        query="hôm nay bán được bao nhiêu đơn",
+        raw_rows=raw_rows,
+    )
+    user_content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
+    assert "matched_order_count" not in user_content
 
 
 @pytest.mark.asyncio

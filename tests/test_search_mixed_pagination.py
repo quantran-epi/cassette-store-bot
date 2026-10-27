@@ -227,6 +227,65 @@ def test_multi_keyboard_uses_xem_them_label():
 
 
 @pytest.mark.asyncio
+async def test_mixed_summary_sees_list_match_count(test_db):
+    await create_order(
+        test_db,
+        Order(
+            customer_name="Khách A",
+            customer_phone="0900000001",
+            shipping_address="Hà Nội",
+            items_text="1 cuốn Chế Linh",
+            total_amount=100000,
+        ),
+    )
+    for i in range(2):
+        await create_order(
+            test_db,
+            Order(
+                customer_name=f"Khách B{i}",
+                customer_phone=f"09000000{i + 10}",
+                shipping_address="Hà Nội",
+                items_text="1 cuốn Tuấn Vũ",
+                total_amount=100000,
+            ),
+        )
+
+    list_sql = (
+        "SELECT o.* FROM orders o WHERE o.items_text LIKE '%Chế Linh%' "
+        "ORDER BY o.created_at DESC, o.id DESC"
+    )
+    client = _mock_client(f"{AGGREGATE_SQL}; {list_sql}", "Dạ shop có 1 đơn Chế Linh bác nhé!")
+
+    result = await run_order_search(
+        client=client,
+        model_id="mock-model",
+        db=test_db,
+        query="nay bán tổng bao tiền, có bán được Chế Linh không",
+    )
+
+    assert result.result_type == SearchResultType.MIXED
+    assert result.total_count == 1
+    assert len(result.orders) == 1
+    user_content = client.chat.completions.create.call_args_list[1].kwargs["messages"][1]["content"]
+    assert "matched_order_count: 1" in user_content
+
+
+@pytest.mark.asyncio
+async def test_aggregate_only_summary_has_no_list_total(test_db):
+    await _seed_orders(test_db, 3)
+    aggregate_sql = "SELECT COUNT(*) AS total_orders FROM orders"
+    client = _mock_client(aggregate_sql, "Dạ shop có 3 đơn bác nhé!")
+
+    result = await run_order_search(
+        client=client, model_id="mock-model", db=test_db, query="hôm nay bán được bao nhiêu đơn"
+    )
+
+    assert result.result_type == SearchResultType.AGGREGATE
+    user_content = client.chat.completions.create.call_args_list[1].kwargs["messages"][1]["content"]
+    assert "matched_order_count" not in user_content
+
+
+@pytest.mark.asyncio
 async def test_fetch_search_page_stable_across_pages(test_db):
     await _seed_orders(test_db, 7)
     prepared = prepare_list_sql("SELECT * FROM orders")
