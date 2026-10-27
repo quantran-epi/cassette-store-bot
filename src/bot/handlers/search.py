@@ -117,12 +117,16 @@ def _render_list_view(
     total_pages = _total_pages(result)
     page = min(max(page, 1), total_pages)
     prefix = _summary_prefix(result) if result.result_type == SearchResultType.MIXED else ""
+    purpose = result.list_purpose if isinstance(getattr(result, "list_purpose", None), str) else None
 
     if total == 0:
-        return prefix + render_search_empty_card(query_text), build_search_empty_keyboard()
+        return (
+            prefix + render_search_empty_card(query_text, purpose=purpose),
+            build_search_empty_keyboard(),
+        )
     if total == 1 and page_orders and page_orders[0].id is not None:
         return (
-            prefix + render_search_single_order_card(page_orders[0], query_text),
+            prefix + render_search_single_order_card(page_orders[0], query_text, purpose=purpose),
             build_search_single_order_keyboard(page_orders[0].id, search_id),
         )
 
@@ -134,6 +138,7 @@ def _render_list_view(
             page=page,
             total_pages=total_pages,
             total_orders=total,
+            purpose=purpose,
         ),
         build_search_multi_keyboard(
             orders=page_orders,

@@ -702,7 +702,9 @@ def build_status_selection_keyboard(
     return InlineKeyboardMarkup(buttons)
 
 
-def render_search_single_order_card(order: Order, query: str) -> str:
+def render_search_single_order_card(
+    order: Order, query: str, purpose: str | None = None
+) -> str:
     """Format single order confirmation preview card per D-08."""
     status_label = STATUS_NAMES.get(
         order.status,
@@ -719,11 +721,18 @@ def render_search_single_order_card(order: Order, query: str) -> str:
     items = html.escape(order.items_text) if order.items_text else "<i>(Chưa có)</i>"
     esc_query = html.escape(query.strip())
 
+    if purpose:
+        heading = f"🔍 <b>{html.escape(purpose)}</b>\n{DIVIDER}\n"
+    else:
+        heading = (
+            f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n"
+            f"<i>(Tìm theo: '{esc_query}')</i>\n"
+            f"{DIVIDER}\n"
+        )
+
     return (
-        f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n"
-        f"<i>(Tìm theo: '{esc_query}')</i>\n"
-        f"{DIVIDER}\n"
-        f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        heading
+        + f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
         f"📞 <b>SĐT:</b> {phone_display}\n"
         f"📍 <b>ĐỊA CHỈ:</b> {addr}\n"
         f"📼 <b>BĂNG CASSETTE:</b> {items}\n"
@@ -755,9 +764,14 @@ def build_search_single_order_keyboard(
     )
 
 
-def render_search_empty_card(query: str) -> str:
+def render_search_empty_card(query: str, purpose: str | None = None) -> str:
     """Format friendly empty search result card per D-10."""
     esc_query = html.escape(query.strip())
+    if purpose:
+        return (
+            f"🔍 <b>{html.escape(purpose)}</b>\n\n"
+            f"Dạ em tìm trong sổ không thấy đơn nào phù hợp với mục này!"
+        )
     return (
         f"🔍 <b>KẾT QUẢ TÌM KIẾM</b>\n"
         f"<i>(Tìm theo: '{esc_query}')</i>\n\n"
@@ -795,15 +809,23 @@ def render_search_multi_card(
     page: int,
     total_pages: int,
     total_orders: int,
+    purpose: str | None = None,
 ) -> str:
     """Render paginated multi-order search result preview card per D-09."""
     esc_query = html.escape(query.strip())
-    lines = [
-        "🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
-        f"<i>(Tìm theo: '{esc_query}')</i>",
-        f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
-        DIVIDER,
-    ]
+    if purpose:
+        lines = [
+            f"🔍 <b>{html.escape(purpose)}</b>",
+            f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
+            DIVIDER,
+        ]
+    else:
+        lines = [
+            "🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
+            f"<i>(Tìm theo: '{esc_query}')</i>",
+            f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
+            DIVIDER,
+        ]
 
     order_blocks = [format_order_item_summary(order) for order in orders]
     if order_blocks:
