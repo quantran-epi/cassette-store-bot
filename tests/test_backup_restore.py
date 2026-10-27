@@ -262,8 +262,8 @@ async def test_document_upload_stages_and_asks_confirmation():
     assert "thay thế toàn bộ dữ liệu hiện tại" in text
     keyboard = update.effective_message.reply_text.await_args.kwargs["reply_markup"]
     callbacks = [b.callback_data for row in keyboard.inline_keyboard for b in row]
-    assert "adm:rst:ok" in callbacks
-    assert "adm:rst:cancel" in callbacks
+    assert f"adm:rst:ok:{pending['token']}" in callbacks
+    assert f"adm:rst:cancel:{pending['token']}" in callbacks
 
 
 @pytest.mark.asyncio
@@ -299,9 +299,10 @@ async def test_document_upload_invalid_archive_cleans_up():
 
 @pytest.mark.asyncio
 async def test_callback_confirm_applies_restore_and_reloads():
-    update = _make_callback_update("adm:rst:ok")
+    update = _make_callback_update("adm:rst:ok:tok")
     context = _make_context()
     context.user_data["pending_restore"] = {
+        "token": "tok",
         "user_id": SUPER_ID,
         "temp_dir": "/tmp/restore_x",
         "staged_path": "/tmp/restore_x/restore.sqlite3",
@@ -340,9 +341,10 @@ async def test_callback_confirm_applies_restore_and_reloads():
 
 @pytest.mark.asyncio
 async def test_callback_cancel_keeps_db_untouched():
-    update = _make_callback_update("adm:rst:cancel")
+    update = _make_callback_update("adm:rst:cancel:tok")
     context = _make_context()
     context.user_data["pending_restore"] = {
+        "token": "tok",
         "user_id": SUPER_ID,
         "temp_dir": "/tmp/restore_x",
         "staged_path": "/tmp/restore_x/restore.sqlite3",
@@ -362,11 +364,12 @@ async def test_callback_cancel_keeps_db_untouched():
 
 @pytest.mark.asyncio
 async def test_callback_confirm_rejects_different_user():
-    update = _make_callback_update("adm:rst:ok", user_id=888)
+    update = _make_callback_update("adm:rst:ok:tok", user_id=888)
     context = _make_context()
     # 888 is also a Super Admin, but did not upload this file.
     context.bot_data["admin_roles"][888] = UserRole.SUPER_ADMIN
     context.user_data["pending_restore"] = {
+        "token": "tok",
         "user_id": SUPER_ID,
         "temp_dir": "/tmp/restore_x",
         "staged_path": "/tmp/restore_x/restore.sqlite3",
@@ -385,9 +388,10 @@ async def test_callback_confirm_rejects_different_user():
 
 @pytest.mark.asyncio
 async def test_callback_expired_request_cleans_up():
-    update = _make_callback_update("adm:rst:ok")
+    update = _make_callback_update("adm:rst:ok:tok")
     context = _make_context()
     context.user_data["pending_restore"] = {
+        "token": "tok",
         "user_id": SUPER_ID,
         "temp_dir": "/tmp/restore_x",
         "staged_path": "/tmp/restore_x/restore.sqlite3",
@@ -405,11 +409,45 @@ async def test_callback_expired_request_cleans_up():
 
 
 @pytest.mark.asyncio
+async def test_callback_stale_token_does_not_apply_newer_upload():
+    update = _make_callback_update("adm:rst:ok:old-token")
+    context = _make_context()
+    context.user_data["pending_restore"] = {
+        "token": "new-token",
+        "user_id": SUPER_ID,
+        "temp_dir": "/tmp/restore_x",
+        "staged_path": "/tmp/restore_x/restore.sqlite3",
+        "stats": {},
+        "expires_at": 10**12,
+    }
+
+    with patch("src.bot.handlers.backup.apply_staged_restore") as apply_mock:
+        await handle_restore_callback(update, context)
+
+    apply_mock.assert_not_called()
+    assert "lần tải file cũ" in update.callback_query.edit_message_text.await_args[0][0]
+    assert context.user_data["pending_restore"]["token"] == "new-token"
+
+
+@pytest.mark.asyncio
+async def test_document_upload_rejects_non_super_admin():
+    update = _make_upload_update(user_id=888)
+    context = _make_context()
+    context.bot_data["admin_roles"][888] = UserRole.ADMIN
+
+    await handle_backup_document(update, context)
+
+    assert "Từ chối truy cập" in update.effective_message.reply_text.await_args[0][0]
+    assert "pending_restore" not in context.user_data
+
+
+@pytest.mark.asyncio
 async def test_callback_unauthorized_user_rejected_by_decorator():
-    update = _make_callback_update("adm:rst:ok", user_id=888)
+    update = _make_callback_update("adm:rst:ok:tok", user_id=888)
     context = _make_context()
     context.bot_data["admin_roles"] = {SUPER_ID: UserRole.SUPER_ADMIN, 888: UserRole.ADMIN}
     context.user_data["pending_restore"] = {
+        "token": "tok",
         "user_id": 888,
         "temp_dir": "/tmp/restore_x",
         "staged_path": "/tmp/restore_x/restore.sqlite3",

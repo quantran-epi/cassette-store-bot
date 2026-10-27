@@ -2,6 +2,7 @@ import asyncio
 import html
 import logging
 import os
+import secrets
 import shutil
 import tempfile
 import time
@@ -155,7 +156,9 @@ async def handle_backup_document(update: Update, context: ContextTypes.DEFAULT_T
             except OSError:
                 pass
 
+    token = secrets.token_urlsafe(16)
     context.user_data["pending_restore"] = {
+        "token": token,
         "user_id": update.effective_user.id,
         "temp_dir": temp_dir,
         "staged_path": staged["staged_path"],
@@ -165,8 +168,8 @@ async def handle_backup_document(update: Update, context: ContextTypes.DEFAULT_T
 
     keyboard = InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("✅ Xác nhận khôi phục", callback_data="adm:rst:ok")],
-            [InlineKeyboardButton("❌ Huỷ", callback_data="adm:rst:cancel")],
+            [InlineKeyboardButton("✅ Xác nhận khôi phục", callback_data=f"adm:rst:ok:{token}")],
+            [InlineKeyboardButton("❌ Huỷ", callback_data=f"adm:rst:cancel:{token}")],
         ]
     )
     file_name = html.escape(doc.file_name or "backup")
@@ -194,26 +197,37 @@ async def handle_restore_callback(update: Update, context: ContextTypes.DEFAULT_
     if not query or not query.data:
         return
 
-    data = query.data
+    try:
+        action, token = query.data.rsplit(":", 1)
+    except ValueError:
+        return
+    if action not in {"adm:rst:ok", "adm:rst:cancel"}:
+        return
+
     pending = context.user_data.get("pending_restore")
 
     if not pending or time.time() > pending.get("expires_at", 0):
         _cleanup_restore_state(context)
         await query.answer()
         await query.edit_message_text(
-            "⌛ Yêu cầu khôi phục đã hết hạn. Vui lòng gửi lại file backup."
+            "⌛ Yêu cầu khôi phục đã hết hạn hoặc đã được xử lý. Vui lòng gửi lại file backup."
         )
         return
 
-    if data == "adm:rst:cancel":
+    if token != pending.get("token"):
+        # Stale button from an older upload — do not touch the newer pending file.
+        await query.answer()
+        await query.edit_message_text(
+            "⌛ Nút này thuộc lần tải file cũ. Vui lòng dùng nút của file mới nhất."
+        )
+        return
+
+    if action == "adm:rst:cancel":
         await query.answer()
         _cleanup_restore_state(context)
         await query.edit_message_text(
             "❌ Đã huỷ khôi phục. Dữ liệu hiện tại được giữ nguyên."
         )
-        return
-
-    if data != "adm:rst:ok":
         return
 
     if pending["user_id"] != update.effective_user.id:
