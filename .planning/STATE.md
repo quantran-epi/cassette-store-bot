@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-25)
 Phase: 08 (containerization-kubernetes-deployment) — COMPLETED
 Plan: 3 of 3
 Status: All 3 plans complete, verified with 321 passing tests
-Last activity: 2026-10-27 -- Completed quick task 261027-c2n: Super Admin Telegram backup restore
+Last activity: 2026-10-27 -- Completed quick task 261027-e0b: multi-page in-bot tutorial
 
 Progress: [██████████] 100% (Phase 08)
 
@@ -95,3 +95,4 @@ Recent decisions affecting current work:
 | 2026-10-26 | `261026-kt4-add-tape-artist-json-as-separate-structu` | Tách `tape_artist_json` khỏi thể loại; sửa lỗi tên ca sĩ lọt vào nhãn phôi; chặn filter NULL khớp mọi đơn; bắt buộc công bố đơn cũ thiếu dữ liệu | Complete ✓ |
 | 2026-10-27 | `20261027-order-delete-and-shipping-helper` | Xoá đơn xác nhận 2 bước, trợ giúp tạo đơn vận chuyển copy 1 chạm, auto chuyển DA_TAO_DON khi nhập mã, chuẩn hoá địa chỉ LLM, chat sửa draft preview | Complete ✓ |
 | 2026-10-27 | `261027-c2n-th-m-t-nh-n-ng-cho-ph-p-admin-g-i-file-b` | Super Admin gửi file backup `.sqlite3.gz`, bot validate + xem trước, xác nhận mới import, snapshot an toàn trước ghi đè, rollback khi lỗi | Complete ✓ |
+| 2026-10-27 | `261027-e0b-th-m-tutorial-t-ng-b-c-trong-bot-cho-ng-` | Tutorial 6 trang cho người già qua `/help` và nút `❓ Trợ giúp`, nút Tiếp/Quay lại/Thử ngay, gộp text help về một nguồn | Complete ✓ |
