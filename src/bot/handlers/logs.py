@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-from src.bot.keyboards import TZ_VN, build_logs_keyboard
+from src.bot.keyboards import DIVIDER, TZ_VN, build_logs_keyboard
 from src.bot.logging_handler import RingBufferLogHandler
 from src.bot.security import UserRole, require_role
 
@@ -28,9 +28,9 @@ def _render_logs_card(
 
     return (
         f"📜 <b>NHẬT KÝ HỆ THỐNG GẦN NHẤT</b>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"<pre><code>{formatted_logs}</code></pre>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"<i>Hiển thị {limit} dòng {filter_label}gần nhất • Cập nhật lúc {now_str}</i>"
     )
 

@@ -92,6 +92,7 @@ async def get_due_reminders(
             r.reminder_text,
             r.status AS reminder_status,
             r.created_by_user_id,
+            r.created_at,
             o.customer_name,
             o.customer_phone,
             o.shipping_address,

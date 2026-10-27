@@ -562,6 +562,108 @@ def test_sunday_weekday_formatting_and_thu2_tuan_sau():
     assert res_wed == "2026-10-26 09:00"
 
 
+def test_format_reminder_broadcast_with_times_and_relative_note():
+    """Verify format_reminder_broadcast clearly shows remind_at and created_at timestamps."""
+    from src.bot.keyboards import DIVIDER
+    from src.services.notifications import format_reminder_broadcast
+
+    # Case 1: Full reminder with relative note, scheduled time, and creation time
+    reminder_data = {
+        "order_id": 42,
+        "customer_name": "Bác Tuấn",
+        "customer_phone": "0987654321",
+        "reminder_text": "khách hẹn sang ngày kia",
+        "remind_at": "2026-10-29 09:00",
+        "created_at": "2026-10-27 07:30:00",  # UTC (14:30 in Vietnam)
+        "items_text": "2 cuốn Chế Linh",
+        "shipping_address": "123 Phố Huế, Hà Nội",
+    }
+    msg = format_reminder_broadcast(reminder_data)
+
+    assert "NHẮC VIỆC ĐƠN HÀNG #42" in msg
+    assert "khách hẹn sang ngày kia" in msg
+    # Verify appointment scheduled time is clearly displayed
+    assert "HẸN LÚC:" in msg
+    assert "09:00 29/10/2026" in msg
+    # Verify note creation time (UTC 07:30 -> VN 14:30) is clearly displayed
+    assert "GHI CHÚ LÚC:" in msg
+    assert "14:30 27/10/2026" in msg
+    # Verify dividers use consistent 14-char DIVIDER
+    assert DIVIDER in msg
+    assert "────────────────────" not in msg
+    assert DIVIDER == "──────────────"
+
+    # Case 2: Reminder without created_at (only remind_at)
+    msg_no_created = format_reminder_broadcast({
+        "order_id": 99,
+        "customer_name": "Cô Lan",
+        "reminder_text": "giao buổi sáng",
+        "remind_at": "2026-10-28 10:00",
+    })
+    assert "HẸN LÚC:" in msg_no_created
+    assert "10:00 28/10/2026" in msg_no_created
+    assert "GHI CHÚ LÚC:" not in msg_no_created
+
+    # Case 3: Reminder without any time fields (graceful fallback)
+    msg_minimal = format_reminder_broadcast({
+        "order_id": 100,
+        "reminder_text": "nhắc kiểm tra",
+    })
+    assert "NHẮC VIỆC ĐƠN HÀNG #100" in msg_minimal
+    assert "nhắc kiểm tra" in msg_minimal
+    assert "HẸN LÚC:" not in msg_minimal
+
+
+@pytest.mark.asyncio
+async def test_get_due_reminders_returns_created_at(test_db):
+    """Verify get_due_reminders selects created_at for reminders."""
+    from src.db.customers import create_customer
+    from src.db.orders import create_order
+    from src.db.reminders import create_reminder, get_due_reminders
+    from src.models.customer import Customer
+    from src.models.order import Order, OrderStatus
+    from src.models.reminder import Reminder
+
+    cid = await create_customer(
+        test_db,
+        Customer(
+            id=None,
+            name="Khách Hẹn Giờ",
+            phone="0911223344",
+            address="Hà Nội",
+            extra_phones=[],
+            extra_addresses=[],
+        ),
+    )
+    oid = await create_order(
+        test_db,
+        Order(
+            id=None,
+            customer_id=cid,
+            customer_name="Khách Hẹn Giờ",
+            customer_phone="0911223344",
+            shipping_address="Hà Nội",
+            items_text="1 cuốn",
+            total_amount=100000,
+            cod_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+    rem = Reminder(
+        id=None,
+        order_id=oid,
+        remind_at="2026-10-20 09:00",
+        reminder_text="khách hẹn sang ngày kia",
+    )
+    await create_reminder(test_db, rem)
+
+    due = await get_due_reminders(test_db, now_iso="2026-10-27 12:00:00")
+    assert len(due) == 1
+    assert "created_at" in due[0]
+    assert due[0]["created_at"] is not None
+
+
+
 def test_cards_render_high_contrast_uppercase_labels():
     """Verify order detail, summary, and preview cards use uppercase labels for elderly clarity."""
     from src.bot.handlers.ingest import render_preview_card

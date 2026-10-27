@@ -12,6 +12,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from src.bot.keyboards import (
+    DIVIDER,
     TZ_VN,
     build_admin_main_keyboard,
     build_backup_schedule_keyboard,
@@ -102,13 +103,13 @@ async def render_dashboard_card(
 
     return (
         f"🛠️ <b>BẢNG ĐIỀU KHIỂN QUẢN TRỊ</b>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"⏱️ <b>Uptime:</b> {uptime_str}\n"
         f"💾 <b>Database:</b> SQLite WAL (DB: {db_size_mb:.2f} MB | WAL: {wal_size_mb:.2f} MB)\n"
         f"🤖 <b>Model LLM:</b> <code>{html.escape(active_model_id)}</code> (Trạng thái: ✅ Hoạt động)\n"
         f"📦 <b>Đơn hôm nay:</b> {today_order_count} đơn hàng\n"
         f"⚙️ <b>Chế độ bảo trì:</b> {maint_badge}\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"Vai trò của bạn: {role_badge} <b>{user_role.value}</b>"
     )
 
@@ -239,11 +240,11 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 reduction = (1 - (stats["gz_size"] / max(stats["raw_size"], 1))) * 100
                 caption = (
                     f"💾 <b>BẢN SAO LƯU HỆ THỐNG</b>\n"
-                    f"────────────────────\n"
+                    f"{DIVIDER}\n"
                     f"⏱️ <b>Thời gian:</b> {stats['timestamp_str']} (UTC+7)\n"
                     f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024*1024):.2f} MB ➔ {stats['gz_size'] / (1024*1024):.2f} MB (Giảm {reduction:.1f}%)\n"
                     f"📊 <b>Dữ liệu:</b> {stats['order_count']} đơn hàng | {stats['customer_count']} khách hàng\n"
-                    f"────────────────────"
+                    f"{DIVIDER}"
                 )
 
                 sent = await send_backup_document(
@@ -271,7 +272,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             current_time = await get_setting(db, "backup_schedule_time", default="02:00") or "02:00"
             card_text = (
                 f"⏰ <b>ĐẶT GIỜ SAO LƯU TỰ ĐỘNG</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Giờ sao lưu hiện tại: <code>{current_time}</code> (UTC+7)\n\n"
                 f"<i>Chọn một trong các mốc giờ bên dưới hoặc nhập giờ tuỳ ý:</i>"
             )
@@ -297,7 +298,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             card_text = (
                 f"⏰ <b>ĐẶT GIỜ SAO LƯU TỰ ĐỘNG</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Giờ sao lưu hiện tại: <code>{new_time}</code> (UTC+7)\n\n"
                 f"<i>Chọn một trong các mốc giờ bên dưới hoặc nhập giờ tuỳ ý:</i>"
             )
@@ -320,10 +321,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "expires_at": time.time() + 60,
             }
             card_text = (
-                "✏️ <b>NHẬP GIỜ SAO LƯU MỚI</b>\n"
-                "────────────────────\n"
-                "Vui lòng gửi tin nhắn chứa giờ sao lưu định dạng <code>HH:MM</code> (VD: <code>03:30</code>).\n\n"
-                "⏳ <i>Hết hạn sau 60 giây.</i>"
+                f"✏️ <b>NHẬP GIỜ SAO LƯU MỚI</b>\n"
+                f"{DIVIDER}\n"
+                f"Vui lòng gửi tin nhắn chứa giờ sao lưu định dạng <code>HH:MM</code> (VD: <code>03:30</code>).\n\n"
+                f"⏳ <i>Hết hạn sau 60 giây.</i>"
             )
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("❌ Huỷ", callback_data="adm:bkp:menu")]]
@@ -357,10 +358,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             user_content = "\n".join(lines) if lines else "<i>(Chưa có tài khoản nào)</i>"
             card_text = (
                 f"👥 <b>QUẢN LÝ DANH SÁCH TRUY CẬP (WHITELIST)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Tổng số tài khoản: <b>{total_users}</b>\n\n"
                 f"{user_content}\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"<i>Bấm vào tài khoản bên dưới để xem chi tiết / phân quyền, hoặc thêm mới:</i>"
             )
             keyboard = build_whitelist_keyboard(users, current_page=page, total_pages=1)
@@ -391,12 +392,12 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             card_text = (
                 f"👤 <b>THÔNG TIN TÀI KHOẢN</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
                 f"👤 <b>Tên hiển thị:</b> {html.escape(tname)}\n"
                 f"🛡️ <b>Vai trò hiện tại:</b> {badge} <b>{trole}</b>\n"
                 f"🕒 <b>Ngày cấp quyền:</b> {created_at}\n"
-                f"────────────────────"
+                f"{DIVIDER}"
             )
             keyboard = build_whitelist_user_detail_keyboard(target_user, is_root=is_root)
             try:
@@ -428,12 +429,12 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             badge = "👑" if new_role == "SUPER_ADMIN" else ("🛡️" if new_role == "ADMIN" else "👤")
             card_text = (
                 f"👤 <b>THÔNG TIN TÀI KHOẢN</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
                 f"👤 <b>Tên hiển thị:</b> {html.escape(name or 'Chưa đặt tên')}\n"
                 f"🛡️ <b>Vai trò hiện tại:</b> {badge} <b>{new_role}</b>\n"
                 f"🕒 <b>Ngày cấp quyền:</b> {updated_user['created_at']}\n"
-                f"────────────────────"
+                f"{DIVIDER}"
             )
             try:
                 await query.edit_message_text(card_text, reply_markup=keyboard, parse_mode="HTML")
@@ -455,11 +456,11 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             card_text = (
                 f"⚠️ <b>XÁC NHẬN XOÁ QUYỀN TRUY CẬP</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"👤 <b>Tên:</b> {html.escape(tname or 'Chưa đặt tên')}\n"
                 f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
                 f"🛡️ <b>Vai trò:</b> {trole}\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Người này sẽ mất quyền sử dụng bot ngay lập tức.\n"
                 f"Bạn có chắc chắn muốn xoá không?"
             )
@@ -489,7 +490,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             keyboard = build_whitelist_keyboard(users, current_page=1, total_pages=1)
             card_text = (
                 f"👥 <b>QUẢN LÝ DANH SÁCH TRUY CẬP (WHITELIST)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Tổng số tài khoản: <b>{len(users)}</b>\n\n"
                 f"<i>Bấm vào tài khoản bên dưới để xem chi tiết / phân quyền, hoặc thêm mới:</i>"
             )
@@ -510,7 +511,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             }
             card_text = (
                 f"✏️ <b>ĐỔI TÊN NGƯỜI DÙNG</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Gửi tin nhắn chứa tên mới cho ID: <code>{target_id}</code>.\n\n"
                 f"⏳ <i>Hết hạn sau 60 giây.</i>"
             )
@@ -531,10 +532,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "expires_at": time.time() + 60,
             }
             card_text = (
-                "➕ <b>THÊM TÀI KHOẢN VÀO WHITELIST</b>\n"
-                "────────────────────\n"
-                "Vui lòng gửi tin nhắn chứa <b>Telegram User ID</b> của người dùng (và tuỳ chọn Tên, ví dụ: <code>123456789 Nguyen Van A</code>).\n\n"
-                "⏳ <i>Hết hạn sau 60 giây.</i>"
+                f"➕ <b>THÊM TÀI KHOẢN VÀO WHITELIST</b>\n"
+                f"{DIVIDER}\n"
+                f"Vui lòng gửi tin nhắn chứa <b>Telegram User ID</b> của người dùng (và tuỳ chọn Tên, ví dụ: <code>123456789 Nguyen Van A</code>).\n\n"
+                f"⏳ <i>Hết hạn sau 60 giây.</i>"
             )
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("❌ Huỷ", callback_data="adm:wl:add_cancel")]]
@@ -554,7 +555,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             keyboard = build_whitelist_keyboard(users, current_page=1, total_pages=1)
             card_text = (
                 f"👥 <b>QUẢN LÝ DANH SÁCH TRUY CẬP (WHITELIST)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Tổng số tài khoản: <b>{len(users)}</b>\n\n"
                 f"<i>Bấm vào tài khoản bên dưới để xem chi tiết / phân quyền, hoặc thêm mới:</i>"
             )
@@ -589,12 +590,12 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             badge = "👑" if chosen_role == "SUPER_ADMIN" else ("🛡️" if chosen_role == "ADMIN" else "👤")
             card_text = (
                 f"👤 <b>THÔNG TIN TÀI KHOẢN</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
                 f"👤 <b>Tên hiển thị:</b> {html.escape(name or 'Chưa đặt tên')}\n"
                 f"🛡️ <b>Vai trò hiện tại:</b> {badge} <b>{chosen_role}</b>\n"
                 f"🕒 <b>Ngày cấp quyền:</b> Vừa xong\n"
-                f"────────────────────"
+                f"{DIVIDER}"
             )
             keyboard = build_whitelist_user_detail_keyboard(target_user, is_root=False)
             try:
@@ -617,7 +618,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             card_text = (
                 f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Model đang kích hoạt: <code>{html.escape(active_model)}</code>\n"
                 f"Trạng thái gateway: ✅ Sẵn sàng\n\n"
                 f"<i>Chọn model khả dụng bên dưới hoặc nhập model mới:</i>"
@@ -642,7 +643,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             card_text = (
                 f"🗑️ <b>XOÁ MODEL KHỎI DANH SÁCH</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Model đang kích hoạt: <code>{html.escape(active_model)}</code> <i>(được bảo vệ)</i>\n\n"
                 f"<i>Bấm vào model bên dưới để gỡ bỏ:</i>"
             )
@@ -678,7 +679,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             card_text = (
                 f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Model đang kích hoạt: <code>{html.escape(active_model)}</code>\n"
                 f"Trạng thái gateway: ✅ Sẵn sàng\n\n"
                 f"<i>Chọn model khả dụng bên dưới hoặc nhập model mới:</i>"
@@ -713,7 +714,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 card_text = (
                     f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
-                    f"────────────────────\n"
+                    f"{DIVIDER}\n"
                     f"✅ Đã chuyển sang model: <code>{html.escape(candidate_model)}</code>\n"
                     f"Trạng thái gateway: ✅ Sẵn sàng\n\n"
                     f"<i>Chọn model khả dụng bên dưới hoặc nhập model mới:</i>"
@@ -752,10 +753,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "expires_at": time.time() + 60,
             }
             card_text = (
-                "✏️ <b>NHẬP TÊN MODEL LLM MỚI</b>\n"
-                "────────────────────\n"
-                "Vui lòng gửi tin nhắn chứa tên model (Model ID) từ 9router (VD: <code>meta-llama/llama-3.3-70b-instruct</code>).\n\n"
-                "⏳ <i>Hết hạn sau 60 giây.</i>"
+                f"✏️ <b>NHẬP TÊN MODEL LLM MỚI</b>\n"
+                f"{DIVIDER}\n"
+                f"Vui lòng gửi tin nhắn chứa tên model (Model ID) từ 9router (VD: <code>meta-llama/llama-3.3-70b-instruct</code>).\n\n"
+                f"⏳ <i>Hết hạn sau 60 giây.</i>"
             )
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton("❌ Huỷ", callback_data="adm:mdl:input_cancel")]]
@@ -778,7 +779,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             active_model = context.bot_data.get("active_model_id") or "gpt-4o-mini"
             card_text = (
                 f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Model đang kích hoạt: <code>{html.escape(active_model)}</code>\n"
                 f"Trạng thái gateway: ✅ Sẵn sàng\n\n"
                 f"<i>Chọn model khả dụng bên dưới hoặc nhập model mới:</i>"
@@ -829,10 +830,10 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
 
         prompt_text = (
             f"👤 <b>CHỌN VAI TRÒ CHO TÀI KHOẢN</b>\n"
-            f"────────────────────\n"
+            f"{DIVIDER}\n"
             f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
             f"👤 <b>Tên:</b> {html.escape(name or 'Chưa đặt tên')}\n"
-            f"────────────────────\n"
+            f"{DIVIDER}\n"
             f"Vui lòng chọn vai trò cấp cho tài khoản này:"
         )
         keyboard = InlineKeyboardMarkup(
@@ -886,7 +887,7 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
             context.bot_data["active_model_id"] = candidate_model
             card_text = (
                 f"🤖 <b>CẤU HÌNH MODEL LLM (9ROUTER)</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"✅ Đã chuyển sang model: <code>{html.escape(candidate_model)}</code>\n"
                 f"Trạng thái gateway: ✅ Sẵn sàng\n\n"
                 f"<i>Chọn model khả dụng bên dưới hoặc nhập model mới:</i>"
@@ -965,12 +966,12 @@ async def handle_admin_text_input(update: Update, context: ContextTypes.DEFAULT_
         badge = "👑" if trole == "SUPER_ADMIN" else ("🛡️" if trole == "ADMIN" else "👤")
         card_text = (
             f"👤 <b>THÔNG TIN TÀI KHOẢN</b>\n"
-            f"────────────────────\n"
+            f"{DIVIDER}\n"
             f"🆔 <b>Telegram ID:</b> <code>{target_id}</code>\n"
             f"👤 <b>Tên hiển thị:</b> {html.escape(tname)}\n"
             f"🛡️ <b>Vai trò hiện tại:</b> {badge} <b>{trole}</b>\n"
             f"🕒 <b>Ngày cấp quyền:</b> {target_user.get('created_at', 'Không xác định')}\n"
-            f"────────────────────"
+            f"{DIVIDER}"
         )
         keyboard = build_whitelist_user_detail_keyboard(target_user, is_root=is_root)
         await update.effective_message.reply_text(card_text, reply_markup=keyboard, parse_mode="HTML")

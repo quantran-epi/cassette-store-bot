@@ -40,6 +40,7 @@ from src.bot.handlers.order_actions import (
 )
 from src.bot.handlers.orders import handle_menu_reply, handle_order_nav_callback
 from src.bot.handlers.search import handle_customer_callback, handle_search_callback
+from src.bot.keyboards import DIVIDER
 from src.bot.logging_handler import RingBufferLogHandler
 from src.bot.security import UserRole, whitelist_gate
 from src.config import Settings
@@ -134,11 +135,11 @@ async def daily_backup_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
         reduction = (1 - (stats["gz_size"] / max(stats["raw_size"], 1))) * 100
         caption = (
             f"💾 <b>BẢN SAO LƯU ĐỊNH KỲ TỰ ĐỘNG</b>\n"
-            f"────────────────────\n"
+            f"{DIVIDER}\n"
             f"⏱️ <b>Thời gian:</b> {stats['timestamp_str']} (UTC+7)\n"
             f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024 * 1024):.2f} MB ➔ {stats['gz_size'] / (1024 * 1024):.2f} MB (Giảm {reduction:.1f}%)\n"
             f"📊 <b>Dữ liệu:</b> {stats['order_count']} đơn hàng | {stats['customer_count']} khách hàng\n"
-            f"────────────────────"
+            f"{DIVIDER}"
         )
 
         sent = await send_backup_document(

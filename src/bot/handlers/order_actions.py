@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 
 from src.bot.handlers.base import run_with_typing
 from src.bot.keyboards import (
+    DIVIDER,
     STATUS_NAMES,
     TZ_VN,
     build_order_detail_keyboard,
@@ -499,18 +500,29 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                     )
                 ]
             )
+            created_line = ""
+            if getattr(r, "created_at", None):
+                c_dt = (
+                    to_vn_datetime(r.created_at)
+                    if isinstance(r.created_at, datetime)
+                    else None
+                )
+                c_str = c_dt.strftime("%d/%m/%Y %H:%M") if c_dt else str(r.created_at)
+                created_line = f"🕒 <b>LÚC TẠO GHI CHÚ:</b> {c_str}\n"
+
             prompt_text = (
                 f"⏰ <b>LỊCH NHẮC ĐƠN HÀNG #{order_id}</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"🕒 <b>ĐANG HẸN:</b> <code>{r.remind_at}</code>\n"
                 f"📝 <b>NỘI DUNG:</b> {html.escape(r.reminder_text)}\n"
-                f"────────────────────\n"
+                f"{created_line}"
+                f"{DIVIDER}\n"
                 f"Bác gửi tin nhắn thời gian mới nếu muốn đổi lịch hẹn, hoặc bấm nút dưới:"
             )
         else:
             prompt_text = (
                 f"⏰ <b>ĐẶT LỊCH NHẮC VIỆC - ĐƠN #{order_id}</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Đơn này hiện chưa có lịch nhắc nào.\n"
                 f"Bác hãy nhập thời gian và yêu cầu bằng tiếng Việt tự nhiên nhé.\n"
                 f"Ví dụ:\n"
@@ -681,7 +693,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             cust_name = html.escape(order.customer_name or "Khách")
             card_text = (
                 f"✏️ <b>SỬA THÔNG TIN ĐƠN HÀNG #{order_id}</b> - {cust_name}\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"Bác bấm chọn trường thông tin muốn sửa dưới đây nhé:"
             )
             keyboard = build_order_edit_menu_keyboard(order_id)
@@ -741,7 +753,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                     text=(
                         f"✏️ <b>SỬA {field_label.upper()} - ĐƠN #{order_id}</b>\n\n"
                         f"• <b>Hiện tại:</b> {val_disp}\n"
-                        f"────────────────────\n"
+                        f"{DIVIDER}\n"
                         f"Bác hãy gõ nội dung mới vào ô chat cho đơn này nhé.\n\n"
                         f"<i>(Thời gian chờ là 3 phút)</i>"
                     ),
@@ -940,11 +952,11 @@ async def handle_action_state_text(
             )
             await update.message.reply_text(
                 f"✅ <b>ĐÃ ĐẶT LỊCH NHẮC THÀNH CÔNG!</b>\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"📦 <b>MÃ ĐƠN:</b> <code>#{order_id}</code>\n"
                 f"⏰ <b>THỜI GIAN NHẮC:</b> <code>{remind_at}</code>\n"
                 f"📝 <b>NỘI DUNG:</b> {html.escape(reminder_note)}\n"
-                f"────────────────────\n"
+                f"{DIVIDER}\n"
                 f"<i>Đến hạn hệ thống sẽ tự động phát thông báo tới tất cả người dùng!</i>",
                 reply_markup=back_kb,
                 parse_mode="HTML",

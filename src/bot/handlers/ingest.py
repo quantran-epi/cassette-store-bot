@@ -10,7 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, ContextTypes
 
 from src.bot.handlers.base import run_with_typing
-from src.bot.keyboards import format_customer_classification
+from src.bot.keyboards import DIVIDER, format_customer_classification
 from src.db.connection import get_db_connection
 from src.db.customers import get_customer_by_phone
 from src.db.orders import get_customer_order_stats
@@ -98,7 +98,7 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
         f"{reminder_tag}"
         f"{photo_tag}"
         f"{warning_tag}\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"Bác bấm nút bên dưới để xác nhận (hoặc chat để sửa đơn) nhé:"
     )
 

@@ -12,6 +12,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.admin import _get_active_db_context
+from src.bot.keyboards import DIVIDER
 from src.bot.security import UserRole, require_role
 from src.services.backup import (
     RestoreApplyError,
@@ -84,11 +85,11 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         reduction = (1 - (stats["gz_size"] / max(stats["raw_size"], 1))) * 100
         caption = (
             f"💾 <b>BẢN SAO LƯU HỆ THỐNG</b>\n"
-            f"────────────────────\n"
+            f"{DIVIDER}\n"
             f"⏱️ <b>Thời gian:</b> {stats['timestamp_str']} (UTC+7)\n"
             f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024*1024):.2f} MB ➔ {stats['gz_size'] / (1024*1024):.2f} MB (Giảm {reduction:.1f}%)\n"
             f"📊 <b>Dữ liệu:</b> {stats['order_count']} đơn hàng | {stats['customer_count']} khách hàng\n"
-            f"────────────────────"
+            f"{DIVIDER}"
         )
 
         success = await send_backup_document(
@@ -177,12 +178,12 @@ async def handle_backup_document(update: Update, context: ContextTypes.DEFAULT_T
     raw_size_mb = staged["raw_size"] / (1024 * 1024)
     text = (
         f"📥 <b>XÁC NHẬN KHÔI PHỤC DỮ LIỆU</b>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"📄 <b>File:</b> {file_name}\n"
         f"📦 <b>Dung lượng:</b> {gz_size_mb:.2f} MB (nén) ➔ {raw_size_mb:.2f} MB\n"
         f"📊 <b>Dữ liệu trong file:</b> {staged['order_count']} đơn hàng | "
         f"{staged['customer_count']} khách hàng\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"⚠️ <b>CẢNH BÁO:</b> Xác nhận sẽ thay thế toàn bộ dữ liệu hiện tại "
         f"bằng dữ liệu trong file này. Một bản snapshot an toàn sẽ được tạo trước.\n"
         f"⏳ <i>Yêu cầu hết hạn sau {RESTORE_CONFIRM_TTL // 60} phút.</i>"
@@ -301,11 +302,11 @@ async def handle_restore_callback(update: Update, context: ContextTypes.DEFAULT_
 
     await query.edit_message_text(
         f"✅ <b>KHÔI PHỤC THÀNH CÔNG</b>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"📊 <b>Dữ liệu:</b> {stats.get('order_count', 0)} đơn hàng | "
         f"{stats.get('customer_count', 0)} khách hàng\n"
         f"💾 <b>Snapshot an toàn:</b> <code>{html.escape(result['safety_path'])}</code>\n"
-        f"────────────────────\n"
+        f"{DIVIDER}\n"
         f"<i>Vui lòng kiểm tra lại danh sách truy cập (whitelist) và cấu hình.</i>",
         parse_mode="HTML",
     )
