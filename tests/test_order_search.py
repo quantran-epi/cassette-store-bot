@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +11,13 @@ from src.services.order_search import (
     is_search_intent,
     sanitize_and_validate_sql,
 )
+
+
+def _list_plan(sql: str, purpose: str = "Danh sách đơn hàng") -> str:
+    return json.dumps(
+        {"list": {"purpose": purpose, "sql": sql}, "aggregates": []},
+        ensure_ascii=False,
+    )
 
 
 def test_unaccent_remove_accents():
@@ -304,7 +312,7 @@ def test_text_to_sql_prompt_documents_tape_columns_and_time_buckets():
 
 @pytest.mark.asyncio
 async def test_summary_strips_missing_list_claim():
-    from src.services.order_search import summarize_aggregate_result
+    from src.services.order_search import summarize_search_results
 
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = MagicMock(
@@ -319,11 +327,11 @@ async def test_summary_strips_missing_list_claim():
             )
         ]
     )
-    summary = await summarize_aggregate_result(
+    summary = await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="hôm nay bán được bao nhiêu đơn",
-        raw_rows=[{"total_orders": 4}],
+        aggregates=[{"purpose": "Số đơn hôm nay", "rows": [{"total_orders": 4}]}],
     )
     assert "4 đơn hàng" in summary
     assert "danh sách chi tiết" not in summary
@@ -336,20 +344,18 @@ async def test_summary_strips_missing_list_claim():
             )
         ]
     )
-    fallback = await summarize_aggregate_result(
+    fallback = await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="liệt kê đơn",
-        raw_rows=[{"total_orders": 4}],
+        aggregates=[{"purpose": "Số đơn", "rows": [{"total_orders": 4}]}],
     )
     assert fallback == ""
 
 
 @pytest.mark.asyncio
-async def test_summarize_aggregate_result():
-    from unittest.mock import AsyncMock, MagicMock
-
-    from src.services.order_search import summarize_aggregate_result
+async def test_summarize_search_results():
+    from src.services.order_search import summarize_search_results
 
     mock_client = AsyncMock()
     mock_resp = MagicMock(
@@ -363,11 +369,16 @@ async def test_summarize_aggregate_result():
     )
     mock_client.chat.completions.create.return_value = mock_resp
 
-    summary = await summarize_aggregate_result(
+    summary = await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="hôm nay bán được bao nhiêu đơn",
-        raw_rows=[{"total_orders": 4, "total_revenue": 1200000}],
+        aggregates=[
+            {
+                "purpose": "Số đơn và doanh thu hôm nay",
+                "rows": [{"total_orders": 4, "total_revenue": 1200000}],
+            }
+        ],
     )
 
     assert "4 đơn hàng" in summary
@@ -375,13 +386,14 @@ async def test_summarize_aggregate_result():
 
 
 def test_summary_prompt_forbids_absent_claim_when_list_matches():
-    assert "matched_order_count" in SYSTEM_PROMPT_SUMMARY
+    assert "`list`" in SYSTEM_PROMPT_SUMMARY
+    assert "list.count" in SYSTEM_PROMPT_SUMMARY
     assert "TUYỆT ĐỐI KHÔNG" in SYSTEM_PROMPT_SUMMARY
 
 
 @pytest.mark.asyncio
-async def test_summarize_aggregate_result_injects_list_total():
-    from src.services.order_search import summarize_aggregate_result
+async def test_summarize_search_results_envelope_includes_list_count_only():
+    from src.services.order_search import summarize_search_results
 
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = MagicMock(
@@ -393,53 +405,65 @@ async def test_summarize_aggregate_result_injects_list_total():
             )
         ]
     )
-    raw_rows = [{"total_orders": 7}]
+    aggregates = [{"purpose": "Tổng doanh thu", "rows": [{"total_orders": 7}]}]
 
-    await summarize_aggregate_result(
+    await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="nay bán tổng bao tiền, có bán được Chế Linh không",
-        raw_rows=raw_rows,
-        list_total=3,
+        aggregates=aggregates,
+        list_info={"purpose": "Đơn có Chế Linh", "count": 3},
     )
     user_content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
-    assert "matched_order_count: 3" in user_content
-    assert raw_rows == [{"total_orders": 7}]
+    assert "Đơn có Chế Linh" in user_content
+    assert '"count": 3' in user_content
+    assert '"rows": [{"total_orders": 7}]' in user_content
 
     mock_client.reset_mock()
-    await summarize_aggregate_result(
+    await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="hôm nay bán được bao nhiêu đơn",
-        raw_rows=raw_rows,
+        aggregates=aggregates,
     )
     user_content = mock_client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
-    assert "matched_order_count" not in user_content
+    assert "Danh sách đơn" not in user_content
+    assert '"count"' not in user_content
 
 
 @pytest.mark.asyncio
 async def test_summary_discloses_orders_without_tape_data():
     """Old NULL-tape orders are disclosed even if the model omits the caveat."""
-    from src.services.order_search import summarize_aggregate_result
+    from src.services.order_search import summarize_search_results
 
     mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Dạ shop mình có 5 cuốn băng bác nhé!"))]
     )
-    summary = await summarize_aggregate_result(
+    summary = await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="có bao nhiêu băng",
-        raw_rows=[{"total_tapes": 5, "orders_without_tape_data": 7}],
+        aggregates=[
+            {
+                "purpose": "Tổng số băng",
+                "rows": [{"total_tapes": 5, "orders_without_tape_data": 7}],
+            }
+        ],
     )
     assert "5 cuốn băng" in summary
     assert "7 đơn cũ" in summary
 
-    no_missing = await summarize_aggregate_result(
+    no_missing = await summarize_search_results(
         client=mock_client,
         model_id="mock-model",
         query="có bao nhiêu băng",
-        raw_rows=[{"total_tapes": 5, "orders_without_tape_data": 0}],
+        aggregates=[
+            {
+                "purpose": "Tổng số băng",
+                "rows": [{"total_tapes": 5, "orders_without_tape_data": 0}],
+            }
+        ],
     )
     assert "đơn cũ" not in no_missing
 
@@ -460,9 +484,12 @@ async def test_run_order_search_end_to_end(test_db):
     await test_db.commit()
 
     mock_client = AsyncMock()
-    # Mock LLM returning SQL for specific order
+    # Mock LLM returning a JSON plan for the specific order
     mock_choice = MagicMock()
-    mock_choice.message.content = "SELECT o.* FROM orders o WHERE o.customer_name LIKE '%Hoàng%'"
+    mock_choice.message.content = _list_plan(
+        "SELECT o.* FROM orders o WHERE o.customer_name LIKE '%Hoàng%'",
+        purpose="Đơn của anh Hoàng",
+    )
     mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
 
     result = await run_order_search(
@@ -476,6 +503,7 @@ async def test_run_order_search_end_to_end(test_db):
     assert len(result.orders) == 1
     assert result.orders[0].customer_name == "Anh Hoàng"
     assert "SELECT o.* FROM orders" in result.sql_executed
+    assert result.list_purpose == "Đơn của anh Hoàng"
 
 
 def test_render_search_single_order_card():
@@ -897,7 +925,10 @@ async def test_process_search_query_without_bot_data_db(tmp_path):
 
     mock_client = AsyncMock()
     mock_choice = MagicMock()
-    mock_choice.message.content = "SELECT * FROM orders WHERE customer_name LIKE '%Tuấn%'"
+    mock_choice.message.content = _list_plan(
+        "SELECT * FROM orders WHERE customer_name LIKE '%Tuấn%'",
+        purpose="Đơn của anh Tuấn",
+    )
     mock_resp = MagicMock(choices=[mock_choice])
     mock_client.chat.completions.create.return_value = mock_resp
 
@@ -925,7 +956,7 @@ async def test_process_search_query_without_bot_data_db(tmp_path):
     call_args = message.reply_text.call_args
     reply_text = call_args[1].get("text") if "text" in call_args[1] else call_args[0][0]
     assert "⚠️ Hệ thống tra cứu đang bận" not in reply_text
-    assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in reply_text
+    assert "Đơn của anh Tuấn" in reply_text
     assert "Anh Tuấn" in reply_text
 
 
