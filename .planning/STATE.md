@@ -96,3 +96,4 @@ Recent decisions affecting current work:
 | 2026-10-27 | `20261027-order-delete-and-shipping-helper` | Xoá đơn xác nhận 2 bước, trợ giúp tạo đơn vận chuyển copy 1 chạm, auto chuyển DA_TAO_DON khi nhập mã, chuẩn hoá địa chỉ LLM, chat sửa draft preview | Complete ✓ |
 | 2026-10-27 | `261027-c2n-th-m-t-nh-n-ng-cho-ph-p-admin-g-i-file-b` | Super Admin gửi file backup `.sqlite3.gz`, bot validate + xem trước, xác nhận mới import, snapshot an toàn trước ghi đè, rollback khi lỗi | Complete ✓ |
 | 2026-10-27 | `261027-e0b-th-m-tutorial-t-ng-b-c-trong-bot-cho-ng-` | Tutorial 6 trang cho người già qua `/help` và nút `❓ Trợ giúp`, nút Tiếp/Quay lại/Thử ngay, gộp text help về một nguồn | Complete ✓ |
+| 2026-10-27 | `261027-fay-draft-order-context-and-typing` | Sửa đơn nháp gửi thẻ `<current_order>` cho LLM (câu mơ hồ hiểu đúng, items trả full list); `run_with_typing` giữ "đang nhập…" mỗi 4s cho tới khi có kết quả | Complete ✓ |
