@@ -359,6 +359,15 @@ def test_build_order_list_keyboard_has_filter_chips():
     assert "ord_ls:DA_DONG_GOI:1" in empty_cbs
 
 
+def test_app_registers_pending_orders_wiring():
+    """Source-level guard: app.py must wire the button text and both callbacks."""
+    from pathlib import Path
+
+    source = Path("src/bot/app.py").read_text(encoding="utf-8")
+    assert "⏳ Đơn chờ làm" in source
+    assert "ord_(dt|pg|v|bk|ls|vls):" in source
+
+
 def test_build_status_selection_keyboard():
     """Status selection keyboard has 8 status options with current highlighted and back button."""
     kb = build_status_selection_keyboard(order_id=55, current_status=OrderStatus.DANG_LAM)
