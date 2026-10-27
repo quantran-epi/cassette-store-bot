@@ -68,6 +68,18 @@ class OrderMutationDelta(BaseModel):
         default=None,
         description="Tên ca sĩ mới; chỉ điền khi new_items_text thay đổi",
     )
+    new_reminder_at: str | None = Field(
+        default=None,
+        description="Thời điểm nhắc việc mới dạng ISO 'YYYY-MM-DD HH:MM' (giờ Việt Nam)",
+    )
+    new_reminder_note: str | None = Field(
+        default=None,
+        description="Nội dung nhắc việc mới (VD: 'Gửi hàng cho khách')",
+    )
+    clear_reminder: bool = Field(
+        default=False,
+        description="True khi người dùng muốn bỏ lịch nhắc của đơn",
+    )
 
     @field_validator("new_customer_phone", mode="before")
     @classmethod

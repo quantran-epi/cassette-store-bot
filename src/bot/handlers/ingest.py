@@ -368,6 +368,13 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     draft["cod_amount"] = delta.new_cod_amount
                 if delta.new_notes:
                     draft["notes"] = delta.new_notes
+                if delta.clear_reminder:
+                    draft["reminder_at"] = None
+                    draft["reminder_note"] = None
+                elif delta.new_reminder_at:
+                    draft["reminder_at"] = delta.new_reminder_at
+                    if delta.new_reminder_note:
+                        draft["reminder_note"] = delta.new_reminder_note
 
             preview_text, reply_markup = render_preview_card(draft, draft.get("stats"))
             await update.message.reply_text(

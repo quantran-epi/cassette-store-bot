@@ -1089,3 +1089,125 @@ async def test_order_mutation_auto_appends_new_address_to_customer(test_db):
     assert "10 Phố Huế, Hà Nội" in cust.addresses
     assert "25 Bà Triệu, Hà Nội" in cust.addresses
 
+
+
+def _draft_edit_harness(text, draft_overrides=None, delta=None):
+    """Build (update, context) for a draft-edit message and patch the extractor."""
+    from unittest.mock import patch
+
+    from src.models.mutation import OrderMutationDelta
+
+    update = MagicMock()
+    update.message.text = text
+    update.message.chat.send_action = AsyncMock()
+    update.message.reply_text = AsyncMock()
+
+    draft = {
+        "draft_id": "test1234",
+        "customer_name": "Anh Hưng",
+        "customer_phone": "0912345678",
+        "shipping_address": "12 Lý Thường Kiệt, Hoàn Kiếm, Hà Nội",
+        "items_text": "2 Băng Chế Linh",
+        "total_amount": 200000,
+        "cod_amount": 200000,
+        "deposit_amount": 0,
+        "tape_quantity": 2,
+        "tapes": [],
+        "tape_genres": [],
+        "tape_artists": [],
+        "notes": "khách dặn gọi trước",
+        "reminder_at": None,
+        "reminder_note": None,
+    }
+    draft.update(draft_overrides or {})
+
+    context = MagicMock()
+    context.user_data = {
+        "pending_orders": {"test1234": draft},
+        "active_draft_id": "test1234",
+    }
+    context.application.bot_data = {
+        "openai_client": AsyncMock(),
+        "settings": MagicMock(nine_router_model_id="test-model"),
+    }
+    return update, context, draft, patch(
+        "src.services.mutation_extractor.extract_mutation_delta",
+        AsyncMock(return_value=delta or OrderMutationDelta()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_draft_edit_reminder_only_does_not_touch_notes():
+    """A delivery appointment sets draft reminder fields and leaves notes alone."""
+    from src.models.mutation import OrderMutationDelta
+
+    delta = OrderMutationDelta(
+        new_reminder_at="2026-10-28 10:00",
+        new_reminder_note="Gửi hàng cho khách",
+    )
+    update, context, draft, patcher = _draft_edit_harness(
+        "khách hẹn sáng mai 10h gửi hàng", delta=delta
+    )
+    with patcher:
+        await handle_text_order(update, context)
+
+    assert draft["reminder_at"] == "2026-10-28 10:00"
+    assert draft["reminder_note"] == "Gửi hàng cho khách"
+    assert draft["notes"] == "khách dặn gọi trước"
+    assert "LỊCH NHẮC" in update.message.reply_text.call_args[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_draft_edit_clear_reminder_wipes_both_fields():
+    """clear_reminder drops both reminder fields without touching notes."""
+    from src.models.mutation import OrderMutationDelta
+
+    update, context, draft, patcher = _draft_edit_harness(
+        "thôi không nhắc nữa",
+        draft_overrides={"reminder_at": "2026-10-28 10:00", "reminder_note": "Gửi hàng"},
+        delta=OrderMutationDelta(clear_reminder=True),
+    )
+    with patcher:
+        await handle_text_order(update, context)
+
+    assert draft["reminder_at"] is None
+    assert draft["reminder_note"] is None
+    assert draft["notes"] == "khách dặn gọi trước"
+
+
+@pytest.mark.asyncio
+async def test_draft_edit_notes_replacement_keeps_reminder():
+    """A notes edit replaces notes but leaves an existing reminder intact."""
+    from src.models.mutation import OrderMutationDelta
+
+    update, context, draft, patcher = _draft_edit_harness(
+        "ghi chú hàng dễ vỡ",
+        draft_overrides={"reminder_at": "2026-10-28 10:00", "reminder_note": "Gửi hàng"},
+        delta=OrderMutationDelta(new_notes="hàng dễ vỡ"),
+    )
+    with patcher:
+        await handle_text_order(update, context)
+
+    assert draft["notes"] == "hàng dễ vỡ"
+    assert draft["reminder_at"] == "2026-10-28 10:00"
+
+
+def test_mutation_prompt_routes_time_to_reminder_and_has_date_hook():
+    """Reminder fields are documented and the runtime prompt carries the current date."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from src.services.mutation_extractor import (
+        MUTATION_SYSTEM_PROMPT,
+        build_mutation_system_prompt,
+    )
+
+    for field in ("new_reminder_at", "new_reminder_note", "clear_reminder"):
+        assert field in MUTATION_SYSTEM_PROMPT
+    assert "TUYỆT ĐỐI KHÔNG đưa ngày/giờ hẹn" in MUTATION_SYSTEM_PROMPT
+
+    now = datetime(2026, 10, 27, 15, 30, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
+    prompt = build_mutation_system_prompt(now)
+    assert "2026-10-27 15:30" in prompt
+    assert "2026-10-28" in prompt
+    assert "Thứ 3" in prompt
