@@ -311,6 +311,14 @@ async def list_orders_by_status(
         return [_row_to_order(row) for row in rows]
 
 
+async def count_orders_by_status(db: aiosqlite.Connection, status: OrderStatus) -> int:
+    """Count total orders with the given status."""
+    query = "SELECT COUNT(*) FROM orders WHERE status = ?"
+    async with db.execute(query, (status.value,)) as cursor:
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+
 async def get_customer_order_stats(
     db: aiosqlite.Connection, customer_id: int
 ) -> dict[str, int]:
@@ -658,6 +666,7 @@ __all__ = [
     "list_orders_by_date",
     "count_orders_by_date",
     "list_orders_by_status",
+    "count_orders_by_status",
     "get_customer_order_stats",
     "get_orders_by_customer_id",
     "count_orders_by_customer_id",

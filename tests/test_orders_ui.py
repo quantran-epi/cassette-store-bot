@@ -27,9 +27,12 @@ from src.bot.keyboards import (
     build_main_menu_reply_keyboard,
     build_order_detail_keyboard,
     build_order_list_keyboard,
+    build_status_order_list_keyboard,
     build_status_selection_keyboard,
+    format_order_compact_line,
     render_order_detail_card,
     render_order_list_card,
+    render_status_order_list_card,
 )
 from src.models.order import Order, OrderStatus
 
@@ -48,19 +51,19 @@ def test_status_names_and_next_status_map():
 
 
 def test_build_main_menu_reply_keyboard_structure():
-    """Reply Keyboard is 2x2, persistent, and resizable (D-01, UI-02)."""
+    """Reply Keyboard is 3x2, persistent, and resizable (D-01, UI-02)."""
     markup = build_main_menu_reply_keyboard()
     assert isinstance(markup, ReplyKeyboardMarkup)
     assert markup.resize_keyboard is True
     assert markup.is_persistent is True
-    assert len(markup.keyboard) == 2
-    assert len(markup.keyboard[0]) == 2
-    assert len(markup.keyboard[1]) == 2
+    assert len(markup.keyboard) == 3
+    for row in markup.keyboard:
+        assert len(row) == 2
 
-    row0 = [btn.text for btn in markup.keyboard[0]]
-    row1 = [btn.text for btn in markup.keyboard[1]]
-    assert row0 == ["📦 Đơn hôm nay", "📋 Xem theo ngày"]
-    assert row1 == ["📝 Nhập đơn mới", "🔍 Tra cứu đơn"]
+    rows = [[btn.text for btn in row] for row in markup.keyboard]
+    assert rows[0] == ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"]
+    assert rows[1] == ["📋 Xem theo ngày", "📝 Nhập đơn mới"]
+    assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
 
 
 def test_render_order_detail_card_html_and_code():
@@ -233,6 +236,129 @@ def test_build_order_list_keyboard_empty_and_pagination():
     assert not any("ord_pg:2026-10-24:4" in cb for cb in p3_cbs)
 
 
+def test_format_order_compact_line():
+    """Compact line is single-line with id, escaped name, and formatted total (D-2)."""
+    order = Order(
+        id=7,
+        customer_name="Bác <Ba>",
+        customer_phone="0901",
+        shipping_address="HCM",
+        items_text="Băng",
+        total_amount=1250000,
+    )
+    line = format_order_compact_line(order)
+    assert "\n" not in line
+    assert "<b>#7</b>" in line
+    assert "Bác &lt;Ba&gt;" in line
+    assert "1.250.000 đ" in line
+
+
+def test_render_status_order_list_card_grouping_and_empty():
+    """Status list card groups by VN date, paginates, and handles the empty state."""
+    orders = [
+        Order(
+            id=1,
+            customer_name="Khách A",
+            customer_phone="0901",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+            created_at=datetime(2026, 10, 26, 10, 0),
+        ),
+        Order(
+            id=2,
+            customer_name="Khách B",
+            customer_phone="0902",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=200000,
+            status=OrderStatus.CHO_LAM,
+            created_at=datetime(2026, 10, 26, 8, 0),
+        ),
+        Order(
+            id=3,
+            customer_name="Khách C",
+            customer_phone="0903",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=300000,
+            status=OrderStatus.CHO_LAM,
+            created_at=datetime(2026, 10, 25, 9, 0),
+        ),
+    ]
+    card = render_status_order_list_card(orders, OrderStatus.CHO_LAM, 1, 2, 12)
+    assert "⏳ Chờ làm — <b>DANH SÁCH ĐƠN</b>" in card
+    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/2)" in card
+    assert card.count("📅") == 2
+    assert "📅 <b>26/10/2026</b> · 2 đơn" in card
+    assert "📅 <b>25/10/2026</b> · 1 đơn" in card
+    assert "#1" in card and "Khách A" in card and "100.000 đ" in card
+    assert "#3" in card and "Khách C" in card and "300.000 đ" in card
+
+    empty = render_status_order_list_card([], OrderStatus.DANG_LAM, 1, 1, 0)
+    assert "Chưa có đơn nào ở trạng thái này bác nhé!" in empty
+
+
+def test_build_status_order_list_keyboard_callbacks_and_chips():
+    """Status list keyboard has detail/paging/chip callbacks, all <= 64 bytes."""
+    orders = [
+        Order(
+            id=42,
+            customer_name="Khách Dài Tên Rất Dài Để Bị Cắt Bớt",
+            customer_phone="0901",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=100000,
+            status=OrderStatus.DANG_LAM,
+        )
+    ]
+    kb = build_status_order_list_keyboard(orders, OrderStatus.DANG_LAM, page=2, total_pages=3)
+    flat = [btn for row in kb.inline_keyboard for btn in row]
+    callbacks = [btn.callback_data for btn in flat]
+
+    assert "ord_vls:DANG_LAM:42:2" in callbacks
+    assert "ord_ls:DANG_LAM:1" in callbacks
+    assert "ord_ls:DANG_LAM:3" in callbacks
+    assert "ord_ls:CHO_LAM:1" in callbacks
+    assert "ord_ls:DANG_LAM:2" in callbacks  # active chip keeps page
+    assert "ord_ls:DA_DONG_GOI:1" in callbacks
+    assert "ord_noop" in callbacks
+
+    for cb in callbacks:
+        assert len(cb.encode("utf-8")) <= 64
+
+    empty_kb = build_status_order_list_keyboard([], OrderStatus.CHO_LAM, page=1, total_pages=1)
+    empty_cbs = [btn.callback_data for row in empty_kb.inline_keyboard for btn in row]
+    assert "ord_ls:CHO_LAM:1" in empty_cbs
+    assert "ord_act:new" in empty_cbs
+
+
+def test_build_order_list_keyboard_has_filter_chips():
+    """Both date-list branches (populated + empty) expose the 3 status chips."""
+    orders = [
+        Order(
+            id=10,
+            customer_name="Nguyễn Văn A",
+            customer_phone="0901",
+            shipping_address="HCM",
+            items_text="Băng",
+            total_amount=100000,
+        )
+    ]
+    populated = build_order_list_keyboard(orders, "2026-10-24", page=1, total_pages=1)
+    populated_cbs = [btn.callback_data for row in populated.inline_keyboard for btn in row]
+    assert "ord_ls:CHO_LAM:1" in populated_cbs
+    assert "ord_ls:DANG_LAM:1" in populated_cbs
+    assert "ord_ls:DA_DONG_GOI:1" in populated_cbs
+
+    empty = build_order_list_keyboard([], "2026-10-24", page=1, total_pages=1)
+    empty_cbs = [btn.callback_data for row in empty.inline_keyboard for btn in row]
+    assert "ord_ls:CHO_LAM:1" in empty_cbs
+    assert "ord_ls:DANG_LAM:1" in empty_cbs
+    assert "ord_ls:DA_DONG_GOI:1" in empty_cbs
+
+
 def test_build_status_selection_keyboard():
     """Status selection keyboard has 8 status options with current highlighted and back button."""
     kb = build_status_selection_keyboard(order_id=55, current_status=OrderStatus.DANG_LAM)
@@ -259,7 +385,7 @@ def test_build_status_selection_keyboard():
 
 @pytest.mark.asyncio
 async def test_start_command_sends_reply_keyboard():
-    """start_command attaches 2x2 persistent ReplyKeyboardMarkup (D-01, UI-01, UI-02)."""
+    """start_command attaches 3x2 persistent ReplyKeyboardMarkup (D-01, UI-01, UI-02)."""
     user = User(id=12345, first_name="Bác Ba", is_bot=False)
     chat = Chat(id=12345, type="private")
     message = MagicMock(spec=Message)
@@ -284,9 +410,11 @@ async def test_start_command_sends_reply_keyboard():
     assert isinstance(markup, ReplyKeyboardMarkup)
     assert markup.resize_keyboard is True
     assert markup.is_persistent is True
-    assert len(markup.keyboard) == 2
-    assert [btn.text for btn in markup.keyboard[0]] == ["📦 Đơn hôm nay", "📋 Xem theo ngày"]
-    assert [btn.text for btn in markup.keyboard[1]] == ["📝 Nhập đơn mới", "🔍 Tra cứu đơn"]
+    assert len(markup.keyboard) == 3
+    rows = [[btn.text for btn in row] for row in markup.keyboard]
+    assert rows[0] == ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"]
+    assert rows[1] == ["📋 Xem theo ngày", "📝 Nhập đơn mới"]
+    assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
 
 
 @pytest.mark.asyncio

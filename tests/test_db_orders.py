@@ -5,6 +5,7 @@ from src.db.customers import add_address, create_customer
 from src.db.orders import (
     append_order_photos,
     count_orders_by_date,
+    count_orders_by_status,
     create_order,
     get_customer_order_stats,
     get_order_by_id,
@@ -211,6 +212,29 @@ async def test_list_orders_by_status(test_db):
     da_giao_orders = await list_orders_by_status(test_db, OrderStatus.DA_GIAO)
     assert len(da_giao_orders) == 1
     assert da_giao_orders[0].customer_name == "Khách Khác"
+
+
+@pytest.mark.asyncio
+async def test_count_orders_by_status(test_db):
+    """count_orders_by_status counts each status and returns 0 when none."""
+    assert await count_orders_by_status(test_db, OrderStatus.CHO_LAM) == 0
+
+    statuses = [OrderStatus.CHO_LAM, OrderStatus.CHO_LAM, OrderStatus.DANG_LAM]
+    for i, st in enumerate(statuses):
+        await create_order(
+            test_db,
+            Order(
+                customer_name=f"Khách {i}",
+                customer_phone=f"090000000{i}",
+                shipping_address="HCM",
+                items_text="Băng",
+                status=st,
+            ),
+        )
+
+    assert await count_orders_by_status(test_db, OrderStatus.CHO_LAM) == 2
+    assert await count_orders_by_status(test_db, OrderStatus.DANG_LAM) == 1
+    assert await count_orders_by_status(test_db, OrderStatus.DA_DONG_GOI) == 0
 
 
 @pytest.mark.asyncio

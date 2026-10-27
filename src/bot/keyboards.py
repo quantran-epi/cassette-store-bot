@@ -69,15 +69,19 @@ NEXT_STATUS_MAP: dict[OrderStatus, tuple[OrderStatus, str]] = {
 
 
 def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Build persistent 2x2 Reply Keyboard for elderly-friendly navigation."""
+    """Build persistent 3x2 Reply Keyboard for elderly-friendly navigation."""
     keyboard = [
         [
             KeyboardButton("📦 Đơn hôm nay"),
-            KeyboardButton("📋 Xem theo ngày"),
+            KeyboardButton("⏳ Đơn chờ làm"),
         ],
         [
+            KeyboardButton("📋 Xem theo ngày"),
             KeyboardButton("📝 Nhập đơn mới"),
+        ],
+        [
             KeyboardButton("🔍 Tra cứu đơn"),
+            KeyboardButton("❓ Trợ giúp"),
         ],
     ]
     return ReplyKeyboardMarkup(
@@ -465,6 +469,141 @@ def render_order_list_card(
     return "\n".join(lines)
 
 
+def format_order_compact_line(order: Order) -> str:
+    """One-line order summary: #id · customer · total (D-2)."""
+    total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
+    return f"📦 <b>#{order.id}</b> · {html.escape(order.customer_name)} · {total_fmt}"
+
+
+def _vn_date_label(created_at: Any) -> str:
+    """Vietnam-time DD/MM/YYYY label, or a friendly fallback when unparseable."""
+    dt: datetime | None = None
+    if isinstance(created_at, datetime):
+        dt = created_at
+    elif isinstance(created_at, str) and created_at.strip():
+        try:
+            dt = datetime.fromisoformat(created_at.strip().replace("Z", "+00:00"))
+        except ValueError:
+            dt = None
+    vn_dt = to_vn_datetime(dt)
+    return vn_dt.strftime("%d/%m/%Y") if vn_dt else "Không rõ ngày"
+
+
+def render_status_order_list_card(
+    orders: Sequence[Order],
+    status: OrderStatus,
+    page: int,
+    total_pages: int,
+    total_orders: int,
+) -> str:
+    """Render status-filtered order list grouped by Vietnam creation date (D-4)."""
+    status_label = STATUS_NAMES.get(status, status.value)
+    header = (
+        f"{status_label} — <b>DANH SÁCH ĐƠN</b>\n"
+        f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})"
+    )
+
+    if total_orders == 0:
+        return f"{header}\n\nChưa có đơn nào ở trạng thái này bác nhé!"
+
+    # Group by VN date, preserving query order (created_at DESC). Never SQL GROUP BY.
+    groups: dict[str, list[Order]] = {}
+    for order in orders:
+        groups.setdefault(_vn_date_label(order.created_at), []).append(order)
+
+    blocks: list[str] = []
+    for date_label, day_orders in groups.items():
+        day_lines = [f"📅 <b>{date_label}</b> · {len(day_orders)} đơn"]
+        day_lines.extend(format_order_compact_line(o) for o in day_orders)
+        blocks.append("\n".join(day_lines))
+
+    return "\n".join(
+        [
+            header,
+            DIVIDER,
+            "\n\n".join(blocks),
+            DIVIDER,
+            "Bác chạm vào nút xem đơn bên dưới nhé:",
+        ]
+    )
+
+
+# Status chips shown at the bottom of every list card (D-3).
+FILTER_CHIP_STATUSES: tuple[OrderStatus, ...] = (
+    OrderStatus.CHO_LAM,
+    OrderStatus.DANG_LAM,
+    OrderStatus.DA_DONG_GOI,
+)
+
+
+def _build_status_filter_row(
+    current_status: OrderStatus | None = None,
+    current_page: int = 1,
+) -> list[InlineKeyboardButton]:
+    """Build the 3 status filter chips; keep the current page on the active chip."""
+    row: list[InlineKeyboardButton] = []
+    for st in FILTER_CHIP_STATUSES:
+        page = current_page if st == current_status else 1
+        row.append(
+            InlineKeyboardButton(
+                STATUS_NAMES[st],
+                callback_data=f"ord_ls:{st.value}:{page}",
+            )
+        )
+    return row
+
+
+def build_status_order_list_keyboard(
+    orders: Sequence[Order],
+    status: OrderStatus,
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    """Build keyboard for a status-filtered list: detail buttons, paging, filter chips."""
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for order in orders:
+        btn_label = f"👁️ Xem đơn #{order.id} - {order.customer_name}"
+        if len(btn_label) > 34:
+            btn_label = btn_label[:31] + "..."
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    btn_label,
+                    callback_data=f"ord_vls:{status.value}:{order.id}:{page}",
+                )
+            ]
+        )
+
+    if orders and total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "⬅️ Trước", callback_data=f"ord_ls:{status.value}:{page - 1}"
+                )
+            )
+        nav_row.append(
+            InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop")
+        )
+        if page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "Sau ➡️", callback_data=f"ord_ls:{status.value}:{page + 1}"
+                )
+            )
+        buttons.append(nav_row)
+
+    buttons.append(_build_status_filter_row(status, page))
+
+    if not orders:
+        buttons.append(
+            [InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new")]
+        )
+
+    return InlineKeyboardMarkup(buttons)
+
+
 def build_order_list_keyboard(
     orders: Sequence[Order],
     date_str: str,
@@ -476,6 +615,7 @@ def build_order_list_keyboard(
 
     if not orders:
         # Empty state per D-04
+        buttons.append(_build_status_filter_row())
         buttons.append(
             [
                 InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new"),
@@ -513,6 +653,9 @@ def build_order_list_keyboard(
             InlineKeyboardButton("Sau ➡️", callback_data=f"ord_pg:{date_str}:{page + 1}")
         )
     buttons.append(nav_row)
+
+    # Status filter chips above the date picker bottom button (D-3)
+    buttons.append(_build_status_filter_row())
 
     # Pick another date bottom button per D-03
     buttons.append(
