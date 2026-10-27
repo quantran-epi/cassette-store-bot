@@ -20,7 +20,11 @@ from telegram.ext import (
 )
 
 from src.bot.handlers.admin import admin_command, handle_admin_callback
-from src.bot.handlers.backup import backup_command
+from src.bot.handlers.backup import (
+    backup_command,
+    handle_backup_document,
+    handle_restore_callback,
+)
 from src.bot.handlers.base import help_command, ping_command, start_command
 from src.bot.handlers.callbacks import handle_mutation_callback, handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
@@ -370,6 +374,13 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     )
     app.add_handler(
         CallbackQueryHandler(
+            handle_restore_callback,
+            pattern=r"^adm:rst:",
+        ),
+        group=0,
+    )
+    app.add_handler(
+        CallbackQueryHandler(
             handle_admin_callback,
             pattern=r"^adm:",
         ),
@@ -424,6 +435,11 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     )
     app.add_handler(
         MessageHandler(filters.PHOTO, handle_photo_order),
+        group=0,
+    )
+    # Backup restore uploads must be matched before the generic TEXT handler.
+    app.add_handler(
+        MessageHandler(filters.Document.ALL, handle_backup_document),
         group=0,
     )
     app.add_handler(
