@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-25)
 Phase: 08 (containerization-kubernetes-deployment) — COMPLETED
 Plan: 3 of 3
 Status: All 3 plans complete, verified with 321 passing tests
-Last activity: 2026-10-27 -- Completed quick task 261027-e0b: multi-page in-bot tutorial
+Last activity: 2026-10-27 -- Completed quick task 261027-h7d: no-LLM pending-orders quick list
 
 Progress: [██████████] 100% (Phase 08)
 
@@ -98,3 +98,4 @@ Recent decisions affecting current work:
 | 2026-10-27 | `261027-e0b-th-m-tutorial-t-ng-b-c-trong-bot-cho-ng-` | Tutorial 6 trang cho người già qua `/help` và nút `❓ Trợ giúp`, nút Tiếp/Quay lại/Thử ngay, gộp text help về một nguồn | Complete ✓ |
 | 2026-10-27 | `261027-fay-draft-order-context-and-typing` | Sửa đơn nháp gửi thẻ `<current_order>` cho LLM (câu mơ hồ hiểu đúng, items trả full list); `run_with_typing` giữ "đang nhập…" mỗi 4s cho tới khi có kết quả | Complete ✓ |
 | 2026-10-27 | `261027-g5f-draft-reminder-routing` | Draft: giờ hẹn giao/gửi đi vào `new_reminder_at`/`new_reminder_note` thay vì đè ghi chú, `clear_reminder` xoá lịch nhắc, prompt có mốc thời gian VN | Complete ✓ |
+| 2026-10-27 | `261027-h7d-th-m-quick-search-kh-ng-qua-llm-n-t-n-ch` | Nút `⏳ Đơn chờ làm` không qua LLM: list đơn theo trạng thái gom theo ngày tạo VN, 10 đơn/trang, chip lọc trạng thái ở đáy mọi list card, reply keyboard 3x2, tutorial trang 2 | Complete ✓ |
