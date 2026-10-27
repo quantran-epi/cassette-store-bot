@@ -59,6 +59,7 @@ def to_vn_datetime(dt: datetime | None) -> datetime | None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(TZ_VN)
 
+
 NEXT_STATUS_MAP: dict[OrderStatus, tuple[OrderStatus, str]] = {
     OrderStatus.CHO_LAM: (OrderStatus.DANG_LAM, "▶️ Bắt đầu làm"),
     OrderStatus.DANG_LAM: (OrderStatus.DA_DONG_GOI, "📦 Đã đóng gói xong"),
@@ -116,9 +117,7 @@ def render_order_detail_card(
         r_strs = []
         for r in r_list:
             if hasattr(r, "remind_at") and hasattr(r, "reminder_text"):
-                r_strs.append(
-                    f"<code>{r.remind_at}</code> ({html.escape(r.reminder_text)})"
-                )
+                r_strs.append(f"<code>{r.remind_at}</code> ({html.escape(r.reminder_text)})")
             elif isinstance(r, dict):
                 r_strs.append(
                     f"<code>{r.get('remind_at')}</code> ({html.escape(str(r.get('reminder_text') or ''))})"
@@ -128,15 +127,17 @@ def render_order_detail_card(
         if r_strs:
             reminder_line = f"⏰ <b>LỊCH NHẮC:</b> {', '.join(r_strs)}\n"
 
-    vn_created_at = to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
+    vn_created_at = (
+        to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
+    )
     created_str = (
-        vn_created_at.strftime("%d/%m/%Y %H:%M")
-        if vn_created_at
-        else str(order.created_at or "")
+        vn_created_at.strftime("%d/%m/%Y %H:%M") if vn_created_at else str(order.created_at or "")
     )
     created_line = ""
     if created_str:
-        creator_tag = f" (bởi {html.escape(order.created_by_name)})" if order.created_by_name else ""
+        creator_tag = (
+            f" (bởi {html.escape(order.created_by_name)})" if order.created_by_name else ""
+        )
         created_line = f"🕒 <b>THỜI GIAN TẠO:</b> {created_str}{creator_tag}\n"
     elif order.created_by_name:
         created_line = f"🕒 <b>NGƯỜI TẠO:</b> {html.escape(order.created_by_name)}\n"
@@ -257,13 +258,23 @@ def build_order_detail_keyboard(
         ]
     )
 
-    # 7. Change status menu & Delete order
+    # 7. Edit order info & Change status menu
     buttons.append(
         [
+            InlineKeyboardButton(
+                "✏️ Sửa thông tin",
+                callback_data=f"ord_act:edit_menu:{order.id}",
+            ),
             InlineKeyboardButton(
                 "🔄 Đổi trạng thái khác",
                 callback_data=f"ord_st_menu:{order.id}",
             ),
+        ]
+    )
+
+    # 8. Delete order
+    buttons.append(
+        [
             InlineKeyboardButton(
                 "🗑️ Xoá đơn",
                 callback_data=f"ord_act:del_prompt:{order.id}",
@@ -271,7 +282,7 @@ def build_order_detail_keyboard(
         ]
     )
 
-    # 8. Back navigation
+    # 9. Back navigation
     back_cb = back_callback_data or f"ord_bk:{date_str}:{page}"
     buttons.append(
         [
@@ -283,6 +294,47 @@ def build_order_detail_keyboard(
     )
 
     return InlineKeyboardMarkup(buttons)
+
+
+def build_order_edit_menu_keyboard(order_id: int) -> InlineKeyboardMarkup:
+    """Build keyboard for static field-by-field order editing."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "👤 Tên khách", callback_data=f"ord_act:edit_fld:{order_id}:customer_name"
+                ),
+                InlineKeyboardButton(
+                    "📞 SĐT", callback_data=f"ord_act:edit_fld:{order_id}:customer_phone"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "📍 Địa chỉ nhận hàng",
+                    callback_data=f"ord_act:edit_fld:{order_id}:shipping_address",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "💰 Tổng tiền", callback_data=f"ord_act:edit_fld:{order_id}:total_amount"
+                ),
+                InlineKeyboardButton(
+                    "💵 Tiền COD", callback_data=f"ord_act:edit_fld:{order_id}:cod_amount"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "📼 Danh sách băng", callback_data=f"ord_act:edit_fld:{order_id}:items_text"
+                ),
+                InlineKeyboardButton(
+                    "📝 Ghi chú", callback_data=f"ord_act:edit_fld:{order_id}:notes"
+                ),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Quay lại thẻ đơn", callback_data=f"ord_v_cur:{order_id}"),
+            ],
+        ]
+    )
 
 
 def build_shipping_helper_card(order: Order) -> str:
@@ -305,9 +357,13 @@ def build_shipping_helper_card(order: Order) -> str:
         f"📝 <b>Ghi chú giao hàng:</b> <code>{html.escape(shipping_note)}</code>",
     ]
     if order.tracking_code:
-        lines.append(f"🚚 <b>Mã vận đơn hiện tại:</b> <code>{html.escape(order.tracking_code)}</code>")
+        lines.append(
+            f"🚚 <b>Mã vận đơn hiện tại:</b> <code>{html.escape(order.tracking_code)}</code>"
+        )
     lines.append(DIVIDER)
-    lines.append("<i>Bác chạm vào từng nút bên dưới để sao chép nhanh và dán sang app vận chuyển nhé:</i>")
+    lines.append(
+        "<i>Bác chạm vào từng nút bên dưới để sao chép nhanh và dán sang app vận chuyển nhé:</i>"
+    )
     return "\n".join(lines)
 
 
@@ -330,13 +386,19 @@ def build_shipping_helper_keyboard(order: Order) -> InlineKeyboardMarkup:
             InlineKeyboardButton("📍 Copy Địa chỉ", copy_text=CopyTextButton(text=safe_addr)),
         ],
         [
-            InlineKeyboardButton("📦 Copy Hàng hoá (băng cát sét)", copy_text=CopyTextButton(text="băng cát sét")),
+            InlineKeyboardButton(
+                "📦 Copy Hàng hoá (băng cát sét)", copy_text=CopyTextButton(text="băng cát sét")
+            ),
         ],
         [
-            InlineKeyboardButton(f"💰 Copy Tiền COD ({cod_fmt})", copy_text=CopyTextButton(text=cod_raw)),
+            InlineKeyboardButton(
+                f"💰 Copy Tiền COD ({cod_fmt})", copy_text=CopyTextButton(text=cod_raw)
+            ),
         ],
         [
-            InlineKeyboardButton("📝 Copy Ghi chú giao hàng", copy_text=CopyTextButton(text=shipping_note)),
+            InlineKeyboardButton(
+                "📝 Copy Ghi chú giao hàng", copy_text=CopyTextButton(text=shipping_note)
+            ),
         ],
     ]
 
@@ -421,7 +483,11 @@ def format_order_item_summary(order: Order) -> str:
     )
     total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
     cust_name = html.escape(order.customer_name)
-    phone = f"<code>{html.escape(order.customer_phone)}</code>" if order.customer_phone else "<i>(Chưa có SĐT)</i>"
+    phone = (
+        f"<code>{html.escape(order.customer_phone)}</code>"
+        if order.customer_phone
+        else "<i>(Chưa có SĐT)</i>"
+    )
     addr = html.escape(order.shipping_address) if order.shipping_address else "<i>(Chưa có Đ/C)</i>"
     items_line = f"\n   📼 <b>BĂNG:</b> {html.escape(order.items_text)}" if order.items_text else ""
     return (
@@ -442,10 +508,7 @@ def render_order_list_card(
 ) -> str:
     """Render paginated order list card (5 orders/page) or empty notice."""
     if total_orders == 0:
-        return (
-            f"📅 <b>ĐƠN HÀNG NGÀY {date_str}</b>\n\n"
-            f"Ngày này chưa có đơn hàng nào bác nhé!"
-        )
+        return f"📅 <b>ĐƠN HÀNG NGÀY {date_str}</b>\n\nNgày này chưa có đơn hàng nào bác nhé!"
 
     # Convert YYYY-MM-DD to DD/MM/YYYY for friendly Vietnamese display
     try:
@@ -579,27 +642,21 @@ def build_status_order_list_keyboard(
         nav_row: list[InlineKeyboardButton] = []
         if page > 1:
             nav_row.append(
-                InlineKeyboardButton(
-                    "⬅️ Trước", callback_data=f"ord_ls:{status.value}:{page - 1}"
-                )
+                InlineKeyboardButton("⬅️ Trước", callback_data=f"ord_ls:{status.value}:{page - 1}")
             )
         nav_row.append(
             InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop")
         )
         if page < total_pages:
             nav_row.append(
-                InlineKeyboardButton(
-                    "Sau ➡️", callback_data=f"ord_ls:{status.value}:{page + 1}"
-                )
+                InlineKeyboardButton("Sau ➡️", callback_data=f"ord_ls:{status.value}:{page + 1}")
             )
         buttons.append(nav_row)
 
     buttons.append(_build_status_filter_row(status, page))
 
     if not orders:
-        buttons.append(
-            [InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new")]
-        )
+        buttons.append([InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new")])
 
     return InlineKeyboardMarkup(buttons)
 
@@ -645,24 +702,16 @@ def build_order_list_keyboard(
         nav_row.append(
             InlineKeyboardButton("⬅️ Trước", callback_data=f"ord_pg:{date_str}:{page - 1}")
         )
-    nav_row.append(
-        InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop")
-    )
+    nav_row.append(InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop"))
     if page < total_pages:
-        nav_row.append(
-            InlineKeyboardButton("Sau ➡️", callback_data=f"ord_pg:{date_str}:{page + 1}")
-        )
+        nav_row.append(InlineKeyboardButton("Sau ➡️", callback_data=f"ord_pg:{date_str}:{page + 1}"))
     buttons.append(nav_row)
 
     # Status filter chips above the date picker bottom button (D-3)
     buttons.append(_build_status_filter_row())
 
     # Pick another date bottom button per D-03
-    buttons.append(
-        [
-            InlineKeyboardButton("📋 Chọn ngày khác", callback_data="ord_act:pick_date")
-        ]
-    )
+    buttons.append([InlineKeyboardButton("📋 Chọn ngày khác", callback_data="ord_act:pick_date")])
 
     return InlineKeyboardMarkup(buttons)
 
@@ -702,9 +751,7 @@ def build_status_selection_keyboard(
     return InlineKeyboardMarkup(buttons)
 
 
-def render_search_single_order_card(
-    order: Order, query: str, purpose: str | None = None
-) -> str:
+def render_search_single_order_card(order: Order, query: str, purpose: str | None = None) -> str:
     """Format single order confirmation preview card per D-08."""
     status_label = STATUS_NAMES.get(
         order.status,
@@ -725,14 +772,11 @@ def render_search_single_order_card(
         heading = f"🔍 <b>{html.escape(purpose)}</b>\n{DIVIDER}\n"
     else:
         heading = (
-            f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n"
-            f"<i>(Tìm theo: '{esc_query}')</i>\n"
-            f"{DIVIDER}\n"
+            f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n<i>(Tìm theo: '{esc_query}')</i>\n{DIVIDER}\n"
         )
 
     return (
-        heading
-        + f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        heading + f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
         f"📞 <b>SĐT:</b> {phone_display}\n"
         f"📍 <b>ĐỊA CHỈ:</b> {addr}\n"
         f"📼 <b>BĂNG CASSETTE:</b> {items}\n"
@@ -742,9 +786,7 @@ def render_search_single_order_card(
     )
 
 
-def build_search_single_order_keyboard(
-    order_id: int, search_id: str
-) -> InlineKeyboardMarkup:
+def build_search_single_order_keyboard(order_id: int, search_id: str) -> InlineKeyboardMarkup:
     """Build inline keyboard for single order confirmation per D-08, D-14."""
     return InlineKeyboardMarkup(
         [
@@ -928,7 +970,9 @@ def build_admin_main_keyboard(
     ]
 
     if user_role == UserRole.SUPER_ADMIN:
-        maint_label = "🚧 Tắt bảo trì (Đang dừng)" if maintenance_mode else "🟢 Bật bảo trì (Tạm dừng chat)"
+        maint_label = (
+            "🚧 Tắt bảo trì (Đang dừng)" if maintenance_mode else "🟢 Bật bảo trì (Tạm dừng chat)"
+        )
         rows.append(
             [
                 InlineKeyboardButton(maint_label, callback_data="adm:maint:toggle"),
@@ -958,9 +1002,7 @@ def build_whitelist_keyboard(
         label = f"{icon} {name}"
         if len(label) > 20:
             label = label[:17] + "..."
-        user_buttons.append(
-            InlineKeyboardButton(label, callback_data=f"adm:wl:view:{uid}")
-        )
+        user_buttons.append(InlineKeyboardButton(label, callback_data=f"adm:wl:view:{uid}"))
 
     # 2 buttons per row
     for i in range(0, len(user_buttons), 2):
@@ -971,20 +1013,14 @@ def build_whitelist_keyboard(
         nav_row: list[InlineKeyboardButton] = []
         if current_page > 1:
             nav_row.append(
-                InlineKeyboardButton(
-                    "⬅️ Trước", callback_data=f"adm:wl:list:{current_page - 1}"
-                )
+                InlineKeyboardButton("⬅️ Trước", callback_data=f"adm:wl:list:{current_page - 1}")
             )
         nav_row.append(
-            InlineKeyboardButton(
-                f"Trang {current_page}/{total_pages}", callback_data="adm:noop"
-            )
+            InlineKeyboardButton(f"Trang {current_page}/{total_pages}", callback_data="adm:noop")
         )
         if current_page < total_pages:
             nav_row.append(
-                InlineKeyboardButton(
-                    "Sau ➡️", callback_data=f"adm:wl:list:{current_page + 1}"
-                )
+                InlineKeyboardButton("Sau ➡️", callback_data=f"adm:wl:list:{current_page + 1}")
             )
         buttons.append(nav_row)
 
@@ -1016,21 +1052,13 @@ def build_whitelist_user_detail_keyboard(
     if is_root:
         return InlineKeyboardMarkup(
             [
-                [
-                    InlineKeyboardButton(
-                        "🛡️ Root Super Admin (Bảo vệ)", callback_data="adm:noop"
-                    )
-                ],
+                [InlineKeyboardButton("🛡️ Root Super Admin (Bảo vệ)", callback_data="adm:noop")],
                 [
                     InlineKeyboardButton(
                         "✏️ Đổi tên", callback_data=f"adm:wl:rename_prompt:{target_id}"
                     )
                 ],
-                [
-                    InlineKeyboardButton(
-                        "⬅️ Quay lại danh sách", callback_data="adm:wl:list:1"
-                    )
-                ],
+                [InlineKeyboardButton("⬅️ Quay lại danh sách", callback_data="adm:wl:list:1")],
             ]
         )
 
@@ -1085,14 +1113,10 @@ def build_whitelist_confirm_delete_keyboard(target_id: int) -> InlineKeyboardMar
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton(
-                    "⚠️ Xác nhận xoá", callback_data=f"adm:wl:rm_cf:{target_id}"
-                ),
+                InlineKeyboardButton("⚠️ Xác nhận xoá", callback_data=f"adm:wl:rm_cf:{target_id}"),
             ],
             [
-                InlineKeyboardButton(
-                    "Quay lại", callback_data=f"adm:wl:view:{target_id}"
-                ),
+                InlineKeyboardButton("Quay lại", callback_data=f"adm:wl:view:{target_id}"),
             ],
         ]
     )
@@ -1107,9 +1131,7 @@ def build_model_switcher_keyboard(
 
     for m in available_models:
         label = f"[✓] {m}" if m == active_model else m
-        model_buttons.append(
-            InlineKeyboardButton(label, callback_data=f"adm:mdl:sel:{m}")
-        )
+        model_buttons.append(InlineKeyboardButton(label, callback_data=f"adm:mdl:sel:{m}"))
 
     # 2 buttons per row
     for i in range(0, len(model_buttons), 2):
@@ -1121,9 +1143,7 @@ def build_model_switcher_keyboard(
     # Show delete button if there are models other than the active model
     other_models = [m for m in available_models if m != active_model]
     if other_models:
-        action_row.append(
-            InlineKeyboardButton("🗑️ Xoá model", callback_data="adm:mdl:del_menu")
-        )
+        action_row.append(InlineKeyboardButton("🗑️ Xoá model", callback_data="adm:mdl:del_menu"))
     buttons.append(action_row)
 
     buttons.append(
@@ -1136,27 +1156,19 @@ def build_model_switcher_keyboard(
     return InlineKeyboardMarkup(buttons)
 
 
-def build_model_delete_keyboard(
-    models: list[str], active_model: str
-) -> InlineKeyboardMarkup:
+def build_model_delete_keyboard(models: list[str], active_model: str) -> InlineKeyboardMarkup:
     """Build keyboard to delete non-active models per D-17."""
     deletable = [m for m in models if m != active_model]
     buttons: list[list[InlineKeyboardButton]] = []
 
     for m in deletable:
-        buttons.append(
-            [InlineKeyboardButton(f"🗑️ {m}", callback_data=f"adm:mdl:del:{m}")]
-        )
+        buttons.append([InlineKeyboardButton(f"🗑️ {m}", callback_data=f"adm:mdl:del:{m}")])
 
-    buttons.append(
-        [InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:mdl:menu")]
-    )
+    buttons.append([InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:mdl:menu")])
     return InlineKeyboardMarkup(buttons)
 
 
-def build_logs_keyboard(
-    current_limit: int = 25, errors_only: bool = False
-) -> InlineKeyboardMarkup:
+def build_logs_keyboard(current_limit: int = 25, errors_only: bool = False) -> InlineKeyboardMarkup:
     """Build logs viewer keyboard with limit, error filter, and refresh actions."""
     filter_val = "errors" if errors_only else "all"
     toggle_filter = "all" if errors_only else "errors"
@@ -1269,8 +1281,13 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
                 new_status = OrderStatus(new_status)
             except ValueError:
                 pass
-        old_lbl = STATUS_NAMES.get(order.status, str(order.status.value if hasattr(order.status, "value") else order.status))
-        new_lbl = STATUS_NAMES.get(new_status, str(new_status.value if hasattr(new_status, "value") else new_status))
+        old_lbl = STATUS_NAMES.get(
+            order.status,
+            str(order.status.value if hasattr(order.status, "value") else order.status),
+        )
+        new_lbl = STATUS_NAMES.get(
+            new_status, str(new_status.value if hasattr(new_status, "value") else new_status)
+        )
         diff_lines.append(f"🔄 <b>TRẠNG THÁI:</b> {old_lbl} ➡️ <b>{new_lbl}</b>")
 
     # 2. Phone
@@ -1364,9 +1381,7 @@ def build_mutation_confirm_keyboard(draft_id: str) -> InlineKeyboardMarkup:
     )
 
 
-def render_mutation_disambiguation_card(
-    orders: Sequence[Order], keyword: str | None
-) -> str:
+def render_mutation_disambiguation_card(orders: Sequence[Order], keyword: str | None) -> str:
     """Render disambiguation list card for multiple matched orders in mutation."""
     kw_display = html.escape(keyword or "khách")
     lines = [
@@ -1389,7 +1404,9 @@ def build_mutation_disambiguation_keyboard(
     """Build 1-button-per-row disambiguation keyboard for 2-5 matching orders per D-08."""
     buttons: list[list[InlineKeyboardButton]] = []
     for o in orders[:5]:
-        status_label = STATUS_NAMES.get(o.status, str(o.status.value if hasattr(o.status, "value") else o.status))
+        status_label = STATUS_NAMES.get(
+            o.status, str(o.status.value if hasattr(o.status, "value") else o.status)
+        )
         total_str = f"{o.total_amount:,} đ".replace(",", ".")
         cust_name = o.customer_name[:12] if len(o.customer_name) > 12 else o.customer_name
         label = f"📦 Đơn #{o.id} - {cust_name} - {total_str} - {status_label}"
@@ -1399,9 +1416,7 @@ def build_mutation_disambiguation_keyboard(
             [InlineKeyboardButton(label, callback_data=f"ord_mut_sel:{draft_id}:{o.id}")]
         )
 
-    buttons.append(
-        [InlineKeyboardButton("❌ Huỷ", callback_data=f"ord_mut_ca:{draft_id}")]
-    )
+    buttons.append([InlineKeyboardButton("❌ Huỷ", callback_data=f"ord_mut_ca:{draft_id}")])
     return InlineKeyboardMarkup(buttons)
 
 
@@ -1468,16 +1483,10 @@ def render_customer_detail_card(
     spent_str = f"{stats.get('total_spent', 0):,} đ".replace(",", ".")
     bom_count = stats.get("bom_count", 0)
     warning_line = (
-        f"\n⚠️ <b>CẢNH BÁO: Khách từng có {bom_count} đơn BOM HÀNG!</b>"
-        if bom_count > 0
-        else ""
+        f"\n⚠️ <b>CẢNH BÁO: Khách từng có {bom_count} đơn BOM HÀNG!</b>" if bom_count > 0 else ""
     )
 
-    notes_line = (
-        f"\n📝 <b>Ghi chú:</b> {html.escape(customer.notes)}"
-        if customer.notes
-        else ""
-    )
+    notes_line = f"\n📝 <b>Ghi chú:</b> {html.escape(customer.notes)}" if customer.notes else ""
 
     order_blocks: list[str] = []
     for o in orders:
@@ -1494,9 +1503,7 @@ def render_customer_detail_card(
             created_str = f" ({vn_dt.strftime('%d/%m/%Y')})" if vn_dt else ""
 
         order_blocks.append(
-            f"• <b>#DH{o.id}</b>{created_str} - {st_name}\n"
-            f"  📼 {items}\n"
-            f"  💰 {tot} (COD: {cod})"
+            f"• <b>#DH{o.id}</b>{created_str} - {st_name}\n  📼 {items}\n  💰 {tot} (COD: {cod})"
         )
 
     if order_blocks:
@@ -1522,15 +1529,15 @@ def render_customer_detail_card(
     safe_draft_id = draft_id or "00000000"
 
     def _page_cb(target_page: int) -> str:
-        return nav_callback(target_page) if nav_callback else f"ord:cs:{safe_draft_id}:{target_page}"
+        return (
+            nav_callback(target_page) if nav_callback else f"ord:cs:{safe_draft_id}:{target_page}"
+        )
 
     # Pagination row
     if total_pages > 1:
         nav_row: list[InlineKeyboardButton] = []
         if page > 1:
-            nav_row.append(
-                InlineKeyboardButton("⬅️ Trước", callback_data=_page_cb(page - 1))
-            )
+            nav_row.append(InlineKeyboardButton("⬅️ Trước", callback_data=_page_cb(page - 1)))
         nav_row.append(
             InlineKeyboardButton(
                 f"Trang {page}/{total_pages}",
@@ -1538,29 +1545,15 @@ def render_customer_detail_card(
             )
         )
         if page < total_pages:
-            nav_row.append(
-                InlineKeyboardButton("Sau ➡️", callback_data=_page_cb(page + 1))
-            )
+            nav_row.append(InlineKeyboardButton("Sau ➡️", callback_data=_page_cb(page + 1)))
         keyboard.append(nav_row)
 
     # Back button: custom target for customer search, or the draft preview as before.
     if back_callback:
-        keyboard.append(
-            [InlineKeyboardButton("🔙 Quay lại kết quả", callback_data=back_callback)]
-        )
+        keyboard.append([InlineKeyboardButton("🔙 Quay lại kết quả", callback_data=back_callback)])
     elif draft_id:
         keyboard.append(
-            [
-                InlineKeyboardButton(
-                    "◀️ Quay lại đơn đang tạo", callback_data=f"ord:bk:{draft_id}"
-                )
-            ]
+            [InlineKeyboardButton("◀️ Quay lại đơn đang tạo", callback_data=f"ord:bk:{draft_id}")]
         )
 
     return text, InlineKeyboardMarkup(keyboard)
-
-
-
-
-
-

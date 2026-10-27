@@ -95,6 +95,8 @@ async def post_shutdown_cleanup(app: Application) -> None:
         logger.error("Error during WAL checkpoint in post_shutdown: %s", e)
     finally:
         logger.info("Graceful shutdown finished cleanly.")
+
+
 HEARTBEAT_PATH = "/tmp/bot_heartbeat"
 JOB_HEARTBEAT_NAME = "bot_liveness_heartbeat"
 
@@ -122,7 +124,7 @@ async def daily_backup_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
                 chat_id=super_admin_id,
                 text=(
                     f"⚠️ <b>[Sao lưu tự động] File nén >= 48MB</b>\n"
-                    f"Dung lượng: <code>{stats['gz_size'] / (1024*1024):.2f} MB</code> (Giới hạn Telegram: 50MB)\n"
+                    f"Dung lượng: <code>{stats['gz_size'] / (1024 * 1024):.2f} MB</code> (Giới hạn Telegram: 50MB)\n"
                     f"Đường dẫn server: <code>{stats['gz_path']}</code>"
                 ),
                 parse_mode="HTML",
@@ -134,7 +136,7 @@ async def daily_backup_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
             f"💾 <b>BẢN SAO LƯU ĐỊNH KỲ TỰ ĐỘNG</b>\n"
             f"────────────────────\n"
             f"⏱️ <b>Thời gian:</b> {stats['timestamp_str']} (UTC+7)\n"
-            f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024*1024):.2f} MB ➔ {stats['gz_size'] / (1024*1024):.2f} MB (Giảm {reduction:.1f}%)\n"
+            f"📦 <b>Dung lượng:</b> {stats['raw_size'] / (1024 * 1024):.2f} MB ➔ {stats['gz_size'] / (1024 * 1024):.2f} MB (Giảm {reduction:.1f}%)\n"
             f"📊 <b>Dữ liệu:</b> {stats['order_count']} đơn hàng | {stats['customer_count']} khách hàng\n"
             f"────────────────────"
         )
@@ -205,9 +207,7 @@ async def reminder_checker_job_callback(context: ContextTypes.DEFAULT_TYPE) -> N
             oid = r.get("order_id")
             msg = format_reminder_broadcast(r)
             view_btn = build_order_view_button(oid) if oid else None
-            await broadcast_to_whitelist(
-                context.bot, whitelist_ids, msg, reply_markup=view_btn
-            )
+            await broadcast_to_whitelist(context.bot, whitelist_ids, msg, reply_markup=view_btn)
             await mark_reminder_sent(conn, rid)
 
     if db is not None:
@@ -238,8 +238,6 @@ def schedule_reminder_checker(app: Application) -> None:
         first=5,
         name=JOB_REMINDER_NAME,
     )
-
-
 
 
 @dataclass
@@ -363,7 +361,9 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     # Register main menu Reply Keyboard handler (MUST be registered before LLM text ingestion)
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|📝 Nhập đơn mới|🔍 Tra cứu đơn|❓ Trợ giúp)$"),
+            filters.Regex(
+                r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|📝 Nhập đơn mới|🔍 Tra cứu đơn|❓ Trợ giúp)$"
+            ),
             handle_menu_reply,
         ),
         group=0,
@@ -418,7 +418,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         CallbackQueryHandler(
             handle_order_action_callback,
-            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm)(:\d+)?$",
+            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm|edit_menu|edit_fld)(:\d+)?(:[a-z_]+)?$",
         ),
         group=0,
     )

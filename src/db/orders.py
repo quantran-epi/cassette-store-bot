@@ -51,14 +51,18 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
     if "tape_genre_json" in keys and row["tape_genre_json"]:
         try:
             parsed = json.loads(row["tape_genre_json"])
-            tape_genres = [g for g in parsed if isinstance(g, str)] if isinstance(parsed, list) else []
+            tape_genres = (
+                [g for g in parsed if isinstance(g, str)] if isinstance(parsed, list) else []
+            )
         except json.JSONDecodeError:
             tape_genres = []
     tape_artists: list[str] = []
     if "tape_artist_json" in keys and row["tape_artist_json"]:
         try:
             parsed = json.loads(row["tape_artist_json"])
-            tape_artists = [a for a in parsed if isinstance(a, str)] if isinstance(parsed, list) else []
+            tape_artists = (
+                [a for a in parsed if isinstance(a, str)] if isinstance(parsed, list) else []
+            )
         except json.JSONDecodeError:
             tape_artists = []
 
@@ -90,9 +94,7 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
 
 async def create_order(db: aiosqlite.Connection, order: Order) -> int:
     """Insert order record storing snapshot and return generated ID."""
-    cols = build_tape_columns(
-        order.items_text, order.tapes, order.tape_genres, order.tape_artists
-    )
+    cols = build_tape_columns(order.items_text, order.tapes, order.tape_genres, order.tape_artists)
     cursor = await db.execute(
         """
         INSERT INTO orders (
@@ -136,7 +138,10 @@ async def create_order(db: aiosqlite.Connection, order: Order) -> int:
             order_id,
             order.created_by_user_id,
             order.created_by_name,
-            json.dumps({"status": order.status.value, "total_amount": order.total_amount}, ensure_ascii=False),
+            json.dumps(
+                {"status": order.status.value, "total_amount": order.total_amount},
+                ensure_ascii=False,
+            ),
         ),
     )
     await db.commit()
@@ -319,9 +324,7 @@ async def count_orders_by_status(db: aiosqlite.Connection, status: OrderStatus) 
         return int(row[0]) if row else 0
 
 
-async def get_customer_order_stats(
-    db: aiosqlite.Connection, customer_id: int
-) -> dict[str, int]:
+async def get_customer_order_stats(db: aiosqlite.Connection, customer_id: int) -> dict[str, int]:
     """Retrieve customer lifetime order count, total spend, and BOM_HANG count."""
     query = """
         SELECT
@@ -436,9 +439,7 @@ async def find_orders_by_multi_token(
     )
 
     for tok in tokens:
-        conds.append(
-            f"(word_match({searchable_expr}, ?) = 1 OR customer_phone LIKE ?)"
-        )
+        conds.append(f"(word_match({searchable_expr}, ?) = 1 OR customer_phone LIKE ?)")
         params.extend([tok, f"%{tok}%"])
 
     where_filter = f"AND ({' AND '.join(conds)})"
@@ -516,6 +517,7 @@ async def find_orders_for_mutation(
 
     if keyword:
         from src.db.connection import remove_accents
+
         kw_clean = remove_accents(keyword.strip().lower())
         tokens = [t for t in re.split(r"\s+", kw_clean) if t]
 
@@ -530,8 +532,39 @@ async def find_orders_for_mutation(
         HONORIFIC_FILLERS = {"anh", "chi", "bac", "ong", "ba", "chu", "co", "em"}
         substantive_tokens = [t for t in tokens if t not in HONORIFIC_FILLERS]
 
-        # If tokens had honorifics and substantive tokens remain distinct (e.g. ['anh', 'ha']):
-        # If substantive tokens alone match, check if full phrase matches more specifically
+        # Priority 1: Match strictly on customer_name first (prevents matching address e.g. "Hà Nội" when keyword is "Hà")
+        name_tokens = substantive_tokens if substantive_tokens else tokens
+        if name_tokens:
+            name_conds = ["word_match(customer_name, ?) = 1" for _ in name_tokens]
+            where_name = f"AND ({' AND '.join(name_conds)})"
+            placeholders_active = ",".join(f"'{s}'" for s in ACTIVE_MUTATION_STATUSES)
+            name_query = f"""
+                SELECT * FROM orders
+                WHERE status IN ({placeholders_active}) {where_name}
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+            """
+            async with db.execute(name_query, (*name_tokens, limit)) as cursor:
+                name_rows = await cursor.fetchall()
+                results = [_row_to_order(r) for r in name_rows]
+
+            remaining = limit - len(results)
+            if remaining > 0:
+                placeholders_term = ",".join(f"'{s}'" for s in TERMINAL_MUTATION_STATUSES)
+                term_query = f"""
+                    SELECT * FROM orders
+                    WHERE status IN ({placeholders_term}) {where_name}
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                """
+                async with db.execute(term_query, (*name_tokens, remaining)) as cursor:
+                    term_rows = await cursor.fetchall()
+                    results.extend([_row_to_order(r) for r in term_rows])
+
+            if results:
+                return results
+
+        # Priority 2: Full stripped tokens (preserves honorifics like 'bac ba', 'anh ha')
         if tokens:
             matches = await find_orders_by_multi_token(db, tokens, limit=limit)
             if matches:
@@ -677,5 +710,3 @@ __all__ = [
     "ACTIVE_MUTATION_STATUSES",
     "TERMINAL_MUTATION_STATUSES",
 ]
-
-

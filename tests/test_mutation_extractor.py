@@ -164,7 +164,6 @@ def test_clean_json_markdown_without_fences_with_surrounding_text():
     assert delta.new_notes == "Gọi trước khi giao"
 
 
-
 @pytest.mark.asyncio
 async def test_extract_mutation_delta_includes_current_order_context():
     """current_order is rendered as a <current_order> block before <message>."""
@@ -215,3 +214,58 @@ async def test_extract_mutation_delta_omits_current_order_by_default():
     assert len(sent_messages) == 2
     assert sent_messages[0]["role"] == "system"
     assert sent_messages[1]["content"] == "<message>ghi chú giao sau 18h</message>"
+
+
+@pytest.mark.asyncio
+async def test_search_target_orders_for_mutation():
+    """search_target_orders_for_mutation executes generated SELECT and maps to Order models."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order
+    from src.db.schema import init_db
+    from src.models.order import Order
+    from src.services.mutation_extractor import search_target_orders_for_mutation
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+        oid1 = await create_order(
+            db,
+            Order(
+                customer_name="Chị Hà",
+                customer_phone="0911000111",
+                shipping_address="12 Quang Trung, P.10, Gò Vấp",
+                items_text="1 cuốn",
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+        # Another order whose shipping address happens to have "Hà Nội"
+        await create_order(
+            db,
+            Order(
+                customer_name="Anh Tuấn",
+                customer_phone="0988000222",
+                shipping_address="Số 5 Bà Triệu, Hoàn Kiếm, Hà Nội",
+                items_text="1 cuốn",
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+
+        mock_client = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = (
+            "SELECT * FROM orders WHERE unaccent(customer_name) LIKE '%ha%' "
+            "ORDER BY created_at DESC LIMIT 5"
+        )
+        mock_response = MagicMock(choices=[mock_choice])
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        results = await search_target_orders_for_mutation(
+            mock_client,
+            "test-model",
+            db,
+            "sửa đơn chị hà, địa chỉ không phải quang trung mà là điện biên",
+        )
+
+        assert len(results) == 1
+        assert results[0].id == oid1
+        assert results[0].customer_name == "Chị Hà"
+        assert results[0].customer_phone == "0911000111"

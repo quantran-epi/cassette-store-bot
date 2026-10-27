@@ -779,6 +779,135 @@ async def test_order_status_sensitive_requires_confirmation(test_db):
 
 
 @pytest.mark.asyncio
+async def test_static_edit_menu_and_flow(test_db):
+    """Test static order edit menu and field update flow (Task 1)."""
+    from src.bot.handlers.order_actions import (
+        handle_action_state_text,
+        handle_order_action_callback,
+    )
+    from src.bot.keyboards import build_order_detail_keyboard, build_order_edit_menu_keyboard
+    from src.db.orders import create_order, get_order_by_id
+
+    order = Order(
+        customer_name="Chị Hà",
+        customer_phone="0912345678",
+        shipping_address="12 Quang Trung, P.10, Gò Vấp",
+        items_text="2 cuốn Tuấn Vũ",
+        total_amount=300000,
+        cod_amount=300000,
+        status=OrderStatus.CHO_LAM,
+    )
+    oid = await create_order(test_db, order)
+    saved_order = await get_order_by_id(test_db, oid)
+
+    # 1. Check edit button exists on detail keyboard
+    detail_kb = build_order_detail_keyboard(saved_order, "2026-10-27", 1)
+    flat_detail = [btn.callback_data for row in detail_kb.inline_keyboard for btn in row]
+    assert f"ord_act:edit_menu:{oid}" in flat_detail
+
+    # 2. Check edit menu keyboard has all required fields
+    menu_kb = build_order_edit_menu_keyboard(oid)
+    flat_menu = [btn.callback_data for row in menu_kb.inline_keyboard for btn in row]
+    assert f"ord_act:edit_fld:{oid}:customer_name" in flat_menu
+    assert f"ord_act:edit_fld:{oid}:customer_phone" in flat_menu
+    assert f"ord_act:edit_fld:{oid}:shipping_address" in flat_menu
+    assert f"ord_act:edit_fld:{oid}:total_amount" in flat_menu
+    assert f"ord_act:edit_fld:{oid}:cod_amount" in flat_menu
+    assert f"ord_act:edit_fld:{oid}:items_text" in flat_menu
+    assert f"ord_act:edit_fld:{oid}:notes" in flat_menu
+    assert f"ord_v_cur:{oid}" in flat_menu
+
+    # 3. Simulate clicking edit_menu
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = f"ord_act:edit_menu:{oid}"
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {}
+    context.application.bot_data = {"db": test_db}
+
+    await handle_order_action_callback(update, context)
+    query.edit_message_text.assert_awaited_once()
+    assert "SỬA THÔNG TIN ĐƠN HÀNG" in query.edit_message_text.call_args[1]["text"]
+
+    # 4. Simulate clicking edit_fld for shipping_address
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_act:edit_fld:{oid}:shipping_address"
+    await handle_order_action_callback(update, context)
+    query.edit_message_text.assert_awaited_once()
+    assert "SỬA ĐỊA CHỈ NHẬN HÀNG" in query.edit_message_text.call_args[1]["text"]
+    assert context.user_data.get("action_state", {}).get("action") == "await_edit_field"
+    assert context.user_data.get("action_state", {}).get("field") == "shipping_address"
+
+    # 5. Simulate user typing new shipping address
+    msg_update = MagicMock(spec=Update)
+    msg_update.message = MagicMock(spec=Message)
+    msg_update.message.text = "12 Điện Biên, P.10, Gò Vấp"
+    msg_update.message.reply_text = AsyncMock()
+    msg_update.effective_user = MagicMock(id=999, full_name="Admin")
+
+    handled = await handle_action_state_text(msg_update, context, context.user_data["action_state"])
+    assert handled is True
+    assert "action_state" not in context.user_data
+    msg_update.message.reply_text.assert_awaited_once()
+    reply_text = msg_update.message.reply_text.call_args[0][0]
+    assert "ĐÃ CẬP NHẬT THÀNH CÔNG" in reply_text
+    assert "12 Điện Biên, P.10, Gò Vấp" in reply_text
+
+    # Verify DB order actually updated
+    fresh = await get_order_by_id(test_db, oid)
+    assert fresh.shipping_address == "12 Điện Biên, P.10, Gò Vấp"
+
+
+@pytest.mark.asyncio
+async def test_static_edit_validation_errors(test_db):
+    """Test validation prevents bad input on static field editing."""
+    import time
+
+    from src.bot.handlers.order_actions import handle_action_state_text
+    from src.db.orders import create_order, get_order_by_id
+
+    order = Order(
+        customer_name="Test Val",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="1 cuốn",
+        total_amount=100000,
+    )
+    oid = await create_order(test_db, order)
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {
+        "action_state": {
+            "action": "await_edit_field",
+            "order_id": oid,
+            "field": "total_amount",
+            "expires_at": time.time() + 180,
+        }
+    }
+    context.application.bot_data = {"db": test_db}
+
+    # Invalid amount input
+    msg_update = MagicMock(spec=Update)
+    msg_update.message = MagicMock(spec=Message)
+    msg_update.message.text = "không phải tiền"
+    msg_update.message.reply_text = AsyncMock()
+
+    handled = await handle_action_state_text(msg_update, context, context.user_data["action_state"])
+    assert handled is True
+    # action_state remains so user can retry
+    assert "action_state" in context.user_data
+    err_reply = msg_update.message.reply_text.call_args[0][0]
+    assert "Số tiền không hợp lệ" in err_reply
+
+    # DB not changed
+    fresh = await get_order_by_id(test_db, oid)
+    assert fresh.total_amount == 100000
+
+
+@pytest.mark.asyncio
 async def test_order_status_bad_request_ignored(test_db):
     """BadRequest with 'Message is not modified' is caught safely without raising."""
     from telegram.error import BadRequest
@@ -798,7 +927,11 @@ async def test_order_status_bad_request_ignored(test_db):
 
     query = MagicMock()
     query.answer = AsyncMock()
-    query.edit_message_text = AsyncMock(side_effect=BadRequest("Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"))
+    query.edit_message_text = AsyncMock(
+        side_effect=BadRequest(
+            "Message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"
+        )
+    )
     query.data = f"ord_st:{oid}:DANG_LAM"
 
     update = MagicMock(spec=Update)
@@ -1044,11 +1177,6 @@ async def test_handle_action_state_photo_appends_photos(test_db):
     assert db_order.photo_file_ids == ["photo_old", "high_res_id"]
     message.reply_text.assert_awaited_once()
     assert "ĐÃ THÊM ẢNH THÀNH CÔNG" in message.reply_text.call_args[1]["text"]
-
-
-
-
-
 
 
 def test_render_order_detail_card_shows_tape_breakdown():

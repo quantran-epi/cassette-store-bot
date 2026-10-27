@@ -99,7 +99,10 @@ async def test_mutation_flow_reply_order_context(mock_context):
             new_shipping_address="123 Lê Duẩn, Hà Nội",
         )
 
-        with patch("src.bot.handlers.mutation.extract_mutation_delta", new=AsyncMock(return_value=fake_delta)):
+        with patch(
+            "src.bot.handlers.mutation.extract_mutation_delta",
+            new=AsyncMock(return_value=fake_delta),
+        ):
             await handle_mutation_flow(update, mock_context, "đổi địa chỉ sang 123 Lê Duẩn, Hà Nội")
 
         assert update.message.reply_text.called
@@ -147,7 +150,10 @@ async def test_mutation_flow_disambiguation_multi_orders(mock_context):
             new_notes="Giao buổi sáng",
         )
 
-        with patch("src.bot.handlers.mutation.extract_mutation_delta", new=AsyncMock(return_value=fake_delta)):
+        with patch(
+            "src.bot.handlers.mutation.extract_mutation_delta",
+            new=AsyncMock(return_value=fake_delta),
+        ):
             await handle_mutation_flow(update, mock_context, "sửa đơn của anh A")
 
         assert update.message.reply_text.called
@@ -177,7 +183,10 @@ async def test_mutation_flow_empty_guidance(mock_context):
             new_notes="test",
         )
 
-        with patch("src.bot.handlers.mutation.extract_mutation_delta", new=AsyncMock(return_value=fake_delta)):
+        with patch(
+            "src.bot.handlers.mutation.extract_mutation_delta",
+            new=AsyncMock(return_value=fake_delta),
+        ):
             await handle_mutation_flow(update, mock_context, "sửa đơn khách Hoàng Không Có")
 
         assert update.message.reply_text.called
@@ -345,10 +354,110 @@ async def test_mutation_flow_finds_order_when_updating_phone(mock_context):
             target_customer_keyword="Nam",
             new_customer_phone="0988776655",
         )
-        with patch("src.bot.handlers.mutation.extract_mutation_delta", new=AsyncMock(return_value=delta)):
+        with patch(
+            "src.bot.handlers.mutation.extract_mutation_delta", new=AsyncMock(return_value=delta)
+        ):
             await handle_mutation_flow(update, mock_context, "đổi sđt anh Nam thành 0988776655")
 
         assert update.message.reply_text.called
         card_text = update.message.reply_text.call_args[0][0]
         assert f"SỬA ĐƠN HÀNG #{oid}" in card_text
 
+
+@pytest.mark.asyncio
+async def test_find_orders_for_mutation_avoids_ha_noi_false_match(mock_context):
+    """find_orders_for_mutation strictly prioritizes customer_name so 'chị Hà' never matches 'Hà Nội' address."""
+    from src.db.orders import find_orders_for_mutation
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+        oid_ha = await create_order(
+            db,
+            Order(
+                customer_name="Chị Hà",
+                customer_phone="0911000111",
+                shipping_address="12 Quang Trung, P.10, Gò Vấp",
+                items_text="2 cuốn",
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+        await create_order(
+            db,
+            Order(
+                customer_name="Anh Minh",
+                customer_phone="0988000222",
+                shipping_address="10 Hoàn Kiếm, Hà Nội",
+                items_text="2 cuốn",
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+
+        matches = await find_orders_for_mutation(db, keyword="chị hà", limit=5)
+        assert len(matches) == 1
+        assert matches[0].id == oid_ha
+        assert matches[0].customer_name == "Chị Hà"
+
+
+@pytest.mark.asyncio
+async def test_mutation_selection_extracts_delta_with_selected_order_context(mock_context):
+    """When picking an order from disambiguation, delta is extracted using the selected order's context."""
+    from src.bot.handlers.mutation import handle_mutation_selection
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+        order1 = await create_order(
+            db,
+            Order(
+                customer_name="Chị Hà",
+                customer_phone="0911000111",
+                shipping_address="12 Quang Trung, P.10, Gò Vấp, TP.HCM",
+                items_text="2 cuốn",
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+        mock_context.application.bot_data["db"] = db
+
+        draft_id = "draft_dis"
+        orig_text = "sửa đơn chị hà, địa chỉ không phải là đường quang trung mà là đường điện biên, các thông tin địa chỉ còn lại giữ nguyên"
+        mock_context.user_data["pending_mutations"] = {
+            draft_id: {
+                "draft_id": draft_id,
+                "original_text": orig_text,
+                "matched_order_ids": [order1],
+                "expires_at": time.time() + 180,
+            }
+        }
+
+        update = MagicMock(spec=Update)
+        update.callback_query = MagicMock(spec=CallbackQuery)
+        update.callback_query.answer = AsyncMock()
+        update.callback_query.edit_message_text = AsyncMock()
+
+        merged_delta = OrderMutationDelta(
+            new_shipping_address="12 Điện Biên, P.10, Gò Vấp, TP.HCM",
+        )
+
+        with patch(
+            "src.bot.handlers.mutation.extract_mutation_delta",
+            new=AsyncMock(return_value=merged_delta),
+        ) as mock_ext:
+            await handle_mutation_selection(update, mock_context, draft_id, order1)
+
+            # Verify extract_mutation_delta received order1's context
+            assert mock_ext.called
+            call_kwargs = mock_ext.call_args.kwargs
+            current_order_passed = call_kwargs.get("current_order")
+            assert current_order_passed is not None
+            assert (
+                current_order_passed["shipping_address"] == "12 Quang Trung, P.10, Gò Vấp, TP.HCM"
+            )
+
+        # Verify visual diff card rendered with merged address
+        assert update.callback_query.edit_message_text.called
+        card_text = update.callback_query.edit_message_text.call_args[0][0]
+        assert "12 Quang Trung, P.10, Gò Vấp, TP.HCM" in card_text
+        assert "12 Điện Biên, P.10, Gò Vấp, TP.HCM" in card_text
+        # Verify draft updated
+        draft = mock_context.user_data["pending_mutations"][draft_id]
+        assert draft["order_id"] == order1
+        assert draft["delta"]["new_shipping_address"] == "12 Điện Biên, P.10, Gò Vấp, TP.HCM"
