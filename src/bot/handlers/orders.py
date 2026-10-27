@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
+from src.bot.handlers.base import send_tutorial
 from src.bot.keyboards import (
     TZ_VN,
     build_date_picker_keyboard,
@@ -104,15 +105,7 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     if text == "❓ Trợ giúp":
-        await update.message.reply_text(
-            "❓ <b>HƯỚNG DẪN SỬ DỤNG BOT</b>\n\n"
-            "• <b>📦 Đơn hôm nay:</b> Xem nhanh danh sách các đơn hàng phát sinh trong ngày.\n"
-            "• <b>📋 Xem theo ngày:</b> Xem lại đơn của các ngày trước.\n"
-            "• <b>📝 Nhập đơn mới:</b> Dán tin nhắn đặt hàng của khách để tạo đơn tự động.\n"
-            "• <b>Chạm để Copy:</b> Trên thẻ chi tiết đơn, chạm vào SĐT hoặc Địa chỉ để sao chép nhanh sang app giao hàng.\n\n"
-            "Nếu gặp khó khăn, bác cứ bấm các nút to trên màn hình để thao tác nhé!",
-            parse_mode="HTML",
-        )
+        await send_tutorial(update, context, 0, message=update.message)
         return
 
 

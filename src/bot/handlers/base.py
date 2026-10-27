@@ -1,14 +1,29 @@
 import asyncio
 import html
 import logging
+import re
+from datetime import datetime
 
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
-from src.bot.keyboards import build_main_menu_reply_keyboard
+from src.bot.keyboards import TZ_VN, build_main_menu_reply_keyboard
+from src.bot.tutorial import render_tutorial_page
 from src.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
+
+TUTORIAL_PAGE_PATTERN = re.compile(r"^help:page:(-?\d+)$")
+TUTORIAL_TRY_PATTERN = re.compile(r"^help:try:([a-z_]+)$")
+
+# Whitelist kind -> existing callback. Client can never pass a target callback directly.
+TRY_ACTIONS: dict[str, str] = {
+    "today_orders": "ord_dt:{today}",
+    "date_picker": "ord_act:pick_date",
+    "new_order": "ord_act:new",
+    "search": "sch_new",
+}
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -57,17 +72,70 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.effective_message.reply_text(text)
 
 
+async def send_tutorial(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    page: int = 0,
+    message=None,
+) -> None:
+    """Send one tutorial page as a fresh message (single source with /help)."""
+    text, keyboard = render_tutorial_page(page)
+    target = message or update.effective_message
+    if target:
+        await target.reply_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /help command providing bot usage guidance per D-01."""
-    text = (
-        "❓ <b>HƯỚNG DẪN SỬ DỤNG BOT</b>\n\n"
-        "• <b>📦 Đơn hôm nay:</b> Xem nhanh danh sách các đơn hàng phát sinh trong ngày.\n"
-        "• <b>📋 Xem theo ngày:</b> Xem lại đơn của các ngày trước.\n"
-        "• <b>📝 Nhập đơn mới:</b> Dán tin nhắn đặt hàng của khách để tạo đơn tự động.\n"
-        "• <b>🔍 Tra cứu đơn:</b> Tìm kiếm đơn hàng hoặc hỏi thống kê bằng câu nói tự nhiên.\n"
-        "• <b>Chạm để Copy:</b> Trên thẻ chi tiết đơn, chạm vào SĐT hoặc Địa chỉ để sao chép nhanh sang app giao hàng.\n\n"
-        "Nếu gặp khó khăn, bác cứ bấm các nút to trên màn hình để thao tác nhé!"
-    )
-    if update.effective_message:
-        await update.effective_message.reply_text(text, parse_mode="HTML")
+    """Handle /help command: open the first tutorial page."""
+    await send_tutorial(update, context, 0)
+
+
+async def handle_tutorial_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle help:page:<n> navigation and help:try:<kind> shortcuts."""
+    query = update.callback_query
+    if not query or not query.data:
+        return
+    data = query.data
+
+    if data == "help:noop":
+        await query.answer()
+        return
+
+    m = TUTORIAL_PAGE_PATTERN.match(data)
+    if m:
+        await query.answer()
+        text, keyboard = render_tutorial_page(int(m.group(1)))
+        try:
+            await query.edit_message_text(
+                text, reply_markup=keyboard, parse_mode="HTML"
+            )
+        except BadRequest as e:
+            if "Message is not modified" not in str(e):
+                raise
+        return
+
+    m = TUTORIAL_TRY_PATTERN.match(data)
+    if not m:
+        await query.answer()
+        return
+
+    kind = m.group(1)
+    if kind not in TRY_ACTIONS:
+        await query.answer()
+        return
+
+    today = datetime.now(TZ_VN).strftime("%Y-%m-%d")
+    action = TRY_ACTIONS[kind].format(today=today)
+
+    # Local imports: orders imports base, so a top-level import would cycle.
+    from src.bot.handlers.orders import handle_order_nav_callback
+    from src.bot.handlers.search import handle_search_callback
+
+    query.data = action  # ponytail: reuse existing handlers; split if PTB changes query mocking
+    if kind == "search":
+        await handle_search_callback(update, context)
+    else:
+        await handle_order_nav_callback(update, context)
 

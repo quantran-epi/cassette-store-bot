@@ -25,7 +25,12 @@ from src.bot.handlers.backup import (
     handle_backup_document,
     handle_restore_callback,
 )
-from src.bot.handlers.base import help_command, ping_command, start_command
+from src.bot.handlers.base import (
+    handle_tutorial_callback,
+    help_command,
+    ping_command,
+    start_command,
+)
 from src.bot.handlers.callbacks import handle_mutation_callback, handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
 from src.bot.handlers.logs import handle_logs_callback, logs_command
@@ -384,6 +389,12 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
             handle_admin_callback,
             pattern=r"^adm:",
         ),
+        group=0,
+    )
+
+    # Register tutorial navigation callbacks at group 0
+    app.add_handler(
+        CallbackQueryHandler(handle_tutorial_callback, pattern=r"^help:"),
         group=0,
     )
 
