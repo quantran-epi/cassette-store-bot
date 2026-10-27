@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from telegram import Message, Update
+from telegram import CallbackQuery, Message, Update
 
 from src.bot.handlers.base import handle_tutorial_callback, help_command
 from src.bot.handlers.orders import handle_menu_reply
@@ -142,11 +142,31 @@ def _tutorial_query(data: str) -> tuple[MagicMock, MagicMock]:
     query.answer = AsyncMock()
     query.edit_message_text = AsyncMock()
     query.data = data
+    query.id = "cb-1"
     update = MagicMock(spec=Update)
+    update.update_id = 1
     update.callback_query = query
-    context = MagicMock()
-    context.user_data = {}
     return update, query
+
+
+def _real_tutorial_query(data: str) -> tuple[Update, CallbackQuery]:
+    """Real PTB objects: TelegramObject freezes attributes, so this catches
+    code that tries to assign to query.data (a real bug we hit once)."""
+    bot = MagicMock()
+    update = Update.de_json(
+        {
+            "update_id": 1,
+            "callback_query": {
+                "id": "cb-1",
+                "chat_instance": "ci",
+                "data": data,
+                "inline_message_id": "inline-1",
+                "from": {"id": 1, "is_bot": False, "first_name": "Bác"},
+            },
+        },
+        bot,
+    )
+    return update, update.callback_query
 
 
 @pytest.mark.asyncio
@@ -169,26 +189,28 @@ async def test_page_navigation_and_clamping():
 
 @pytest.mark.asyncio
 async def test_try_now_dispatches_to_existing_handlers():
-    """help:try:<kind> rewrites query.data and calls the existing handler."""
+    """help:try:<kind> calls the existing handler with the mapped callback_data."""
     with patch(
         "src.bot.handlers.orders.handle_order_nav_callback", new_callable=AsyncMock
     ) as mock_nav, patch(
         "src.bot.handlers.search.handle_search_callback", new_callable=AsyncMock
     ) as mock_search:
-        update, query = _tutorial_query("help:try:new_order")
+        update, _ = _tutorial_query("help:try:new_order")
         await handle_tutorial_callback(update, MagicMock())
         mock_nav.assert_awaited_once()
-        assert query.data == "ord_act:new"
+        sent = mock_nav.await_args.args[0].callback_query
+        assert sent.data == "ord_act:new"
+        assert sent.id == "cb-1"
         mock_search.assert_not_awaited()
 
-        update, query = _tutorial_query("help:try:today_orders")
+        update, _ = _tutorial_query("help:try:today_orders")
         await handle_tutorial_callback(update, MagicMock())
-        assert query.data.startswith("ord_dt:")
+        assert mock_nav.await_args.args[0].callback_query.data.startswith("ord_dt:")
 
-        update, query = _tutorial_query("help:try:search")
+        update, _ = _tutorial_query("help:try:search")
         await handle_tutorial_callback(update, MagicMock())
         mock_search.assert_awaited_once()
-        assert query.data == "sch_new"
+        assert mock_search.await_args.args[0].callback_query.data == "sch_new"
 
         mock_nav.reset_mock()
         mock_search.reset_mock()
@@ -197,6 +219,21 @@ async def test_try_now_dispatches_to_existing_handlers():
         mock_nav.assert_not_awaited()
         mock_search.assert_not_awaited()
         query.answer.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_try_now_works_with_immutable_real_callback_query():
+    """Regression: PTB freezes CallbackQuery, so assigning query.data raises."""
+    update, query = _real_tutorial_query("help:try:new_order")
+
+    with patch(
+        "src.bot.handlers.orders.handle_order_nav_callback", new_callable=AsyncMock
+    ) as mock_nav:
+        await handle_tutorial_callback(update, MagicMock())
+
+    mock_nav.assert_awaited_once()
+    assert mock_nav.await_args.args[0].callback_query.data == "ord_act:new"
+    assert query.data == "help:try:new_order"
 
 
 @pytest.mark.asyncio

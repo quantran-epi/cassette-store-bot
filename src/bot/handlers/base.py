@@ -4,7 +4,7 @@ import logging
 import re
 from datetime import datetime
 
-from telegram import Update
+from telegram import CallbackQuery, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
@@ -133,9 +133,22 @@ async def handle_tutorial_callback(
     from src.bot.handlers.orders import handle_order_nav_callback
     from src.bot.handlers.search import handle_search_callback
 
-    query.data = action  # ponytail: reuse existing handlers; split if PTB changes query mocking
+    # CallbackQuery is immutable in PTB, so hand the existing handlers a clone
+    # carrying the target callback_data (same id, so query.answer still works).
+    action_query = CallbackQuery(
+        id=query.id,
+        from_user=query.from_user,
+        chat_instance=query.chat_instance,
+        data=action,
+        message=query.message,
+        inline_message_id=query.inline_message_id,
+    )
+    action_query.set_bot(context.bot)  # returns None in PTB 22.x (in-place)
+    action_update = Update(update_id=update.update_id, callback_query=action_query)
+    action_update.set_bot(context.bot)
+
     if kind == "search":
-        await handle_search_callback(update, context)
+        await handle_search_callback(action_update, context)
     else:
-        await handle_order_nav_callback(update, context)
+        await handle_order_nav_callback(action_update, context)
 
