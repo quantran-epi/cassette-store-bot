@@ -9,6 +9,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
+from src.bot.handlers.base import run_with_typing
 from src.bot.keyboards import (
     STATUS_NAMES,
     TZ_VN,
@@ -654,7 +655,10 @@ async def handle_action_state_text(
         client = bot_data.get("openai_client")
         model_id = bot_data.get("active_model_id") or "gpt-4o-mini"
 
-        remind_at, reminder_note = await extract_reminder_from_text(client, model_id, text)
+        remind_at, reminder_note = await run_with_typing(
+            update.message.chat,
+            extract_reminder_from_text(client, model_id, text),
+        )
         if not remind_at:
             await update.message.reply_text(
                 "Chưa nhận diện được ngày giờ cụ thể. Bác vui lòng nhập rõ hơn (Ví dụ: 'Thứ 2 tuần sau 9h gửi hàng') nhé!"

@@ -7,9 +7,9 @@ import uuid
 from contextlib import nullcontext
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatAction
 from telegram.ext import Application, ContextTypes
 
+from src.bot.handlers.base import run_with_typing
 from src.db.connection import get_db_connection
 from src.db.customers import get_customer_by_phone
 from src.db.orders import get_customer_order_stats
@@ -128,9 +128,7 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
             if total_orders > 0
             else "👤 Chi tiết khách hàng"
         )
-        keyboard.append(
-            [InlineKeyboardButton(btn_text, callback_data=f"ord:cs:{draft_id}:1")]
-        )
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"ord:cs:{draft_id}:1")])
 
     keyboard.append(
         [
@@ -158,7 +156,11 @@ async def process_extracted_order(
     app_context = context.application.bot_data.get("app_context")
     db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
     settings = context.application.bot_data.get("settings")
-    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
+    db_path = (
+        getattr(settings, "sqlite_db_path", "cassette_store.db")
+        if settings
+        else "cassette_store.db"
+    )
 
     stats = None
     customer_id = None
@@ -250,7 +252,12 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     action_state = context.user_data.get("action_state")
     if action_state:
         action_name = action_state.get("action", "")
-        if action_name in ("await_whitelist_id", "await_model_name", "await_backup_time", "await_user_rename"):
+        if action_name in (
+            "await_whitelist_id",
+            "await_model_name",
+            "await_backup_time",
+            "await_user_rename",
+        ):
             from src.bot.handlers.admin import handle_admin_text_input
 
             handled = await handle_admin_text_input(update, context)
@@ -272,7 +279,17 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     active_draft_id = context.user_data.get("active_draft_id")
     pending_orders = context.user_data.get("pending_orders", {})
     if active_draft_id and active_draft_id in pending_orders:
-        if text.lower() in ("huỷ", "hủy", "cancel", "bo", "bỏ", "thôi", "thoát", "không lưu", "khong luu"):
+        if text.lower() in (
+            "huỷ",
+            "hủy",
+            "cancel",
+            "bo",
+            "bỏ",
+            "thôi",
+            "thoát",
+            "không lưu",
+            "khong luu",
+        ):
             pending_orders.pop(active_draft_id, None)
             context.user_data.pop("active_draft_id", None)
             await update.message.reply_text(
@@ -289,27 +306,29 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             settings = getattr(app_context, "settings", None)
             openai_client = getattr(app_context, "openai_client", None)
 
-        active_model = (
-            context.application.bot_data.get("active_model_id")
-            or (settings.nine_router_model_id if settings else "")
+        active_model = context.application.bot_data.get("active_model_id") or (
+            settings.nine_router_model_id if settings else ""
         )
 
         if openai_client:
             from src.services.mutation_extractor import extract_mutation_delta
             from src.services.tape_parser import build_tape_columns
 
-            await update.message.chat.send_action(ChatAction.TYPING)
+            draft = pending_orders[active_draft_id]
             try:
-                delta = await extract_mutation_delta(
-                    client=openai_client,
-                    model_id=active_model,
-                    text=text,
+                delta = await run_with_typing(
+                    update.message.chat,
+                    extract_mutation_delta(
+                        client=openai_client,
+                        model_id=active_model,
+                        text=text,
+                        current_order=draft,
+                    ),
                 )
             except Exception:
                 logger.exception("Failed to extract mutation delta for active draft")
                 delta = None
 
-            draft = pending_orders[active_draft_id]
             if delta:
                 if delta.new_customer_name:
                     draft["customer_name"] = delta.new_customer_name
@@ -367,20 +386,22 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         settings = getattr(app_context, "settings", None)
         openai_client = getattr(app_context, "openai_client", None)
 
-    active_model = (
-        context.application.bot_data.get("active_model_id")
-        or (settings.nine_router_model_id if settings else "")
+    active_model = context.application.bot_data.get("active_model_id") or (
+        settings.nine_router_model_id if settings else ""
     )
 
     reply_msg = update.message.reply_to_message
     reply_text = (reply_msg.text or reply_msg.caption) if reply_msg else None
     reply_order_id = extract_order_id_from_reply(reply_text)
 
-    intent = await classify_intent(
-        text=text,
-        client=openai_client,
-        model_id=active_model,
-        has_reply_order=bool(reply_order_id),
+    intent = await run_with_typing(
+        update.message.chat,
+        classify_intent(
+            text=text,
+            client=openai_client,
+            model_id=active_model,
+            has_reply_order=bool(reply_order_id),
+        ),
     )
 
     if intent == IntentType.MUTATE:
@@ -405,8 +426,6 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await process_search_query(update, context, text)
         return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
-
     if not openai_client or not settings:
         logger.error("OpenAI client or settings missing from application data")
         await update.message.reply_text(
@@ -415,10 +434,13 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     try:
-        extracted = await extract_order_from_text(
-            client=openai_client,
-            model_id=active_model,
-            text=text,
+        extracted = await run_with_typing(
+            update.message.chat,
+            extract_order_from_text(
+                client=openai_client,
+                model_id=active_model,
+                text=text,
+            ),
         )
     except Exception:
         logger.exception("Failed to extract order via 9router gateway")
@@ -443,8 +465,6 @@ async def _extract_and_process_photo_order(
     photo_file_ids: list[str],
 ) -> None:
     """Extract order info from photo caption and reply with preview card."""
-    await update.message.chat.send_action(ChatAction.TYPING)
-
     app_context = context.application.bot_data.get("app_context")
     if not app_context:
         settings = context.application.bot_data.get("settings")
@@ -461,14 +481,16 @@ async def _extract_and_process_photo_order(
         return
 
     active_model = (
-        context.application.bot_data.get("active_model_id")
-        or settings.nine_router_model_id
+        context.application.bot_data.get("active_model_id") or settings.nine_router_model_id
     )
     try:
-        extracted = await extract_order_from_text(
-            client=openai_client,
-            model_id=active_model,
-            text=caption,
+        extracted = await run_with_typing(
+            update.message.chat,
+            extract_order_from_text(
+                client=openai_client,
+                model_id=active_model,
+                text=caption,
+            ),
         )
     except Exception:
         logger.exception("Failed to extract photo order caption via 9router gateway")
@@ -613,6 +635,4 @@ async def handle_photo_order(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "task": None,
     }
     _MEDIA_GROUP_BUFFERS[media_group_id] = buf
-    buf["task"] = _spawn_finalizer(
-        context, _finalize_media_group(update, context, media_group_id)
-    )
+    buf["task"] = _spawn_finalizer(context, _finalize_media_group(update, context, media_group_id))

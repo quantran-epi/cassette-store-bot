@@ -42,7 +42,30 @@ HƯỚNG DẪN TRÍCH XUẤT 5 NHÓM TRƯỜNG BIẾN ĐỔI:
    - Quy tắc ngoặc: "(6 sony 90p)", "(1 băng)" là phôi cho các băng đã liệt kê — qty là số trong ngoặc, KHÔNG cộng dồn với số khác. Không trả `tape_quantity`; hệ thống tự tính tổng.
 
 Chỉ điền các trường có sự thay đổi. Các trường không thay đổi để null.
+
+KHI CÓ THẺ <current_order> (đơn nháp đang sửa):
+- Đây là thông tin HIỆN TẠI của đơn nháp. Chỉ trả về các trường mà người dùng thực sự yêu cầu thay đổi; KHÔNG nhại lại các trường khác dù chúng xuất hiện trong thẻ.
+- Người dùng có thể nói mơ hồ dựa vào thông tin cũ (VD: "sửa địa chỉ cho đúng", "đổi số này đi"). Hãy dùng <current_order> để hiểu họ đang nói tới trường nào.
+- `new_items_text` phải là TOÀN BỘ danh sách hàng hoá SAU khi thêm/bớt, không phải chỉ phần chênh lệch.
 """.strip()
+
+
+def _render_current_order(current_order: dict) -> str:
+    """Compact snapshot of the draft for prompt context."""
+
+    def _fmt_amount(value) -> str:
+        return f"{int(value):,}".replace(",", ".") + " đ" if value else "0 đ"
+
+    lines = [
+        f"Tên khách: {current_order.get('customer_name') or '[Chưa có]'}",
+        f"SĐT: {current_order.get('customer_phone') or '[Chưa có]'}",
+        f"Địa chỉ: {current_order.get('shipping_address') or '[Chưa có]'}",
+        f"Hàng hoá: {current_order.get('items_text') or '[Chưa có]'}",
+        f"Tổng tiền: {_fmt_amount(current_order.get('total_amount'))}",
+        f"Tiền COD: {_fmt_amount(current_order.get('cod_amount'))}",
+        f"Ghi chú: {current_order.get('notes') or '[Không có]'}",
+    ]
+    return "\n".join(lines)
 
 
 def _clean_json_markdown(text: str) -> str:
@@ -70,12 +93,18 @@ async def extract_mutation_delta(
     client: AsyncOpenAI,
     model_id: str,
     text: str,
+    current_order: dict | None = None,
 ) -> OrderMutationDelta | None:
     """Extract mutation delta using 2-tier fallback strategy (parse -> json_object) per MUT-03."""
-    messages = [
-        {"role": "system", "content": MUTATION_SYSTEM_PROMPT},
-        {"role": "user", "content": f"<message>{text}</message>"},
-    ]
+    messages = [{"role": "system", "content": MUTATION_SYSTEM_PROMPT}]
+    if current_order:
+        messages.append(
+            {
+                "role": "user",
+                "content": f"<current_order>\n{_render_current_order(current_order)}\n</current_order>",
+            }
+        )
+    messages.append({"role": "user", "content": f"<message>{text}</message>"})
 
     result: OrderMutationDelta | None = None
 
@@ -93,13 +122,9 @@ async def extract_mutation_delta(
         else:
             raw_content = response.choices[0].message.content
             if raw_content:
-                result = OrderMutationDelta.model_validate_json(
-                    _clean_json_markdown(raw_content)
-                )
+                result = OrderMutationDelta.model_validate_json(_clean_json_markdown(raw_content))
     except (BadRequestError, Exception) as e:
-        logger.warning(
-            "Tier 1 mutation parse failed, falling back to JSON mode: %s", e
-        )
+        logger.warning("Tier 1 mutation parse failed, falling back to JSON mode: %s", e)
 
     # Tier 2: Fallback to standard json_object response format
     if not result:

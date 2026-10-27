@@ -5,9 +5,9 @@ import uuid
 from contextlib import nullcontext
 
 from telegram import Update
-from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
+from src.bot.handlers.base import run_with_typing
 from src.bot.keyboards import (
     DIVIDER,
     STATUS_NAMES,
@@ -31,8 +31,16 @@ def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
     """Resolve active database connection or create context connection."""
     app_context = context.application.bot_data.get("app_context")
     db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
-    settings = getattr(app_context, "settings", None) if app_context else context.application.bot_data.get("settings")
-    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
+    settings = (
+        getattr(app_context, "settings", None)
+        if app_context
+        else context.application.bot_data.get("settings")
+    )
+    db_path = (
+        getattr(settings, "sqlite_db_path", "cassette_store.db")
+        if settings
+        else "cassette_store.db"
+    )
     return nullcontext(db) if db else get_db_connection(db_path)
 
 
@@ -48,9 +56,7 @@ async def handle_mutation_flow(
     # 1. Reply context extraction (D-05)
     reply_msg = update.message.reply_to_message
     reply_order_id = (
-        extract_order_id_from_reply(reply_msg.text or reply_msg.caption)
-        if reply_msg
-        else None
+        extract_order_id_from_reply(reply_msg.text or reply_msg.caption) if reply_msg else None
     )
 
     # 2. Fast-path status regex check in 0ms without LLM (D-06)
@@ -77,8 +83,6 @@ async def handle_mutation_flow(
             return
 
     # 3. LLM 2-Tier Delta Extraction (MUT-03)
-    await update.message.chat.send_action(ChatAction.TYPING)
-
     app_context = context.application.bot_data.get("app_context")
     openai_client = (
         getattr(app_context, "openai_client", None)
@@ -98,12 +102,14 @@ async def handle_mutation_flow(
         return
 
     active_model = (
-        context.application.bot_data.get("active_model_id")
-        or settings.nine_router_model_id
+        context.application.bot_data.get("active_model_id") or settings.nine_router_model_id
     )
 
     try:
-        delta = await extract_mutation_delta(openai_client, active_model, text)
+        delta = await run_with_typing(
+            update.message.chat,
+            extract_mutation_delta(openai_client, active_model, text),
+        )
     except Exception:
         logger.exception("Failed to extract mutation delta")
         delta = None
@@ -138,11 +144,14 @@ async def handle_mutation_flow(
         ):
             try:
                 scoped_query = f"{delta.target_customer_keyword} đang xử lý hoặc chưa giao"
-                _, raw_rows = await execute_natural_language_search(
-                    client=openai_client,
-                    model_id=active_model,
-                    db=db,
-                    query=scoped_query,
+                _, raw_rows = await run_with_typing(
+                    update.message.chat,
+                    execute_natural_language_search(
+                        client=openai_client,
+                        model_id=active_model,
+                        db=db,
+                        query=scoped_query,
+                    ),
                 )
                 if raw_rows:
                     active_matches: list[Order] = []
@@ -215,7 +224,11 @@ async def handle_mutation_flow(
         }
         st_label = STATUS_NAMES.get(
             target_order.status,
-            str(target_order.status.value if hasattr(target_order.status, "value") else target_order.status),
+            str(
+                target_order.status.value
+                if hasattr(target_order.status, "value")
+                else target_order.status
+            ),
         )
         status_prompt_text = (
             f"🔄 <b>CHỌN TRẠNG THÁI TIẾP THEO</b>\n"

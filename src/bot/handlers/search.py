@@ -1,17 +1,15 @@
-import asyncio
 import html
 import logging
 import time
 import uuid
 from contextlib import nullcontext
 from math import ceil
-from typing import Any, Coroutine
 
-from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatAction
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
+from src.bot.handlers.base import run_with_typing
 from src.bot.keyboards import (
     DIVIDER,
     build_search_empty_keyboard,
@@ -46,8 +44,16 @@ def _get_active_db_context(context: ContextTypes.DEFAULT_TYPE):
     """Resolve active database connection or create context connection per G-04-3."""
     app_context = context.application.bot_data.get("app_context")
     db = getattr(app_context, "db", None) if app_context else context.application.bot_data.get("db")
-    settings = getattr(app_context, "settings", None) if app_context else context.application.bot_data.get("settings")
-    db_path = getattr(settings, "sqlite_db_path", "cassette_store.db") if settings else "cassette_store.db"
+    settings = (
+        getattr(app_context, "settings", None)
+        if app_context
+        else context.application.bot_data.get("settings")
+    )
+    db_path = (
+        getattr(settings, "sqlite_db_path", "cassette_store.db")
+        if settings
+        else "cassette_store.db"
+    )
     return nullcontext(db) if db else get_db_connection(db_path)
 
 
@@ -66,7 +72,9 @@ def _has_db_pagination(result: SearchResult) -> bool:
 def _total_pages(result: SearchResult) -> int:
     """Page count for a paginated result, clamped to at least one page."""
     total = result.total_count if isinstance(result.total_count, int) else len(result.orders)
-    page_size = result.page_size if isinstance(result.page_size, int) and result.page_size > 0 else 5
+    page_size = (
+        result.page_size if isinstance(result.page_size, int) and result.page_size > 0 else 5
+    )
     return max(1, ceil(total / page_size))
 
 
@@ -134,33 +142,6 @@ def _render_list_view(
             total_pages=total_pages,
         ),
     )
-
-
-async def run_with_typing(chat: Chat, coro: Coroutine[Any, Any, Any]) -> Any:
-    """Run an async coroutine while periodically sending ChatAction.TYPING every 4s per D-11."""
-    stop_event = asyncio.Event()
-
-    async def _keep_typing() -> None:
-        while not stop_event.is_set():
-            try:
-                await chat.send_action(ChatAction.TYPING)
-            except Exception as e:
-                logger.debug("Failed to send typing chat action: %s", e)
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=4.0)
-            except asyncio.TimeoutError:
-                pass
-
-    typing_task = asyncio.create_task(_keep_typing())
-    try:
-        return await coro
-    finally:
-        stop_event.set()
-        typing_task.cancel()
-        try:
-            await typing_task
-        except asyncio.CancelledError:
-            pass
 
 
 async def handle_search_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -234,9 +215,7 @@ def _render_customer_chooser(
         if len(label) > 60:
             label = label[:57] + "..."
         lines.append(f"• <b>{html.escape(c.name)}</b> - <code>{html.escape(phone)}</code>")
-        buttons.append(
-            [InlineKeyboardButton(label, callback_data=f"cus_v:{c.id}:{search_id}")]
-        )
+        buttons.append([InlineKeyboardButton(label, callback_data=f"cus_v:{c.id}:{search_id}")])
     buttons.append([InlineKeyboardButton("❌ Huỷ", callback_data="sch_cancel")])
     return "\n".join(lines), InlineKeyboardMarkup(buttons)
 
@@ -274,7 +253,9 @@ async def _render_customer_detail(
     )
 
 
-async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str) -> None:
+async def process_search_query(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str
+) -> None:
     """Process natural language search query and reply with confirmation/result card per D-04..D-11."""
     # Clear search state upon receiving query
     context.user_data.pop("search_state", None)
@@ -308,9 +289,7 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
                     "ids": [c.id for c in matches],
                 }
                 if len(matches) == 1:
-                    rendered = await _render_customer_detail(
-                        context, matches[0].id, 1, search_id
-                    )
+                    rendered = await _render_customer_detail(context, matches[0].id, 1, search_id)
                     text, kb = rendered or _render_customer_empty_card(query_text)
                 elif matches:
                     text, kb = _render_customer_chooser(matches, search_id)
@@ -332,13 +311,13 @@ async def process_search_query(update: Update, context: ContextTypes.DEFAULT_TYP
 
             bot_data = (
                 context.application.bot_data
-                if getattr(context, "application", None) and isinstance(getattr(context.application, "bot_data", None), dict)
+                if getattr(context, "application", None)
+                and isinstance(getattr(context.application, "bot_data", None), dict)
                 else getattr(context, "bot_data", {})
             )
             active_model = (
-                (bot_data.get("active_model_id") if isinstance(bot_data, dict) else None)
-                or settings.nine_router_model_id
-            )
+                bot_data.get("active_model_id") if isinstance(bot_data, dict) else None
+            ) or settings.nine_router_model_id
 
             if chat:
                 result = await run_with_typing(
@@ -451,9 +430,7 @@ async def handle_customer_callback(update: Update, context: ContextTypes.DEFAULT
                 await _safe_edit(query, "⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
                 return
             customers = [
-                c
-                for cid in snap["ids"]
-                if (c := await get_customer_by_id(active_db, cid))
+                c for cid in snap["ids"] if (c := await get_customer_by_id(active_db, cid))
             ]
         text, kb = _render_customer_chooser(customers, search_id)
         await _safe_edit(query, text, kb)

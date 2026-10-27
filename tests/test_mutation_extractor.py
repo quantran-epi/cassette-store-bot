@@ -163,3 +163,55 @@ def test_clean_json_markdown_without_fences_with_surrounding_text():
     assert delta.target_order_id == 42
     assert delta.new_notes == "Gọi trước khi giao"
 
+
+
+@pytest.mark.asyncio
+async def test_extract_mutation_delta_includes_current_order_context():
+    """current_order is rendered as a <current_order> block before <message>."""
+    mock_client = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.parsed = OrderMutationDelta(new_shipping_address="45 Lê Duẩn, Đà Nẵng")
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    mock_client.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
+
+    draft = {
+        "customer_name": "Chị Mai",
+        "customer_phone": "0987654321",
+        "shipping_address": "88 Lê Lợi, Hải Châu, Đà Nẵng",
+        "items_text": "3 cuốn Tuấn Vũ",
+        "total_amount": 500000,
+        "cod_amount": 400000,
+        "notes": "",
+    }
+    await extract_mutation_delta(
+        mock_client,
+        "gpt-4o-mini",
+        "sửa địa chỉ sang 45 Lê Duẩn, Đà Nẵng",
+        current_order=draft,
+    )
+
+    sent_messages = mock_client.beta.chat.completions.parse.call_args.kwargs["messages"]
+    assert len(sent_messages) == 3
+    assert "<current_order>" in sent_messages[1]["content"]
+    assert "88 Lê Lợi, Hải Châu, Đà Nẵng" in sent_messages[1]["content"]
+    assert "500.000 đ" in sent_messages[1]["content"]
+    assert "<message>sửa địa chỉ sang 45 Lê Duẩn, Đà Nẵng</message>" == sent_messages[2]["content"]
+
+
+@pytest.mark.asyncio
+async def test_extract_mutation_delta_omits_current_order_by_default():
+    """Without current_order the prompt stays two messages."""
+    mock_client = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.parsed = OrderMutationDelta(new_notes="ok")
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+    mock_client.beta.chat.completions.parse = AsyncMock(return_value=mock_response)
+
+    await extract_mutation_delta(mock_client, "gpt-4o-mini", "ghi chú giao sau 18h")
+
+    sent_messages = mock_client.beta.chat.completions.parse.call_args.kwargs["messages"]
+    assert len(sent_messages) == 2
+    assert sent_messages[0]["role"] == "system"
+    assert sent_messages[1]["content"] == "<message>ghi chú giao sau 18h</message>"

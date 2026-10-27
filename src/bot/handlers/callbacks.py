@@ -11,6 +11,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
+from src.bot.handlers.base import run_with_typing
 from src.bot.handlers.ingest import render_preview_card
 from src.bot.handlers.mutation import (
     handle_mutation_selection,
@@ -280,12 +281,15 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
             b_msg = format_order_created_broadcast(new_order)
-            await broadcast_to_whitelist(
-                context.bot,
-                whitelist_ids,
-                b_msg,
-                reply_markup=build_order_view_button(order_id),
-                exclude_user_id=creator_id,
+            await run_with_typing(
+                update.effective_chat,
+                broadcast_to_whitelist(
+                    context.bot,
+                    whitelist_ids,
+                    b_msg,
+                    reply_markup=build_order_view_button(order_id),
+                    exclude_user_id=creator_id,
+                ),
             )
 
             photo_tag = ""
