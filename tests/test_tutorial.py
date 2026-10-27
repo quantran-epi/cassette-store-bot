@@ -25,7 +25,7 @@ def _flat_callbacks(markup: InlineKeyboardMarkup) -> list[str]:
 
 
 def test_tutorial_pages_shape():
-    """6 static pages, each with title/body/try_kind."""
+    """Static pages, each with title/body/try_kind; page 2 is the pending-orders guide."""
     assert PAGE_COUNT == len(TUTORIAL_PAGES) >= 5
     for page in TUTORIAL_PAGES:
         assert page["title"]
@@ -37,8 +37,9 @@ def test_render_first_page_keeps_legacy_strings():
     """Page 1 keeps the title and 'Tra cứu đơn' strings older tests assert."""
     text, kb = render_tutorial_page(0)
     assert "HƯỚNG DẪN SỬ DỤNG BOT" in text
-    assert "Trang 1/6" in text
+    assert f"Trang 1/{PAGE_COUNT}" in text
     assert "Tra cứu đơn" in text
+    assert "ĐƠN CHỜ LÀM" in render_tutorial_page(1)[0]
     assert isinstance(kb, InlineKeyboardMarkup)
 
 
@@ -47,7 +48,9 @@ def test_navigation_bounds_and_indicator():
     first_cbs = _flat_callbacks(build_tutorial_keyboard(0))
     assert not any(cb.startswith("help:page:-") for cb in first_cbs)
     assert "help:page:1" in first_cbs
-    assert "Trang 1/6" in [btn.text for row in build_tutorial_keyboard(0).inline_keyboard for btn in row]
+    assert f"Trang 1/{PAGE_COUNT}" in [
+        btn.text for row in build_tutorial_keyboard(0).inline_keyboard for btn in row
+    ]
 
     last_idx = PAGE_COUNT - 1
     last_cbs = _flat_callbacks(build_tutorial_keyboard(last_idx))
@@ -76,7 +79,7 @@ def test_render_clamps_out_of_range():
     """Negative/too-large page indices clamp instead of raising."""
     low_text, _ = render_tutorial_page(-5)
     high_text, _ = render_tutorial_page(999)
-    assert "Trang 1/6" in low_text
+    assert f"Trang 1/{PAGE_COUNT}" in low_text
     assert f"Trang {PAGE_COUNT}/{PAGE_COUNT}" in high_text
 
 
@@ -175,7 +178,7 @@ async def test_page_navigation_and_clamping():
     update, query = _tutorial_query("help:page:1")
     await handle_tutorial_callback(update, MagicMock())
     query.answer.assert_awaited_once()
-    assert "Trang 2/6" in _edited_text(query)
+    assert f"Trang 2/{PAGE_COUNT}" in _edited_text(query)
 
     update, query = _tutorial_query("help:page:99")
     await handle_tutorial_callback(update, MagicMock())
@@ -211,6 +214,14 @@ async def test_try_now_dispatches_to_existing_handlers():
         await handle_tutorial_callback(update, MagicMock())
         mock_search.assert_awaited_once()
         assert mock_search.await_args.args[0].callback_query.data == "sch_new"
+
+        mock_nav.reset_mock()
+        mock_search.reset_mock()
+        update, _ = _tutorial_query("help:try:pending_orders")
+        await handle_tutorial_callback(update, MagicMock())
+        mock_nav.assert_awaited_once()
+        assert mock_nav.await_args.args[0].callback_query.data == "ord_ls:CHO_LAM:1"
+        mock_search.assert_not_awaited()
 
         mock_nav.reset_mock()
         mock_search.reset_mock()

@@ -458,6 +458,108 @@ async def test_handle_menu_reply_today_orders(test_db):
 
 
 @pytest.mark.asyncio
+async def test_handle_menu_reply_pending_orders(test_db):
+    """'⏳ Đơn chờ làm' renders paginated CHO_LAM list with status chips."""
+    from src.db.orders import create_order
+
+    for i in range(12):
+        await create_order(
+            test_db,
+            Order(
+                customer_name=f"Khách Chờ {i}",
+                customer_phone=f"0900000{i:03d}",
+                shipping_address="HCM",
+                items_text="Băng",
+                total_amount=100000,
+                status=OrderStatus.CHO_LAM,
+            ),
+        )
+    await create_order(
+        test_db,
+        Order(
+            customer_name="Khách Đang Làm",
+            customer_phone="0911111111",
+            shipping_address="HN",
+            items_text="Băng",
+            total_amount=200000,
+            status=OrderStatus.DANG_LAM,
+        ),
+    )
+
+    message = MagicMock(spec=Message)
+    message.text = "⏳ Đơn chờ làm"
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.message = message
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    await handle_menu_reply(update, context)
+
+    message.reply_text.assert_awaited_once()
+    _, kwargs = message.reply_text.call_args
+    card_text = kwargs.get("text", "")
+    markup = kwargs.get("reply_markup")
+
+    assert "⏳ Chờ làm — <b>DANH SÁCH ĐƠN</b>" in card_text
+    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/2)" in card_text
+    assert "Khách Đang Làm" not in card_text
+    flat_cbs = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "ord_ls:CHO_LAM:2" in flat_cbs
+    assert any(cb.startswith("ord_vls:CHO_LAM:") for cb in flat_cbs)
+
+
+@pytest.mark.asyncio
+async def test_handle_order_nav_callback_status_list(test_db):
+    """ord_ls: swaps status/page; ord_vls: opens detail with back to the status list; bad status ignored."""
+    from src.db.orders import create_order
+
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_name="Khách Đang Làm",
+            customer_phone="0911111111",
+            shipping_address="HN",
+            items_text="Băng",
+            total_amount=200000,
+            status=OrderStatus.DANG_LAM,
+        ),
+    )
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+
+    query.data = "ord_ls:DANG_LAM:1"
+    await handle_order_nav_callback(update, context)
+    ls_text = query.edit_message_text.call_args[1]["text"]
+    ls_kb = query.edit_message_text.call_args[1]["reply_markup"]
+    assert "🛠️ Đang làm — <b>DANH SÁCH ĐƠN</b>" in ls_text
+    assert "Khách Đang Làm" in ls_text
+    ls_cbs = [btn.callback_data for row in ls_kb.inline_keyboard for btn in row]
+    assert f"ord_vls:DANG_LAM:{oid}:1" in ls_cbs
+
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_vls:DANG_LAM:{oid}:1"
+    await handle_order_nav_callback(update, context)
+    detail_text = query.edit_message_text.call_args[1]["text"]
+    detail_kb = query.edit_message_text.call_args[1]["reply_markup"]
+    assert f"CHI TIẾT ĐƠN HÀNG #{oid}" in detail_text
+    detail_cbs = [btn.callback_data for row in detail_kb.inline_keyboard for btn in row]
+    assert "ord_ls:DANG_LAM:1" in detail_cbs
+
+    # Garbage status must not raise and must not edit the message
+    query.edit_message_text.reset_mock()
+    query.data = "ord_ls:XXX:1"
+    await handle_order_nav_callback(update, context)
+    query.edit_message_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_handle_menu_reply_other_buttons():
     """Clicking date picker, new order, or help returns appropriate responses."""
     user = User(id=123, first_name="Bác Năm", is_bot=False)

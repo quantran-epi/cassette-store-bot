@@ -363,7 +363,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     # Register main menu Reply Keyboard handler (MUST be registered before LLM text ingestion)
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"^(📦 Đơn hôm nay|📋 Xem theo ngày|📝 Nhập đơn mới|🔍 Tra cứu đơn|❓ Trợ giúp)$"),
+            filters.Regex(r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|📝 Nhập đơn mới|🔍 Tra cứu đơn|❓ Trợ giúp)$"),
             handle_menu_reply,
         ),
         group=0,
@@ -432,7 +432,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         CallbackQueryHandler(
             handle_order_nav_callback,
-            pattern=r"^(ord_(dt|pg|v|bk):|ord_noop$|ord_act:(pick_date|new)$)",
+            pattern=r"^(ord_(dt|pg|v|bk|ls|vls):|ord_noop$|ord_act:(pick_date|new)$)",
         ),
         group=0,
     )

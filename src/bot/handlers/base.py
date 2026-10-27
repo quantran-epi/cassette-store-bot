@@ -53,6 +53,7 @@ TRY_ACTIONS: dict[str, str] = {
     "date_picker": "ord_act:pick_date",
     "new_order": "ord_act:new",
     "search": "sch_new",
+    "pending_orders": "ord_ls:CHO_LAM:1",
 }
 
 

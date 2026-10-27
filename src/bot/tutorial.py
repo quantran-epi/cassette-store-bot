@@ -13,11 +13,21 @@ TUTORIAL_PAGES: list[dict] = [
         "body": (
             "Bác chỉ cần chạm vào các nút to trên màn hình.\n"
             "1. 📦 Đơn hôm nay - xem đơn trong ngày.\n"
-            "2. 📋 Xem theo ngày - xem đơn ngày trước.\n"
-            "3. 📝 Nhập đơn mới - dán tin nhắn của khách.\n"
-            "4. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường."
+            "2. ⏳ Đơn chờ làm - xem đơn đang chờ làm.\n"
+            "3. 📋 Xem theo ngày - xem đơn ngày trước.\n"
+            "4. 📝 Nhập đơn mới - dán tin nhắn của khách.\n"
+            "5. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường."
         ),
         "try_kind": None,
+    },
+    {
+        "title": "⏳ <b>ĐƠN CHỜ LÀM</b>",
+        "body": (
+            "1. Bấm nút ⏳ Đơn chờ làm.\n"
+            "2. Bot hiện danh sách đơn chờ làm, gom theo ngày tạo.\n"
+            "3. Chạm chip ⏳/🛠️/📦 ở cuối để lọc trạng thái khác."
+        ),
+        "try_kind": "pending_orders",
     },
     {
         "title": "📦 <b>XEM ĐƠN HÔM NAY</b>",
