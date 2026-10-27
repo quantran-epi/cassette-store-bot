@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-25)
 Phase: 08 (containerization-kubernetes-deployment) — COMPLETED
 Plan: 3 of 3
 Status: All 3 plans complete, verified with 321 passing tests
-Last activity: 2026-10-27 -- Completed quick task 261027-htn: MIXED search summary matched-order count
+Last activity: 2026-10-27 -- Completed quick task 261027-jb2: labeled JSON-plan order search
 
 Progress: [██████████] 100% (Phase 08)
 
@@ -100,3 +100,4 @@ Recent decisions affecting current work:
 | 2026-10-27 | `261027-g5f-draft-reminder-routing` | Draft: giờ hẹn giao/gửi đi vào `new_reminder_at`/`new_reminder_note` thay vì đè ghi chú, `clear_reminder` xoá lịch nhắc, prompt có mốc thời gian VN | Complete ✓ |
 | 2026-10-27 | `261027-h7d-th-m-quick-search-kh-ng-qua-llm-n-t-n-ch` | Nút `⏳ Đơn chờ làm` không qua LLM: list đơn theo trạng thái gom theo ngày tạo VN, 10 đơn/trang, chip lọc trạng thái ở đáy mọi list card, reply keyboard 3x2, tutorial trang 2 | Complete ✓ |
 | 2026-10-27 | `261027-htn-fix-mixed-search-summary-claiming-no-mat` | Summary MIXED tự bịa "không bán \<X\> nào": truyền `matched_order_count` (số đơn khớp của câu list) vào prompt summarizer + luật cấm khẳng định vắng mặt, không đổi AGGREGATE-only | Complete ✓ |
+| 2026-10-27 | `261027-jb2-refactor-nl-order-search-to-plan-json-wi` | Tra cứu NL dùng JSON plan có nhãn: tối đa 1 list + 3 aggregate, chạy đủ mọi ý, summary nhận envelope có purpose/results và list purpose/count, card có heading xác định | Complete ✓ |
