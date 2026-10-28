@@ -25,7 +25,6 @@ def _normalize_ts(ts: object) -> str:
 
 _order_photo_locks: dict[int, asyncio.Lock] = {}
 
-
 def _row_to_order(row: aiosqlite.Row) -> Order:
     """Convert database row to Order domain model."""
     photos = row["photo_file_ids"]
@@ -36,6 +35,8 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
             photos = []
 
     keys = set(row.keys())
+    completed_orders = row["customer_completed_orders"] if "customer_completed_orders" in keys else None
+    completed_spend = row["customer_completed_spend"] if "customer_completed_spend" in keys else None
     created_by_user_id = row["created_by_user_id"] if "created_by_user_id" in keys else None
     created_by_name = row["created_by_name"] if "created_by_name" in keys else None
     notes = row["notes"] if "notes" in keys else ""
@@ -69,6 +70,8 @@ def _row_to_order(row: aiosqlite.Row) -> Order:
     return Order(
         id=row["id"],
         customer_id=row["customer_id"],
+        customer_completed_orders=completed_orders,
+        customer_completed_spend=completed_spend,
         customer_name=row["customer_name"],
         customer_phone=row["customer_phone"],
         shipping_address=row["shipping_address"],
@@ -149,12 +152,18 @@ async def create_order(db: aiosqlite.Connection, order: Order) -> int:
 
 
 async def get_order_by_id(db: aiosqlite.Connection, order_id: int) -> Order | None:
-    """Retrieve order by ID."""
+    """Retrieve order by ID with delivered-order customer classification stats."""
     async with db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)) as cursor:
         row = await cursor.fetchone()
-        if not row:
-            return None
-        return _row_to_order(row)
+    if not row:
+        return None
+
+    order = _row_to_order(row)
+    if order.customer_id is not None:
+        stats = await get_customer_order_stats(db, order.customer_id)
+        order.customer_completed_orders = stats["total_orders"]
+        order.customer_completed_spend = stats["total_spent"]
+    return order
 
 
 async def delete_order(db: aiosqlite.Connection, order_id: int) -> bool:
@@ -287,7 +296,9 @@ async def list_orders_by_date(
     """
     async with db.execute(query, (date_str, limit, offset)) as cursor:
         rows = await cursor.fetchall()
-        return [_row_to_order(row) for row in rows]
+    orders = [_row_to_order(row) for row in rows]
+    await hydrate_customer_stats(db, orders)
+    return orders
 
 
 async def count_orders_by_date(db: aiosqlite.Connection, date_str: str) -> int:
@@ -313,7 +324,9 @@ async def list_orders_by_status(
     """
     async with db.execute(query, (status.value, limit, offset)) as cursor:
         rows = await cursor.fetchall()
-        return [_row_to_order(row) for row in rows]
+    orders = [_row_to_order(row) for row in rows]
+    await hydrate_customer_stats(db, orders)
+    return orders
 
 
 async def count_orders_by_status(db: aiosqlite.Connection, status: OrderStatus) -> int:
@@ -324,12 +337,36 @@ async def count_orders_by_status(db: aiosqlite.Connection, status: OrderStatus) 
         return int(row[0]) if row else 0
 
 
+async def hydrate_customer_stats(db: aiosqlite.Connection, orders: Sequence[Order]) -> None:
+    """Hydrate one page of orders using one aggregate query, never snapshot names/phones."""
+    customer_ids = sorted({o.customer_id for o in orders if o.customer_id is not None})
+    if not customer_ids:
+        return
+    placeholders = ",".join("?" for _ in customer_ids)
+    async with db.execute(
+        f"""
+        SELECT customer_id, COUNT(*) AS completed_orders,
+               COALESCE(SUM(total_amount), 0) AS completed_spend
+        FROM orders
+        WHERE status = 'DA_GIAO' AND customer_id IN ({placeholders})
+        GROUP BY customer_id
+        """,
+        customer_ids,
+    ) as cursor:
+        stats = {row["customer_id"]: row for row in await cursor.fetchall()}
+    for order in orders:
+        if order.customer_id is not None:
+            row = stats.get(order.customer_id)
+            order.customer_completed_orders = row["completed_orders"] if row else 0
+            order.customer_completed_spend = row["completed_spend"] if row else 0
+
+
 async def get_customer_order_stats(db: aiosqlite.Connection, customer_id: int) -> dict[str, int]:
-    """Retrieve customer lifetime order count, total spend, and BOM_HANG count."""
+    """Retrieve delivered order count/spend plus all-time BOM_HANG count."""
     query = """
         SELECT
-            COUNT(*) AS total_orders,
-            COALESCE(SUM(CASE WHEN status != 'HUY_DON' THEN total_amount ELSE 0 END), 0) AS total_spent,
+            COUNT(CASE WHEN status = 'DA_GIAO' THEN 1 END) AS total_orders,
+            COALESCE(SUM(CASE WHEN status = 'DA_GIAO' THEN total_amount ELSE 0 END), 0) AS total_spent,
             COUNT(CASE WHEN status = 'BOM_HANG' THEN 1 END) AS bom_count
         FROM orders
         WHERE customer_id = ?

@@ -42,7 +42,9 @@ def test_render_preview_card_layout_and_buttons():
     assert "350.000 đ" in text
     assert "300.000 đ" in text
     assert "đã cọc 50.000 đ" in text
-    assert "Khách quen: 3 đơn - 1.200.000 đ" in text
+    assert "TẦN SUẤT:</b> <b>KHÁCH QUEN</b> (3 đơn hoàn thành)" in text
+    assert "CHI TIÊU:</b> <b>1–DƯỚI 3 TRIỆU</b> (1.200.000 đ)" in text
+    assert "Khách quen:" not in text
 
     # Keyboard checks: 1 row, 2 buttons with compact callbacks <= 64 bytes
     keyboard = reply_markup.inline_keyboard
@@ -73,9 +75,11 @@ def test_render_preview_card_with_bom_hang_warning():
         "cod_amount": 150000,
         "deposit_amount": 0,
     }
-    stats = {"total_orders": 2, "total_spent": 150000, "bom_count": 1}
+    stats = {"total_orders": 0, "total_spent": 0, "bom_count": 1}
 
     text, _ = render_preview_card(draft, stats)
+    assert "TẦN SUẤT:</b> <b>KHÁCH VÃNG LAI</b> (0 đơn hoàn thành)" in text
+    assert "CHI TIÊU:</b> <b>DƯỚI 1 TRIỆU</b> (0 đ)" in text
     assert "CẢNH BÁO: Khách từng có 1 đơn BOM HÀNG!" in text
 
 
@@ -423,7 +427,8 @@ async def test_returning_customer_stats_and_bom_warning(test_db):
     message.reply_text.assert_awaited_once()
     reply_text = message.reply_text.call_args[1]["text"]
     assert "CẢNH BÁO: Khách từng có 1 đơn BOM HÀNG!" in reply_text
-    assert "Khách quen: 1 đơn" in reply_text
+    assert "TẦN SUẤT:</b> <b>KHÁCH VÃNG LAI</b> (0 đơn hoàn thành)" in reply_text
+    assert "CHI TIÊU:</b> <b>DƯỚI 1 TRIỆU</b> (0 đ)" in reply_text
     # Check auto-filled single address
     assert "tự lấy từ đơn trước" in reply_text
     assert "Địa chỉ cũ" in reply_text
@@ -990,7 +995,7 @@ async def test_preview_card_multi_address_radio_and_customer_detail_nav(test_db)
     # Verify customer detail button
     cust_btn = next((b for b in buttons if b.callback_data.startswith("ord:cs:")), None)
     assert cust_btn is not None
-    assert "Chi tiết khách (6 đơn)" in cust_btn.text
+    assert "Chi tiết khách (6 đơn xong)" in cust_btn.text
     assert cust_btn.callback_data == f"ord:cs:{draft_id}:1"
 
     # 2. Test clicking customer detail button (ord:cs:<draft_id>:1)
@@ -1015,7 +1020,8 @@ async def test_preview_card_multi_address_radio_and_customer_detail_nav(test_db)
 
     assert "HỒ SƠ KHÁCH HÀNG: NGUYỄN VĂN A" in cust_view_text
     assert "Trang 1/2" in cust_view_text
-    assert "6 đơn | Đã chi: 900.000 đ" in cust_view_text
+    assert "TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (6 đơn hoàn thành)" in cust_view_text
+    assert "CHI TIÊU:</b> <b>DƯỚI 1 TRIỆU</b> (900.000 đ)" in cust_view_text
 
     cust_view_btns = [btn for row in cust_view_markup.inline_keyboard for btn in row]
     # Check pagination: should have Next page button and Back button

@@ -12,6 +12,7 @@ import aiosqlite
 from openai import AsyncOpenAI
 
 from src.db.connection import remove_accents
+from src.db.orders import hydrate_customer_stats
 from src.models.order import Order, OrderStatus
 
 
@@ -606,7 +607,9 @@ async def fetch_search_page(
     sql = f"SELECT * FROM ({prepared_list_sql}) LIMIT ? OFFSET ?"
     async with db.execute(sql, (page_size, offset)) as cursor:
         rows = await cursor.fetchall()
-    return [_dict_to_order(dict(row)) for row in rows]
+    orders = [_dict_to_order(dict(row)) for row in rows]
+    await hydrate_customer_stats(db, orders)
+    return orders
 
 
 def _resolve_prompt_time(current_time: datetime | None) -> tuple[str, str]:
@@ -1059,6 +1062,7 @@ async def _execute_search_plan(
                 "Truy vấn list không trả về đơn hàng (thiếu cột bắt buộc)."
             )
         orders = [_dict_to_order(row) for row in list_rows]
+        await hydrate_customer_stats(db, orders)
         sql_parts.append(list_sql)
 
     aggregate_parts: list[dict[str, Any]] = []

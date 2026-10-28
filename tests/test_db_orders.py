@@ -258,49 +258,72 @@ async def test_get_customer_order_stats(test_db):
     )
     cust_id = await create_customer(test_db, customer)
 
-    # Create 3 orders: CHO_LAM (150k), BOM_HANG (200k), HUY_DON (300k)
-    await create_order(
-        test_db,
-        Order(
-            customer_id=cust_id,
-            customer_name=customer.name,
-            customer_phone=customer.phones[0],
-            shipping_address=customer.addresses[0],
-            items_text="Băng 1",
-            total_amount=150000,
-            status=OrderStatus.CHO_LAM,
-        ),
-    )
-    await create_order(
-        test_db,
-        Order(
-            customer_id=cust_id,
-            customer_name=customer.name,
-            customer_phone=customer.phones[0],
-            shipping_address=customer.addresses[0],
-            items_text="Băng 2",
-            total_amount=200000,
-            status=OrderStatus.BOM_HANG,
-        ),
-    )
-    await create_order(
-        test_db,
-        Order(
-            customer_id=cust_id,
-            customer_name=customer.name,
-            customer_phone=customer.phones[0],
-            shipping_address=customer.addresses[0],
-            items_text="Băng 3",
-            total_amount=300000,
-            status=OrderStatus.HUY_DON,
-        ),
-    )
+    order_ids = []
+    for status, amount in (
+        (OrderStatus.CHO_LAM, 150000),
+        (OrderStatus.DANG_LAM, 175000),
+        (OrderStatus.BOM_HANG, 200000),
+        (OrderStatus.HUY_DON, 300000),
+        (OrderStatus.DA_GIAO, 400000),
+        (OrderStatus.DA_GIAO, 600000),
+    ):
+        order_ids.append(
+            await create_order(
+                test_db,
+                Order(
+                    customer_id=cust_id,
+                    customer_name=customer.name,
+                    customer_phone=customer.phones[0],
+                    shipping_address=customer.addresses[0],
+                    items_text=f"Băng {status.value}",
+                    total_amount=amount,
+                    status=status,
+                ),
+            )
+        )
 
     stats = await get_customer_order_stats(test_db, cust_id)
-    assert stats["total_orders"] == 3
-    # HUY_DON excluded from spend -> 150000 + 200000 = 350000
-    assert stats["total_spent"] == 350000
-    assert stats["bom_count"] == 1
+    assert stats == {"total_orders": 2, "total_spent": 1000000, "bom_count": 1}
+
+    saved = await get_order_by_id(test_db, order_ids[0])
+    assert saved is not None
+    assert saved.customer_completed_orders == 2
+    assert saved.customer_completed_spend == 1000000
+
+
+@pytest.mark.asyncio
+async def test_order_lists_batch_hydrate_completed_customer_stats(test_db):
+    cust_id = await create_customer(
+        test_db,
+        Customer(name="Khách Danh Sách", phones=["0901000000"], addresses=["Hà Nội"]),
+    )
+    for status, amount in (
+        (OrderStatus.DA_GIAO, 1000000),
+        (OrderStatus.BOM_HANG, 9000000),
+        (OrderStatus.CHO_LAM, 500000),
+    ):
+        await create_order(
+            test_db,
+            Order(
+                customer_id=cust_id,
+                customer_name="Khách Danh Sách",
+                customer_phone="0901000000",
+                shipping_address="Hà Nội",
+                items_text="Băng",
+                total_amount=amount,
+                status=status,
+            ),
+        )
+
+    by_date = await list_orders_by_date(
+        test_db,
+        (await test_db.execute_fetchall("SELECT date(created_at, '+7 hours') FROM orders LIMIT 1"))[0][0],
+    )
+    by_status = await list_orders_by_status(test_db, OrderStatus.CHO_LAM)
+    assert all(o.customer_completed_orders == 1 for o in by_date)
+    assert all(o.customer_completed_spend == 1000000 for o in by_date)
+    assert by_status[0].customer_completed_orders == 1
+    assert by_status[0].customer_completed_spend == 1000000
 
 
 @pytest.mark.asyncio

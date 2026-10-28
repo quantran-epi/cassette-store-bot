@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-25)
 Phase: 08 (containerization-kubernetes-deployment) — COMPLETED
 Plan: 3 of 3
 Status: All 3 plans complete, verified with 321 passing tests
-Last activity: 2026-10-27 -- Completed quick task 261027-jb2: labeled JSON-plan order search
+Last activity: 2026-10-28 -- Completed quick task 261028-l0t: completed-order customer frequency and spending labels
 
 Progress: [██████████] 100% (Phase 08)
 
@@ -102,3 +102,4 @@ Recent decisions affecting current work:
 | 2026-10-27 | `261027-htn-fix-mixed-search-summary-claiming-no-mat` | Summary MIXED tự bịa "không bán \<X\> nào": truyền `matched_order_count` (số đơn khớp của câu list) vào prompt summarizer + luật cấm khẳng định vắng mặt, không đổi AGGREGATE-only | Complete ✓ |
 | 2026-10-27 | `261027-jb2-refactor-nl-order-search-to-plan-json-wi` | Tra cứu NL dùng JSON plan có nhãn: tối đa 1 list + 3 aggregate, chạy đủ mọi ý, summary nhận envelope có purpose/results và list purpose/count, card có heading xác định | Complete ✓ |
 | 2026-10-27 | `261027-m8x-llm-mutation-flow-and-static-edit` | Sửa đơn static qua menu nút bấm trên thẻ đơn; tách luồng mutation LLM 2 phase: tìm đơn bằng Text-to-SQL (không nhầm Hà Nội khi tìm chị Hà) + bóc delta có `<current_order>` giữ nguyên địa chỉ cũ | Complete ✓ |
+| 2026-10-28 | `261028-l0t-th-m-ph-n-lo-i-kh-ch-h-ng-khi-hi-n-th-n-` | Separate frequency/spending highlights; DA_GIAO-only aggregates, batch list hydration; 92 focused tests passed; latest full suite has backup-restore failure | Feature verified; suite issue |

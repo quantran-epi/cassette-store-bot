@@ -1,0 +1,35 @@
+{
+  "errors": [],
+  "captures": [
+    {
+      "callback": "ord_ls:CHO_LAM:1",
+      "bodies": [
+        "⏳ Chờ làm — <b>DANH SÁCH ĐƠN</b>\nTổng cộng: <b>1 đơn</b> (Trang 1/1)\n──────────────\n📅 <b>28/10/2026</b> · 1 đơn\n📦 <b>#6</b> · Verify customer · 2.000.000 đ\n   ⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (5 đơn hoàn thành)\n   🥇 <b>CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b> (10.000.000 đ)\n──────────────\nBác chạm vào nút xem đơn bên dưới nhé:"
+      ]
+    },
+    {
+      "callback": "ord_vls:CHO_LAM:6:1",
+      "bodies": [
+        "📦 <b>CHI TIẾT ĐƠN HÀNG #6</b>\n🔄 <b>TRẠNG THÁI:</b> <b>⏳ Chờ làm</b>\n──────────────\n👤 <b>KHÁCH:</b> Verify customer\n⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (5 đơn hoàn thành)\n🥇 <b>CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b> (10.000.000 đ)\n📞 <b>SĐT:</b> <code>0901000000</code> <i>(chạm để copy)</i>\n📍 <b>ĐỊA CHỈ:</b> <code>Hà Nội</code>\n📼 <b>BĂNG CASSETTE:</b> Verification cassette\n📼 <b>PHÔI BĂNG:</b> 1 cuốn (verification cassette ×1)\n🎤 <b>CA SĨ:</b> —\n💰 <b>TỔNG TIỀN:</b> <b>2.000.000 đ</b>\n💵 <b>TIỀN COD THU:</b> <b>0 đ</b>\n🚚 <b>MÃ VẬN ĐƠN:</b> <i>(Chưa có)</i>\n📷 <b>ẢNH ĐÍNH KÈM:</b> Không có\n🕒 <b>THỜI GIAN TẠO:</b> 28/10/2026 15:59\n──────────────"
+      ]
+    },
+    {
+      "callback": "cus_v:1:offline",
+      "bodies": [
+        "👤 <b>HỒ SƠ KHÁCH HÀNG: VERIFY CUSTOMER</b>\n📞 <b>SĐT:</b> <code>0901000000</code>\n📍 <b>Địa chỉ (1):</b>\n  1. Hà Nội\n⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (5 đơn hoàn thành)\n🥇 <b>CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b> (10.000.000 đ)\n──────────────\n📦 <b>LỊCH SỬ ĐƠN HÀNG (Trang 1/2):</b>\n\n• <b>#DH6</b> (28/10/2026) - ⏳ Chờ làm\n  📼 Verification cassette\n  💰 2.000.000 đ (COD: 0 đ)\n\n• <b>#DH5</b> (28/10/2026) - ✅ Đã giao thành công\n  📼 Verification cassette\n  💰 2.000.000 đ (COD: 0 đ)\n\n• <b>#DH4</b> (28/10/2026) - ✅ Đã giao thành công\n  📼 Verification cassette\n  💰 2.000.000 đ (COD: 0 đ)\n\n• <b>#DH3</b> (28/10/2026) - ✅ Đã giao thành công\n  📼 Verification cassette\n  💰 2.000.000 đ (COD: 0 đ)\n\n• <b>#DH2</b> (28/10/2026) - ✅ Đã giao thành công\n  📼 Verification cassette\n  💰 2.000.000 đ (COD: 0 đ)\n──────────────\nBác bấm nút bên dưới để xem thêm hoặc quay lại:"
+      ]
+    },
+    {
+      "callback": "cus_pg:1:2",
+      "bodies": [
+        "👤 <b>HỒ SƠ KHÁCH HÀNG: VERIFY CUSTOMER</b>\n📞 <b>SĐT:</b> <code>0901000000</code>\n📍 <b>Địa chỉ (1):</b>\n  1. Hà Nội\n⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (5 đơn hoàn thành)\n🥇 <b>CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b> (10.000.000 đ)\n──────────────\n📦 <b>LỊCH SỬ ĐƠN HÀNG (Trang 2/2):</b>\n\n• <b>#DH1</b> (28/10/2026) - ✅ Đã giao thành công\n  📼 Verification cassette\n  💰 2.000.000 đ (COD: 0 đ)\n──────────────\nBác bấm nút bên dưới để xem thêm hoặc quay lại:"
+      ]
+    },
+    {
+      "callback": "cus_v:2:offline",
+      "bodies": [
+        "👤 <b>HỒ SƠ KHÁCH HÀNG: VERIFY BOM</b>\n📞 <b>SĐT:</b> <code>0901000001</code>\n📍 <b>Địa chỉ (1):</b>\n  1. Hà Nội\n🆕 <b>TẦN SUẤT:</b> <b>KHÁCH VÃNG LAI</b> (0 đơn hoàn thành)\n🪙 <b>CHI TIÊU:</b> <b>DƯỚI 1 TRIỆU</b> (0 đ)\n⚠️ <b>CẢNH BÁO: Khách từng có 1 đơn BOM HÀNG!</b>\n──────────────\n📦 <b>LỊCH SỬ ĐƠN HÀNG (Trang 1/1):</b>\n\n• <b>#DH7</b> (28/10/2026) - 🚫 Bom hàng\n  📼 Verification cassette\n  💰 9.000.000 đ (COD: 0 đ)\n──────────────\nBác bấm nút bên dưới để xem thêm hoặc quay lại:"
+      ]
+    }
+  ]
+}

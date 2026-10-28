@@ -29,6 +29,8 @@ class Order(BaseModel):
 
     id: int | None = None
     customer_id: int | None = None
+    customer_completed_orders: int | None = None
+    customer_completed_spend: int | None = None
     customer_name: str
     customer_phone: str
     shipping_address: str

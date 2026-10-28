@@ -10,6 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, ContextTypes
 
 from src.bot.handlers.base import run_with_typing
+from src.bot.keyboards import format_customer_classification
 from src.db.connection import get_db_connection
 from src.db.customers import get_customer_by_phone
 from src.db.orders import get_customer_order_stats
@@ -37,14 +38,13 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
     cod = f"{draft.get('cod_amount', 0):,} đ".replace(",", ".")
     deposit = draft.get("deposit_amount", 0)
 
-    # Customer history tag
-    history_tag = ""
+    classification = format_customer_classification(
+        stats.get("total_orders", 0) if stats else 0,
+        stats.get("total_spent", 0) if stats else 0,
+    )
     warning_tag = ""
-    if stats and stats.get("total_orders", 0) > 0:
-        spent = f"{stats['total_spent']:,} đ".replace(",", ".")
-        history_tag = f" <i>[Khách quen: {stats['total_orders']} đơn - {spent}]</i>"
-        if stats.get("bom_count", 0) > 0:
-            warning_tag = f"\n⚠️ <b>CẢNH BÁO: Khách từng có {stats['bom_count']} đơn BOM HÀNG!</b>"
+    if stats and stats.get("bom_count", 0) > 0:
+        warning_tag = f"\n⚠️ <b>CẢNH BÁO: Khách từng có {stats['bom_count']} đơn BOM HÀNG!</b>"
 
     deposit_info = f" (đã cọc {deposit:,} đ)".replace(",", ".") if deposit > 0 else ""
 
@@ -88,7 +88,8 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
 
     text = (
         f"📦 <b>ĐƠN HÀNG MỚI (Xem trước)</b>\n"
-        f"👤 <b>KHÁCH:</b> {name}{history_tag}\n"
+        f"👤 <b>KHÁCH:</b> {name}\n"
+        f"{classification}\n"
         f"📞 <b>SĐT:</b> <code>{phone}</code>\n"
         f"{address_label} {html.escape(address_val)}\n"
         f"📼 <b>BĂNG CASSETTE:</b> {items}{tape_tag}{artist_tag}\n"
@@ -124,7 +125,7 @@ def render_preview_card(draft: dict, stats: dict | None = None) -> tuple[str, In
     if customer_id:
         total_orders = stats.get("total_orders", 0) if stats else 0
         btn_text = (
-            f"👤 Chi tiết khách ({total_orders} đơn)"
+            f"👤 Chi tiết khách ({total_orders} đơn xong)"
             if total_orders > 0
             else "👤 Chi tiết khách hàng"
         )

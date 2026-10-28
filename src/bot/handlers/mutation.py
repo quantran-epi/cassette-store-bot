@@ -19,7 +19,12 @@ from src.bot.keyboards import (
     render_mutation_disambiguation_card,
 )
 from src.db.connection import get_db_connection
-from src.db.orders import ACTIVE_MUTATION_STATUSES, find_orders_for_mutation, get_order_by_id
+from src.db.orders import (
+    ACTIVE_MUTATION_STATUSES,
+    find_orders_for_mutation,
+    get_order_by_id,
+    hydrate_customer_stats,
+)
 from src.models.order import Order, OrderStatus
 from src.services.intent_router import extract_order_id_from_reply, parse_fast_path_status
 from src.services.mutation_extractor import (
@@ -196,6 +201,8 @@ async def handle_mutation_flow(
                             matches = (active_matches + terminal_matches)[:5]
                     except Exception:
                         logger.exception("Text-to-SQL fallback failed during mutation lookup")
+
+        await hydrate_customer_stats(db, matches)
 
     # 4. Handle matching counts
     # 4a. 0 found: friendly empty guidance

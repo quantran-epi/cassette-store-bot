@@ -92,6 +92,45 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def format_customer_classification(completed_orders: int, completed_spend: int) -> str:
+    """Format delivered-order frequency and spend as separate Telegram HTML labels."""
+    completed_orders = max(0, completed_orders)
+    completed_spend = max(0, completed_spend)
+
+    if completed_orders == 0:
+        frequency_marker, frequency = "🆕", "KHÁCH VÃNG LAI"
+    elif completed_orders == 1:
+        frequency_marker, frequency = "1️⃣", "KHÁCH MUA 1 LẦN"
+    elif completed_orders < 5:
+        frequency_marker, frequency = "🔁", "KHÁCH QUEN"
+    else:
+        frequency_marker, frequency = "⭐", "KHÁCH THÂN THIẾT"
+
+    if completed_spend < 1_000_000:
+        spend_marker, spend_tier = "🪙", "DƯỚI 1 TRIỆU"
+    elif completed_spend < 3_000_000:
+        spend_marker, spend_tier = "🥉", "1–DƯỚI 3 TRIỆU"
+    elif completed_spend < 10_000_000:
+        spend_marker, spend_tier = "🥈", "3–DƯỚI 10 TRIỆU"
+    else:
+        spend_marker, spend_tier = "🥇", "TỪ 10 TRIỆU"
+    spend = f"{completed_spend:,} đ".replace(",", ".")
+    return (
+        f"{frequency_marker} <b>TẦN SUẤT:</b> <b>{frequency}</b> ({completed_orders} đơn hoàn thành)\n"
+        f"{spend_marker} <b>CHI TIÊU:</b> <b>{spend_tier}</b> ({spend})"
+    )
+
+
+def _order_classification(order: Order) -> str:
+    if isinstance(order.customer_completed_orders, int) and isinstance(
+        order.customer_completed_spend, int
+    ):
+        return format_customer_classification(
+            order.customer_completed_orders, order.customer_completed_spend
+        )
+    return ""
+
+
 def render_order_detail_card(
     order: Order,
     reminders: Any = None,
@@ -109,6 +148,8 @@ def render_order_detail_card(
     photo_count = len(order.photo_file_ids)
     photo_str = f"{photo_count} ảnh" if photo_count > 0 else "Không có"
     notes_line = f"📝 <b>GHI CHÚ:</b> {html.escape(order.notes)}\n" if order.notes else ""
+    classification = _order_classification(order)
+    classification_line = f"{classification}\n" if classification else ""
 
     # Reminder display
     reminder_line = ""
@@ -147,6 +188,7 @@ def render_order_detail_card(
         f"🔄 <b>TRẠNG THÁI:</b> <b>{status_label}</b>\n"
         f"{DIVIDER}\n"
         f"👤 <b>KHÁCH:</b> {html.escape(order.customer_name)}\n"
+        f"{classification_line}"
         f"📞 <b>SĐT:</b> <code>{html.escape(order.customer_phone)}</code> <i>(chạm để copy)</i>\n"
         f"📍 <b>ĐỊA CHỈ:</b> <code>{html.escape(order.shipping_address)}</code>\n"
         f"📼 <b>BĂNG CASSETTE:</b> {html.escape(order.items_text)}\n"
@@ -490,8 +532,11 @@ def format_order_item_summary(order: Order) -> str:
     )
     addr = html.escape(order.shipping_address) if order.shipping_address else "<i>(Chưa có Đ/C)</i>"
     items_line = f"\n   📼 <b>BĂNG:</b> {html.escape(order.items_text)}" if order.items_text else ""
+    classification = _order_classification(order)
+    classification_line = f"   {classification.replace(chr(10), chr(10) + '   ')}\n" if classification else ""
     return (
         f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        f"{classification_line}"
         f"   📞 <b>SĐT:</b> {phone}\n"
         f"   📍 <b>Đ/C:</b> {addr}"
         f"{items_line}\n"
@@ -533,9 +578,11 @@ def render_order_list_card(
 
 
 def format_order_compact_line(order: Order) -> str:
-    """One-line order summary: #id · customer · total (D-2)."""
+    """Compact order summary with classification when aggregate stats are hydrated."""
     total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
-    return f"📦 <b>#{order.id}</b> · {html.escape(order.customer_name)} · {total_fmt}"
+    line = f"📦 <b>#{order.id}</b> · {html.escape(order.customer_name)} · {total_fmt}"
+    classification = _order_classification(order)
+    return f"{line}\n   {classification.replace(chr(10), chr(10) + '   ')}" if classification else line
 
 
 def _vn_date_label(created_at: Any) -> str:
@@ -775,8 +822,11 @@ def render_search_single_order_card(order: Order, query: str, purpose: str | Non
             f"🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>\n<i>(Tìm theo: '{esc_query}')</i>\n{DIVIDER}\n"
         )
 
+    classification = _order_classification(order)
+    classification_line = f"{classification}\n" if classification else ""
     return (
         heading + f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        f"{classification_line}"
         f"📞 <b>SĐT:</b> {phone_display}\n"
         f"📍 <b>ĐỊA CHỈ:</b> {addr}\n"
         f"📼 <b>BĂNG CASSETTE:</b> {items}\n"
@@ -1479,8 +1529,9 @@ def render_customer_detail_card(
     else:
         addr_block = "📍 <b>Địa chỉ:</b> <i>Chưa có</i>"
 
-    total_orders = stats.get("total_orders", 0)
-    spent_str = f"{stats.get('total_spent', 0):,} đ".replace(",", ".")
+    classification = format_customer_classification(
+        stats.get("total_orders", 0), stats.get("total_spent", 0)
+    )
     bom_count = stats.get("bom_count", 0)
     warning_line = (
         f"\n⚠️ <b>CẢNH BÁO: Khách từng có {bom_count} đơn BOM HÀNG!</b>" if bom_count > 0 else ""
@@ -1515,7 +1566,7 @@ def render_customer_detail_card(
         f"👤 <b>HỒ SƠ KHÁCH HÀNG: {cust_name.upper()}</b>\n"
         f"📞 <b>SĐT:</b> {phones_str}\n"
         f"{addr_block}\n"
-        f"📊 <b>Thống kê:</b> {total_orders} đơn | Đã chi: {spent_str}"
+        f"{classification}"
         f"{warning_line}"
         f"{notes_line}\n"
         f"{DIVIDER}\n"

@@ -29,6 +29,7 @@ from src.bot.keyboards import (
     build_order_list_keyboard,
     build_status_order_list_keyboard,
     build_status_selection_keyboard,
+    format_customer_classification,
     format_order_compact_line,
     render_order_detail_card,
     render_order_list_card,
@@ -66,6 +67,41 @@ def test_build_main_menu_reply_keyboard_structure():
     assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
 
 
+@pytest.mark.parametrize(
+    ("orders", "tier"),
+    [(0, "KHÁCH VÃNG LAI"), (1, "KHÁCH MUA 1 LẦN"), (2, "KHÁCH QUEN"), (4, "KHÁCH QUEN"), (5, "KHÁCH THÂN THIẾT")],
+)
+def test_customer_frequency_tier_boundaries(orders, tier):
+    text = format_customer_classification(orders, 0)
+    assert f"TẦN SUẤT:</b> <b>{tier}</b>" in text
+    assert f"({orders} đơn hoàn thành)" in text
+
+
+@pytest.mark.parametrize(
+    ("spend", "tier"),
+    [
+        (999999, "DƯỚI 1 TRIỆU"),
+        (1000000, "1–DƯỚI 3 TRIỆU"),
+        (2999999, "1–DƯỚI 3 TRIỆU"),
+        (3000000, "3–DƯỚI 10 TRIỆU"),
+        (9999999, "3–DƯỚI 10 TRIỆU"),
+        (10000000, "TỪ 10 TRIỆU"),
+    ],
+)
+def test_customer_spend_tier_boundaries(spend, tier):
+    text = format_customer_classification(0, spend)
+    assert f"CHI TIÊU:</b> <b>{tier}</b>" in text
+    assert f"({spend:,} đ)".replace(",", ".") in text
+
+
+def test_customer_classification_clamps_negative_values():
+    text = format_customer_classification(-2, -100)
+    assert "KHÁCH VÃNG LAI" in text
+    assert "(0 đơn hoàn thành)" in text
+    assert "DƯỚI 1 TRIỆU" in text
+    assert "(0 đ)" in text
+
+
 def test_render_order_detail_card_html_and_code():
     """Card renders HTML escape, mono code tags for phone and address (D-05, UI-04)."""
     order = Order(
@@ -79,6 +115,8 @@ def test_render_order_detail_card_html_and_code():
         status=OrderStatus.CHO_LAM,
         tracking_code="VNP987654321",
         photo_file_ids=["photo_1", "photo_2"],
+        customer_completed_orders=5,
+        customer_completed_spend=10000000,
         created_at=datetime(2026, 10, 24, 15, 30),
     )
     card = render_order_detail_card(order)
@@ -97,6 +135,8 @@ def test_render_order_detail_card_html_and_code():
     assert "⏳ Chờ làm" in card
     assert "350.000 đ" in card
     assert "2 ảnh" in card
+    assert "TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b>" in card
+    assert "CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b>" in card
 
 
 def test_build_order_detail_keyboard_copy_buttons_and_callbacks():
@@ -172,6 +212,8 @@ def test_render_order_list_card_empty_and_populated():
             items_text="Băng 1",
             total_amount=150000,
             status=OrderStatus.CHO_LAM,
+            customer_completed_orders=2,
+            customer_completed_spend=1500000,
         ),
         Order(
             id=2,
@@ -194,6 +236,9 @@ def test_render_order_list_card_empty_and_populated():
     assert "Khách 2" in card
     assert "250.000 đ" in card
     assert "✅ Đã giao thành công" in card
+    assert "TẦN SUẤT:</b> <b>KHÁCH QUEN</b>" in card
+    assert "CHI TIÊU:</b> <b>1–DƯỚI 3 TRIỆU</b>" in card
+    assert card.count("TẦN SUẤT:") == 1  # Order without hydrated stats is not mislabeled as zero.
 
 
 def test_build_order_list_keyboard_empty_and_pagination():
@@ -265,6 +310,8 @@ def test_render_status_order_list_card_grouping_and_empty():
             total_amount=100000,
             status=OrderStatus.CHO_LAM,
             created_at=datetime(2026, 10, 26, 10, 0),
+            customer_completed_orders=1,
+            customer_completed_spend=1000000,
         ),
         Order(
             id=2,
@@ -295,6 +342,9 @@ def test_render_status_order_list_card_grouping_and_empty():
     assert "📅 <b>25/10/2026</b> · 1 đơn" in card
     assert "#1" in card and "Khách A" in card and "100.000 đ" in card
     assert "#3" in card and "Khách C" in card and "300.000 đ" in card
+    assert "TẦN SUẤT:</b> <b>KHÁCH MUA 1 LẦN</b>" in card
+    assert "CHI TIÊU:</b> <b>1–DƯỚI 3 TRIỆU</b>" in card
+    assert card.count("TẦN SUẤT:") == 1
 
     empty = render_status_order_list_card([], OrderStatus.DANG_LAM, 1, 1, 0)
     assert "Chưa có đơn nào ở trạng thái này bác nhé!" in empty

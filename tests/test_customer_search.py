@@ -132,7 +132,7 @@ async def test_process_search_query_routes_customer_without_llm(test_db):
 async def test_customer_chooser_and_paging_callbacks(test_db):
     tuanc, lanc, _ = await _seed_customers(test_db)
 
-    # 6 orders for Anh Tuấn -> 2 pages at page size 5
+    # 6 historical orders across statuses -> 2 pages; only 5 delivered count for classification.
     for i in range(6):
         await create_order(
             test_db,
@@ -142,8 +142,8 @@ async def test_customer_chooser_and_paging_callbacks(test_db):
                 customer_phone="0903626566",
                 shipping_address="12 Lê Lợi, Hà Nội",
                 items_text=f"Băng {i + 1}",
-                total_amount=100000,
-                status=OrderStatus.DA_GIAO,
+                total_amount=2000000,
+                status=OrderStatus.DA_GIAO if i < 5 else OrderStatus.BOM_HANG,
             ),
         )
 
@@ -182,7 +182,12 @@ async def test_customer_chooser_and_paging_callbacks(test_db):
     update2 = MagicMock(spec=Update)
     update2.callback_query = query
     await handle_customer_callback(update2, context)
-    assert "Trang 1/2" in query.edit_message_text.call_args[1]["text"]
+    detail_text = query.edit_message_text.call_args[1]["text"]
+    assert "Trang 1/2" in detail_text
+    assert "TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (5 đơn hoàn thành)" in detail_text
+    assert "CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b> (10.000.000 đ)" in detail_text
+    assert "CẢNH BÁO: Khách từng có 1 đơn BOM HÀNG!" in detail_text
+    assert "🚫 Bom hàng" in detail_text
 
     # Page 2 via cus_pg
     query.edit_message_text.reset_mock()
