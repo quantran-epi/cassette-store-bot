@@ -1072,6 +1072,69 @@ async def test_handle_search_callback_detail_without_bot_data_db(tmp_path):
     assert "Bác Khánh" in detail_text
 
 
+@pytest.mark.asyncio
+async def test_run_order_search_unaccent_join_customers_deterministic(test_db):
+    """Seed customer/order with different snapshot, search with unaccent + JOIN customers."""
+    from src.db.customers import create_customer
+    from src.db.orders import create_order
+    from src.models.customer import Customer
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import SearchResultType, run_order_search
+
+    # Customer profile: Điện tử Tuấn Thắm
+    cid = await create_customer(
+        test_db,
+        Customer(
+            name="Điện tử Tuấn Thắm",
+            phones=["0912345678"],
+            addresses=["Hải Phòng"],
+            notes="Khách quen hay lấy cassette",
+        ),
+    )
+
+    # Order snapshot differs/abbreviated: "Tuấn Thắm" instead of full "Điện tử Tuấn Thắm"
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_id=cid,
+            customer_name="Tuấn Thắm",
+            customer_phone="0912345678",
+            shipping_address="Hải Phòng",
+            items_text="2 cuốn Tuấn Vũ",
+            total_amount=200000,
+            cod_amount=200000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+
+    plan_sql = (
+        "SELECT o.* FROM orders o "
+        "LEFT JOIN customers c ON c.id = o.customer_id "
+        "WHERE unaccent(o.customer_name) LIKE unaccent('%Điện tử Tuấn Thắm%') "
+        "OR unaccent(c.name) LIKE unaccent('%Điện tử Tuấn Thắm%') "
+        "OR unaccent(c.notes) LIKE unaccent('%Điện tử Tuấn Thắm%') "
+        "ORDER BY o.created_at DESC, o.id DESC"
+    )
+
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = _list_plan(plan_sql, purpose="Đơn Điện tử Tuấn Thắm")
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+
+    result = await run_order_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="Điện tử Tuấn Thắm",
+    )
+
+    assert result.result_type == SearchResultType.ORDERS
+    assert len(result.orders) == 1
+    assert result.orders[0].id == oid
+    assert result.orders[0].customer_name == "Tuấn Thắm"
+
+
+
 
 
 

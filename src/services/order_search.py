@@ -167,8 +167,8 @@ SQL_DOMAIN_RULES = """
    - "Hôm nay": `date(o.created_at, '+7 hours') = '{current_date_vn}'`
    - "Hôm qua": `date(o.created_at, '+7 hours') = date('{current_date_vn}', '-1 day')`
 6. Tìm kiếm chuỗi tiếng Việt:
-   - Dùng `o.customer_name LIKE '%keyword%'` hoặc `o.items_text LIKE '%keyword%'`
-   - Nếu từ khoá không dấu, có thể dùng `unaccent(o.customer_name) LIKE '%keyword%'` hoặc `unaccent(o.items_text) LIKE '%keyword%'`.
+   - BẮT BUỘC dùng `unaccent(...) LIKE unaccent('%keyword%')` (hoặc `unaccent(...) LIKE '%keyword_khong_dau%'`) ở CẢ HAI VẾ cho mọi tìm kiếm text tiếng Việt (tên khách, địa chỉ, tên băng, ghi chú...). TUYỆT ĐỐI KHÔNG dùng `LIKE` trực tiếp trên raw Unicode vì SQLite LIKE không case-insensitive với ký tự có dấu tiếng Việt.
+   - Snapshot đơn vs hồ sơ khách: Bảng `orders` lưu snapshot (`customer_name`, `customer_phone`, `shipping_address`). Bảng `customers` lưu hồ sơ hiện tại (`name`, `notes`, `phones`, `addresses`). Khi tìm theo tên khách hoặc ghi chú khách, NÊN JOIN `customers c ON c.id = o.customer_id` (hoặc LEFT JOIN) để tìm cả trên `c.name`/`c.notes` phòng trường hợp snapshot trên đơn viết tắt/khác biệt (ví dụ `unaccent(o.customer_name) LIKE '%tuan tham%' OR unaccent(c.name) LIKE '%tuan tham%' OR unaccent(c.notes) LIKE '%tuan tham%'`).
 7. Câu hỏi về SỐ LƯỢNG BĂNG/CUỐN/PHÔI (không phải số đơn): dùng cột `tape_quantity`.
    - Đơn cũ có `tape_quantity IS NULL` (chưa có dữ liệu số lượng) — KHÔNG fallback `tape_count(items_text)`.
    - Tổng dùng `SUM(COALESCE(tape_quantity, 0))`; cùng query trả thêm `COUNT(*) FILTER (WHERE tape_quantity IS NULL) AS orders_without_tape_data`.

@@ -1,8 +1,8 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "disambiguation-order-not-found: Chọn đơn 1-chạm khi khớp nhiều đơn (Disambiguation) không tìm thấy đơn"
 created: 2026-10-25T00:00:00Z
-updated: 2026-10-25T17:45:00Z
+updated: 2026-10-29T12:00:00Z
 ---
 
 ## Current Focus
@@ -54,6 +54,12 @@ root_cause: |
      The search uses strict SQL substring matching `unaccent(customer_name) LIKE '%{kw_clean}%'`. When the user says "đổi sđt khách Bác Ba..." or "khách Anh Hà...", the LLM extracts `target_customer_keyword` retaining honorific / conversational prefixes ("khách Bác Ba", "khách Anh Hà", "anh Nam" per prompt examples). Because the stored `customer_name` in the database does not contain "khách" or "đơn", the LIKE pattern fails to match, resulting in 0 matches and triggering the "KHÔNG TÌM THẤY ĐƠN HÀNG CẦN SỬA" card.
   2. Test Precondition & Extraction Failure:
      In the UAT test session, no orders for "Bác Ba" were persisted in `cassette_store.db` (only Order 2 "Anh Hà" and Order 4 "Anh hà" existed). If the tester literally ran the test prompt "đổi sđt khách Bác Ba...", SQLite legitimately had 0 records for "Bác Ba". Furthermore, `_clean_json_markdown` fails to parse 9router responses when the model outputs trailing explanatory text after markdown fences.
-fix: 
-verification: 
-files_changed: []
+fix: |
+  1. Updated `SQL_DOMAIN_RULES` in `src/services/order_search.py` to enforce `unaccent(...)` on both sides for Vietnamese text search, forbid raw Unicode LIKE, and instruct joining `customers c ON c.id = o.customer_id` for customer name/notes variations.
+  2. Added deterministic unit test `test_run_order_search_unaccent_join_customers_deterministic` in `tests/test_order_search.py` covering customer master vs order snapshot divergence ("Điện tử Tuấn Thắm" vs "Tuấn Thắm").
+verification: |
+  Focused test suite: `pytest tests/test_order_search.py tests/test_search_mixed_pagination.py` passed 75/75.
+files_changed:
+  - src/services/order_search.py
+  - tests/test_order_search.py
+  - .planning/debug/disambiguation-order-not-found.md
