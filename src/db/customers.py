@@ -17,8 +17,9 @@ _CUSTOMER_FILLERS = {
 _HONORIFICS = {"anh", "chi", "chị", "bac", "bác", "ong", "ông", "co", "cô", "chu", "chú", "em"}
 
 _CUSTOMER_SEARCH_PATTERN = re.compile(
-    r"^(?:tim|tra\s+cuu|kiem\s+tra|xem)\s+(?:thong\s+tin\s+)?khach\b|"
-    r"^khach\b(?!.*\b(?:\+?84|0)[35789]\d{8}\b.*\b(?:bang|cuon|lay|gui|thu|cod|\d+k\b))"
+    r"^(?:tim|tra\s+cuu|kiem\s+tra|xem|co)\s+(?:xem\s+)?(?:thong\s+tin\s+)?khach\b|"
+    r"^khach\b(?!.*\b(?:\+?84|0)[35789]\d{8}\b.*\b(?:bang|cuon|lay|gui|thu|cod|\d+k\b))|"
+    r"\bco\s+khach\b"
 )
 _CUSTOMER_ORDER_QUERY_PATTERN = re.compile(
     r"\b(?:khach\s+nao|ai)\b.*\b(?:mua|chi\s+tieu|dat|don)\b|"

@@ -34,6 +34,7 @@ from src.models.order import Order
 from src.services.order_search import (
     SearchResult,
     SearchResultType,
+    fetch_customer_search_page,
     fetch_search_page,
     run_order_search,
 )
@@ -206,24 +207,54 @@ def _render_customer_empty_card(query: str) -> tuple[str, InlineKeyboardMarkup]:
 
 
 def _render_customer_chooser(
-    customers: list[Customer], search_id: str
+    customers: list[Customer],
+    search_id: str,
+    page: int = 1,
+    total_pages: int = 1,
+    total_customers: int | None = None,
+    prefix: str = "",
 ) -> tuple[str, InlineKeyboardMarkup]:
-    """Compact chooser: one button per matched customer."""
+    """Compact chooser: one button per matched customer with pagination."""
+    total = total_customers if total_customers is not None else len(customers)
+    page_suffix = f" <i>(Trang {page}/{total_pages})</i>" if total_pages > 1 else ""
     lines = [
         "👤 <b>TÌM THẤY NHIỀU KHÁCH HÀNG</b>",
-        f"Dạ em tìm thấy <b>{len(customers)} khách</b>, bác chọn đúng người nhé:",
+        f"Dạ em tìm thấy <b>{total} khách</b>, bác chọn đúng người nhé:{page_suffix}",
         DIVIDER,
     ]
     buttons: list[list[InlineKeyboardButton]] = []
     for c in customers:
         phone = c.phones[0] if c.phones else "Chưa có SĐT"
+        addr_text = f" ({html.escape(c.addresses[0])})" if c.addresses else ""
         label = f"👤 {c.name} - {phone}"
         if len(label) > 60:
             label = label[:57] + "..."
-        lines.append(f"• <b>{html.escape(c.name)}</b> - <code>{html.escape(phone)}</code>")
+        lines.append(f"• <b>{html.escape(c.name)}</b> - <code>{html.escape(phone)}</code>{addr_text}")
         buttons.append([InlineKeyboardButton(label, callback_data=f"cus_v:{c.id}:{search_id}")])
+
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "◀️ Trước",
+                    callback_data=f"cus_ls_pg:{search_id}:{page - 1}",
+                )
+            )
+        nav_row.append(
+            InlineKeyboardButton(f"Trang {page}/{total_pages}", callback_data="ord_noop")
+        )
+        if page < total_pages:
+            nav_row.append(
+                InlineKeyboardButton(
+                    "Sau ➡️",
+                    callback_data=f"cus_ls_pg:{search_id}:{page + 1}",
+                )
+            )
+        buttons.append(nav_row)
+
     buttons.append([InlineKeyboardButton("❌ Huỷ", callback_data="sch_cancel")])
-    return "\n".join(lines), InlineKeyboardMarkup(buttons)
+    return prefix + "\n".join(lines), InlineKeyboardMarkup(buttons)
 
 
 async def _render_customer_detail(
@@ -394,17 +425,37 @@ async def process_search_query(
     # Handle CUSTOMERS result
     if result.result_type == SearchResultType.CUSTOMERS:
         matches = result.customers
+        total = result.total_count if isinstance(result.total_count, int) else len(matches)
+        page_size = result.page_size if result.page_size > 0 else 5
+        total_pages = max(1, ceil(total / page_size))
+        prefix = _summary_prefix(result)
         context.user_data.setdefault("customer_searches", {})[search_id] = {
             "query": query_text,
             "ids": [c.id for c in matches],
+            "result": result,
+            "page": 1,
+            "total_pages": total_pages,
+            "total_count": total,
         }
-        if len(matches) == 1:
+        if total == 1 and matches:
             rendered = await _render_customer_detail(context, matches[0].id, 1, search_id)
-            text, kb = rendered or _render_customer_empty_card(query_text)
-        elif matches:
-            text, kb = _render_customer_chooser(matches, search_id)
+            if rendered:
+                text, kb = prefix + rendered[0], rendered[1]
+            else:
+                card_text, kb = _render_customer_empty_card(query_text)
+                text = prefix + card_text
+        elif total > 0 and matches:
+            text, kb = _render_customer_chooser(
+                customers=matches,
+                search_id=search_id,
+                page=1,
+                total_pages=total_pages,
+                total_customers=total,
+                prefix=prefix,
+            )
         else:
-            text, kb = _render_customer_empty_card(query_text)
+            card_text, kb = _render_customer_empty_card(query_text)
+            text = prefix + card_text
         if update.effective_message:
             await update.effective_message.reply_text(
                 text=text, reply_markup=kb, parse_mode="HTML"
@@ -477,21 +528,89 @@ async def handle_customer_callback(update: Update, context: ContextTypes.DEFAULT
         await _safe_edit(query, rendered[0], rendered[1])
         return
 
+    if action == "cus_ls_pg" and len(parts) >= 3:
+        search_id = parts[1]
+        try:
+            target_page = int(parts[2])
+        except ValueError:
+            return
+        snap = context.user_data.get("customer_searches", {}).get(search_id)
+        if not snap:
+            await _safe_edit(query, "⚠️ Kết quả tìm khách đã hết hạn. Bác hãy tìm lại nhé!")
+            return
+        result = snap.get("result")
+        total_pages = snap.get("total_pages", 1)
+        total_count = snap.get("total_count", len(snap.get("ids", [])))
+        target_page = max(1, min(target_page, total_pages))
+        snap["page"] = target_page
+
+        prefix = _summary_prefix(result) if result else ""
+
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await _safe_edit(query, "⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
+                return
+            if result and getattr(result, "list_sql", None):
+                customers = await fetch_customer_search_page(
+                    active_db, result.list_sql, target_page, result.page_size
+                )
+            else:
+                ids = snap.get("ids", [])
+                page_size = 5
+                start = (target_page - 1) * page_size
+                slice_ids = ids[start : start + page_size]
+                customers = [
+                    c for cid in slice_ids if (c := await get_customer_by_id(active_db, cid))
+                ]
+        text, kb = _render_customer_chooser(
+            customers=customers,
+            search_id=search_id,
+            page=target_page,
+            total_pages=total_pages,
+            total_customers=total_count,
+            prefix=prefix,
+        )
+        await _safe_edit(query, text, kb)
+        return
+
     if action == "cus_bk" and len(parts) >= 2:
         search_id = parts[1]
         snap = context.user_data.get("customer_searches", {}).get(search_id)
         if not snap:
             await _safe_edit(query, "⚠️ Kết quả tìm khách đã hết hạn. Bác hãy tìm lại nhé!")
             return
+        result = snap.get("result")
+        page = snap.get("page", 1)
+        total_pages = snap.get("total_pages", 1)
+        total_count = snap.get("total_count", len(snap.get("ids", [])))
+        prefix = _summary_prefix(result) if result else ""
+
         db_ctx = _get_active_db_context(context)
         async with db_ctx as active_db:
             if not active_db:
                 await _safe_edit(query, "⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
                 return
-            customers = [
-                c for cid in snap["ids"] if (c := await get_customer_by_id(active_db, cid))
-            ]
-        text, kb = _render_customer_chooser(customers, search_id)
+            if result and getattr(result, "list_sql", None):
+                customers = await fetch_customer_search_page(
+                    active_db, result.list_sql, page, result.page_size
+                )
+            else:
+                ids = snap.get("ids", [])
+                page_size = 5
+                start = (page - 1) * page_size
+                slice_ids = ids[start : start + page_size]
+                customers = [
+                    c for cid in slice_ids if (c := await get_customer_by_id(active_db, cid))
+                ]
+        text, kb = _render_customer_chooser(
+            customers=customers,
+            search_id=search_id,
+            page=page,
+            total_pages=total_pages,
+            total_customers=total_count,
+            prefix=prefix,
+        )
         await _safe_edit(query, text, kb)
         return
 

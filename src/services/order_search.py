@@ -274,6 +274,7 @@ QUY TẮC BẮT BUỘC:
      dùng `SELECT c.* FROM customers c ... ORDER BY c.id DESC`.
      Nếu cần lọc theo lịch sử mua hàng thì JOIN `orders o ON o.customer_id = c.id`.
    - KHÔNG thêm LIMIT trừ khi bác chủ yêu cầu rõ số lượng (VD "5 khách đầu tiên", "3 đơn gần nhất").
+   - Nếu câu hỏi THUẦN THỐNG KÊ (chỉ hỏi "bao nhiêu đơn", "mấy khách", "tổng tiền bao nhiêu", "chi tiêu thế nào", "xếp hạng") mà KHÔNG yêu cầu xem hay liệt kê danh sách: để `list: null`.
 4. aggregates: câu thống kê dùng COUNT/SUM/AVG/MIN/MAX; gộp nhiều cột số liệu cần trả lời vào MỘT câu. Chỉ thêm LIMIT khi bác chủ yêu cầu top-n.
    purpose là nhãn tiếng Việt ngắn (tối đa 120 ký tự) mô tả đúng phần câu hỏi mà truy vấn trả lời; không rỗng.
 """.strip()
@@ -687,9 +688,27 @@ async def fetch_search_page(
     sql = f"SELECT * FROM ({prepared_list_sql}) LIMIT ? OFFSET ?"
     async with db.execute(sql, (page_size, offset)) as cursor:
         rows = await cursor.fetchall()
-    orders = [_dict_to_order(dict(row)) for row in rows]
+    dict_rows = [dict(row) for row in rows]
+    if dict_rows and not _rows_are_orders(dict_rows):
+        return []
+    orders = [_dict_to_order(r) for r in dict_rows]
     await hydrate_customer_stats(db, orders)
     return orders
+
+
+async def fetch_customer_search_page(
+    db: aiosqlite.Connection,
+    prepared_list_sql: str,
+    page: int,
+    page_size: int = 5,
+) -> list[Customer]:
+    """Fetch a single page of customers from the DB using prepared SQL."""
+    page = max(1, int(page))
+    offset = (page - 1) * page_size
+    sql = f"SELECT * FROM ({prepared_list_sql}) LIMIT ? OFFSET ?"
+    async with db.execute(sql, (page_size, offset)) as cursor:
+        rows = await cursor.fetchall()
+    return [_dict_to_customer(dict(row)) for row in rows]
 
 
 def _resolve_prompt_time(current_time: datetime | None) -> tuple[str, str]:
@@ -1204,17 +1223,18 @@ async def _execute_search_plan(
             ),
         )
 
-    if customers and aggregate_parts:
-        result_type = SearchResultType.MIXED
-    elif customers:
+    is_customer_list = bool(customers) or (
+        plan.list_query is not None
+        and _customers_alias(list_sql or "") is not None
+        and _orders_alias(list_sql or "") is None
+    )
+
+    if is_customer_list:
         result_type = SearchResultType.CUSTOMERS
     elif plan.list_query is not None and aggregate_parts:
         result_type = SearchResultType.MIXED
     elif plan.list_query is not None:
-        if _customers_alias(list_sql or "") is not None and _orders_alias(list_sql or "") is None:
-            result_type = SearchResultType.CUSTOMERS
-        else:
-            result_type = SearchResultType.ORDERS
+        result_type = SearchResultType.ORDERS
     else:
         result_type = SearchResultType.AGGREGATE
 
