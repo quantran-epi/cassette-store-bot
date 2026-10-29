@@ -9,6 +9,7 @@
 *.db-shm
 *.db.bak-*
 backups/
+backup/
 
 # Python bytecode & caches
 __pycache__/
