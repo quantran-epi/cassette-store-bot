@@ -1,6 +1,14 @@
 from datetime import datetime
 import json
+import sqlite3
 import pytest
+
+from scripts.import_legacy_blob import parse_args
+import src.services.legacy_importer as importer_module
+from src.config import Settings
+from src.db.connection import get_db_connection
+from src.db.schema import init_db
+
 
 from src.models.customer import Customer
 from src.models.order import OrderStatus
@@ -143,6 +151,60 @@ def test_mapping_customer_and_order_fields():
     assert order_dict["tracking_code"] == "VTP123456"
     assert order_dict["tape_quantity"] >= 1
     assert order_dict["created_at"] == "2025-06-13T13:19:18.616Z"
+
+
+def test_empty_items_fallback_to_note_or_safe_text():
+    customer = Customer(name="A", phones=["090"], addresses=["Addr"])
+    base = {"id": "order_empty", "customerId": "c", "note": "Ghi chú hàng", "placedItems": []}
+    mapped = map_legacy_order(base, {"c": 1}, customer)
+    assert mapped["items_text"] == "Ghi chú hàng"
+    base["note"] = ""
+    mapped = map_legacy_order(base, {"c": 1}, customer)
+    assert mapped["items_text"] == "Không có chi tiết mặt hàng"
+
+
+def test_embedded_customer_snapshot_wins():
+    raw = _make_sample_blob()["payload"]["order"]["orders"][0]
+    raw["customer"] = {"name": "Snapshot", "mobile": "099", "address": "Snapshot address"}
+    mapped = map_legacy_order(raw, {"cust_1": 1}, map_legacy_customer({"name": "Master", "mobile": "088", "address": "Master address"}))
+    assert mapped["customer_name"] == "Snapshot"
+    assert mapped["customer_phone"] == "099"
+    assert mapped["shipping_address"] == "Snapshot address"
+
+
+def test_parser_rejects_missing_ids_and_links():
+    blob = _make_sample_blob()
+    del blob["payload"]["order"]["orders"][0]["id"]
+    with pytest.raises(ValueError, match="requires non-empty"):
+        parse_legacy_blob(blob)
+    blob = _make_sample_blob()
+    blob["payload"]["order"]["orders"][0]["customerId"] = "missing"
+    with pytest.raises(ValueError, match="unknown customerId"):
+        parse_legacy_blob(blob)
+
+
+def test_cli_defaults_to_settings_database(monkeypatch):
+    args = parse_args(["--blob", "backup/blob"])
+    assert args.db is None
+    from scripts.import_legacy_blob import resolve_db_path
+    assert resolve_db_path(None) == "cassette_store.db"
+
+
+@pytest.mark.asyncio
+async def test_pending_transaction_rejected(test_db):
+    await test_db.execute("BEGIN")
+    with pytest.raises(RuntimeError, match="caller transaction"):
+        await LegacyBlobImporter(_make_sample_blob()).run(test_db, dry_run=False)
+    await test_db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_tracking_code_collision_with_new_order_does_not_skip(test_db):
+    cursor = await test_db.execute("INSERT INTO customers (name, phones) VALUES ('New', '[\"090999\"]')")
+    await test_db.execute("INSERT INTO orders (customer_id, customer_name, customer_phone, shipping_address, items_text, tracking_code) VALUES (?, 'New', '090999', 'A', 'new', 'TRACK_001')", (cursor.lastrowid,))
+    await test_db.commit()
+    summary = await LegacyBlobImporter(_make_sample_blob()).run(test_db, dry_run=False)
+    assert summary.orders_created == 3
 
 
 @pytest.mark.asyncio

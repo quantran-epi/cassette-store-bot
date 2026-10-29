@@ -11,6 +11,7 @@ import logging
 import sys
 from pathlib import Path
 
+from src.config import Settings
 from src.db.connection import get_db_connection
 from src.db.schema import init_db
 from src.services.legacy_importer import LegacyBlobImporter
@@ -48,6 +49,15 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(args)
 
 
+def resolve_db_path(db_path: str | None) -> str:
+    if db_path:
+        return db_path
+    try:
+        return Settings().sqlite_db_path
+    except Exception:
+        return "cassette_store.db"
+
+
 async def run_import(blob_path: str, dry_run: bool, db_path: str | None = None) -> int:
     path = Path(blob_path)
     if not path.is_file():
@@ -62,7 +72,8 @@ async def run_import(blob_path: str, dry_run: bool, db_path: str | None = None) 
 
     importer = LegacyBlobImporter(path)
 
-    async with get_db_connection(db_path) as db:
+    resolved_db_path = db_path or Settings().sqlite_db_path
+    async with get_db_connection(resolved_db_path) as db:
         await init_db(db)
         summary = await importer.run(db, dry_run=dry_run)
 
