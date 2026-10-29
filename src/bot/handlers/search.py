@@ -296,28 +296,26 @@ async def process_search_query(
                     )
                 return
 
-            # Deterministic customer lookup: no LLM, no typing action, works without a client.
-            if intent == IntentType.CUSTOMER_PROFILE:
-                matches = await search_customers(active_db, query_text)
-                search_id = uuid.uuid4().hex[:8]
-                context.user_data.setdefault("customer_searches", {})[search_id] = {
-                    "query": query_text,
-                    "ids": [c.id for c in matches],
-                }
-                if len(matches) == 1:
-                    rendered = await _render_customer_detail(context, matches[0].id, 1, search_id)
-                    text, kb = rendered or _render_customer_empty_card(query_text)
-                elif matches:
-                    text, kb = _render_customer_chooser(matches, search_id)
-                else:
-                    text, kb = _render_customer_empty_card(query_text)
-                if update.effective_message:
-                    await update.effective_message.reply_text(
-                        text=text, reply_markup=kb, parse_mode="HTML"
-                    )
-                return
-
             if not openai_client or not settings:
+                if intent == IntentType.CUSTOMER_PROFILE:
+                    matches = await search_customers(active_db, query_text)
+                    search_id = uuid.uuid4().hex[:8]
+                    context.user_data.setdefault("customer_searches", {})[search_id] = {
+                        "query": query_text,
+                        "ids": [c.id for c in matches],
+                    }
+                    if len(matches) == 1:
+                        rendered = await _render_customer_detail(context, matches[0].id, 1, search_id)
+                        text, kb = rendered or _render_customer_empty_card(query_text)
+                    elif matches:
+                        text, kb = _render_customer_chooser(matches, search_id)
+                    else:
+                        text, kb = _render_customer_empty_card(query_text)
+                    if update.effective_message:
+                        await update.effective_message.reply_text(
+                            text=text, reply_markup=kb, parse_mode="HTML"
+                        )
+                    return
                 logger.error("OpenAI client or settings missing from application data")
                 if update.effective_message:
                     await update.effective_message.reply_text(
@@ -353,7 +351,32 @@ async def process_search_query(
                     query=query_text,
                 )
     except Exception:
-        logger.exception("Natural language order search failed")
+        logger.exception("Natural language search failed")
+        if intent == IntentType.CUSTOMER_PROFILE:
+            try:
+                db_ctx = _get_active_db_context(context)
+                async with db_ctx as active_db:
+                    if active_db:
+                        matches = await search_customers(active_db, query_text)
+                        search_id = uuid.uuid4().hex[:8]
+                        context.user_data.setdefault("customer_searches", {})[search_id] = {
+                            "query": query_text,
+                            "ids": [c.id for c in matches],
+                        }
+                        if len(matches) == 1:
+                            rendered = await _render_customer_detail(context, matches[0].id, 1, search_id)
+                            text, kb = rendered or _render_customer_empty_card(query_text)
+                        elif matches:
+                            text, kb = _render_customer_chooser(matches, search_id)
+                        else:
+                            text, kb = _render_customer_empty_card(query_text)
+                        if update.effective_message:
+                            await update.effective_message.reply_text(
+                                text=text, reply_markup=kb, parse_mode="HTML"
+                            )
+                        return
+            except Exception:
+                pass
         if update.effective_message:
             await update.effective_message.reply_text(
                 "⚠️ Hệ thống chưa hiểu được câu hỏi này hoặc bị gián đoạn. Bác thử tìm lại với từ khoá đơn giản hơn nhé!"
@@ -367,6 +390,26 @@ async def process_search_query(
         "result": result,
         "page": 1,
     }
+
+    # Handle CUSTOMERS result
+    if result.result_type == SearchResultType.CUSTOMERS:
+        matches = result.customers
+        context.user_data.setdefault("customer_searches", {})[search_id] = {
+            "query": query_text,
+            "ids": [c.id for c in matches],
+        }
+        if len(matches) == 1:
+            rendered = await _render_customer_detail(context, matches[0].id, 1, search_id)
+            text, kb = rendered or _render_customer_empty_card(query_text)
+        elif matches:
+            text, kb = _render_customer_chooser(matches, search_id)
+        else:
+            text, kb = _render_customer_empty_card(query_text)
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                text=text, reply_markup=kb, parse_mode="HTML"
+            )
+        return
 
     # Handle AGGREGATE result per D-07
     if result.result_type == SearchResultType.AGGREGATE:

@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 
 from src.db.connection import remove_accents
 from src.db.orders import hydrate_customer_stats
+from src.models.customer import Customer
 from src.models.order import Order, OrderStatus
 
 
@@ -166,9 +167,37 @@ SQL_DOMAIN_RULES = """
    - Cột `created_at` lưu giờ UTC. Chuyển sang giờ Việt Nam dùng `datetime(created_at, '+7 hours')` hoặc `date(created_at, '+7 hours')`.
    - "Hôm nay": `date(o.created_at, '+7 hours') = '{current_date_vn}'`
    - "Hôm qua": `date(o.created_at, '+7 hours') = date('{current_date_vn}', '-1 day')`
-6. Tìm kiếm chuỗi tiếng Việt:
-   - BẮT BUỘC dùng `unaccent(...) LIKE unaccent('%keyword%')` (hoặc `unaccent(...) LIKE '%keyword_khong_dau%'`) ở CẢ HAI VẾ cho mọi tìm kiếm text tiếng Việt (tên khách, địa chỉ, tên băng, ghi chú...). TUYỆT ĐỐI KHÔNG dùng `LIKE` trực tiếp trên raw Unicode vì SQLite LIKE không case-insensitive với ký tự có dấu tiếng Việt.
-   - Snapshot đơn vs hồ sơ khách: Bảng `orders` lưu snapshot (`customer_name`, `customer_phone`, `shipping_address`). Bảng `customers` lưu hồ sơ hiện tại (`name`, `notes`, `phones`, `addresses`). Khi tìm theo tên khách hoặc ghi chú khách, NÊN JOIN `customers c ON c.id = o.customer_id` (hoặc LEFT JOIN) để tìm cả trên `c.name`/`c.notes` phòng trường hợp snapshot trên đơn viết tắt/khác biệt (ví dụ `unaccent(o.customer_name) LIKE '%tuan tham%' OR unaccent(c.name) LIKE '%tuan tham%' OR unaccent(c.notes) LIKE '%tuan tham%'`).
+6. Phân biệt rạch ròi các trường và tìm kiếm tiếng Việt:
+   - BẮT BUỘC dùng `unaccent(...) LIKE unaccent('%keyword%')` hoặc `unaccent(...) LIKE '%keyword_khong_dau%'` ở CẢ HAI VẾ cho mọi text tiếng Việt. TUYỆT ĐỐI KHÔNG dùng LIKE trực tiếp trên raw Unicode vì SQLite LIKE không case-insensitive với ký tự có dấu.
+   - TÊN KHÁCH HÀNG: Cụm từ chỉ người ("tên X", "khách tên X", "anh X", "chị X", "bác X", "ông X", "bà X", "cô X", "chú X", "em X", "đơn của X").
+     + BẮT BUỘC chỉ lọc trên cột tên: `c.name` (khi tìm khách) hoặc `o.customer_name` / `c.name` (khi tìm đơn).
+     + TUYỆT ĐỐI KHÔNG tìm tên khách trên cột địa chỉ hay ghi chú (tránh nhầm: khách tên "Lâm" thì không được khớp địa chỉ "Gia Lâm", tên "Hà" không được khớp "Hà Nội/Hà Nam").
+     + Lược bỏ danh xưng giao tiếp (`anh`, `chị`, `bác`, `ông`, `bà`, `cô`, `chú`, `em`) vì trong DB tên có thể không lưu danh xưng hoặc lưu khác danh xưng.
+     + TÊN NHIỀU TỪ CÓ DẤU CÁCH: BẮT BUỘC dùng tokenized AND cho từng từ (ví dụ "Nguyễn Văn Lâm" hoặc "Tuấn Thắm"):
+       `unaccent(c.name) LIKE '%nguyen%' AND unaccent(c.name) LIKE '%lam%'` (hoặc `unaccent(o.customer_name)`).
+       TUYỆT ĐỐI KHÔNG dùng LIKE nguyên cụm `%nguyen van lam%` hay `%nguyen lam%` vì sẽ trượt nếu DB lưu thiếu từ đệm hoặc khác khoảng trắng.
+     + Khi tìm đơn theo tên khách, luôn `LEFT JOIN customers c ON c.id = o.customer_id` để tìm cả trên snapshot `o.customer_name` lẫn master `c.name`:
+       `((unaccent(o.customer_name) LIKE '%tuan%' AND unaccent(o.customer_name) LIKE '%tham%') OR (unaccent(c.name) LIKE '%tuan%' AND unaccent(c.name) LIKE '%tham%'))`
+   - ĐỊA CHỈ: Cụm từ chỉ nơi chốn ("ở Y", "tại Y", "địa chỉ Y", "gửi về Y", "ship đi Y", "khách ở Y").
+     + BẮT BUỘC chỉ lọc trên cột địa chỉ: `c.addresses` hoặc `o.shipping_address`.
+     + Ví dụ "ở Hà Nội" -> `unaccent(c.addresses) LIKE '%ha noi%'` (hoặc `unaccent(o.shipping_address) LIKE '%ha noi%'`).
+   - SỐ ĐIỆN THOẠI: Lọc trên `c.phones LIKE '%sdt%'` hoặc `o.customer_phone LIKE '%sdt%'`.
+   - TRẠNG THÁI ĐƠN HÀNG (`o.status`):
+     + 'CHO_LAM', 'DANG_LAM', 'DA_DONG_GOI', 'DA_TAO_DON', 'SHIPPER_DA_LAY', 'DA_GIAO', 'BOM_HANG', 'HUY_DON'.
+     + "chưa giao" / "chưa ship" / "đang xử lý": `o.status NOT IN ('DA_GIAO', 'BOM_HANG', 'HUY_DON')`.
+     + "đã giao" / "giao thành công": `o.status = 'DA_GIAO'`.
+     + "bom" / "bom hàng": `o.status = 'BOM_HANG'`.
+     + "huỷ" / "đã huỷ": `o.status = 'HUY_DON'`.
+   - HÌNH THỨC THANH TOÁN & TIỀN:
+     + "chuyển khoản" / "ck" / "đã cọc": `o.payment_method = 'CHUYEN_KHOAN'`.
+     + "cod" / "thu hộ": `o.payment_method = 'COD'`.
+     + Tiền: `o.total_amount`, `o.cod_amount`.
+   - MÃ VẬN ĐƠN: `o.tracking_code LIKE '%mã%'`.
+   - BẮT BUỘC KẾT HỢP CÁC TRƯỜNG BẰNG `AND`:
+     + "tìm khách tên Lâm ở Hà Nội":
+       `SELECT c.* FROM customers c WHERE unaccent(c.name) LIKE '%lam%' AND unaccent(c.addresses) LIKE '%ha noi%' ORDER BY c.id DESC`
+     + "tìm đơn của anh Kiên ở Hòa Bình chưa giao":
+       `SELECT o.* FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE (unaccent(o.customer_name) LIKE '%kien%' OR unaccent(c.name) LIKE '%kien%') AND (unaccent(o.shipping_address) LIKE '%hoa binh%' OR unaccent(c.addresses) LIKE '%hoa binh%') AND o.status NOT IN ('DA_GIAO', 'BOM_HANG', 'HUY_DON') ORDER BY o.created_at DESC, o.id DESC`
 7. Câu hỏi về SỐ LƯỢNG BĂNG/CUỐN/PHÔI (không phải số đơn): dùng cột `tape_quantity`.
    - Đơn cũ có `tape_quantity IS NULL` (chưa có dữ liệu số lượng) — KHÔNG fallback `tape_count(items_text)`.
    - Tổng dùng `SUM(COALESCE(tape_quantity, 0))`; cùng query trả thêm `COUNT(*) FILTER (WHERE tape_quantity IS NULL) AS orders_without_tape_data`.
@@ -238,7 +267,13 @@ QUY TẮC BẮT BUỘC:
 {"list": {"purpose": "...", "sql": "..."} | null, "aggregates": [{"purpose": "...", "sql": "..."}]}
    Tối đa 1 list và tối đa 3 aggregates; phải có ít nhất 1 truy vấn (list hoặc aggregates). Được phép có cả hai.
 2. Mỗi truy vấn là MỘT câu SELECT read-only độc lập; KHÔNG dùng dấu `;`, không DDL/DML/PRAGMA.
-3. list: câu liệt kê đơn hàng, dùng `SELECT o.* FROM orders o ... ORDER BY o.created_at DESC, o.id DESC`. KHÔNG thêm LIMIT trừ khi bác chủ yêu cầu rõ số lượng.
+3. list:
+   - Nếu câu hỏi tìm kiếm ĐƠN HÀNG (đơn hàng, mã vận đơn, tiền, ca sĩ, phôi, trạng thái đơn...):
+     dùng `SELECT o.* FROM orders o ... ORDER BY o.created_at DESC, o.id DESC`.
+   - Nếu câu hỏi tìm kiếm KHÁCH HÀNG / HỒ SƠ KHÁCH (tìm khách, danh sách khách, hồ sơ, ai ở đâu, SĐT khách...):
+     dùng `SELECT c.* FROM customers c ... ORDER BY c.id DESC`.
+     Nếu cần lọc theo lịch sử mua hàng thì JOIN `orders o ON o.customer_id = c.id`.
+   - KHÔNG thêm LIMIT trừ khi bác chủ yêu cầu rõ số lượng (VD "5 khách đầu tiên", "3 đơn gần nhất").
 4. aggregates: câu thống kê dùng COUNT/SUM/AVG/MIN/MAX; gộp nhiều cột số liệu cần trả lời vào MỘT câu. Chỉ thêm LIMIT khi bác chủ yêu cầu top-n.
    purpose là nhãn tiếng Việt ngắn (tối đa 120 ký tự) mô tả đúng phần câu hỏi mà truy vấn trả lời; không rỗng.
 """.strip()
@@ -273,6 +308,7 @@ class SearchResultType(str, Enum):
     """Classification type of natural language search result."""
 
     ORDERS = "ORDERS"
+    CUSTOMERS = "CUSTOMERS"
     AGGREGATE = "AGGREGATE"
     MIXED = "MIXED"
 
@@ -284,6 +320,7 @@ class SearchResult:
     result_type: SearchResultType
     sql_executed: str
     orders: list[Order] = field(default_factory=list)
+    customers: list[Customer] = field(default_factory=list)
     summary_text: str | None = None
     raw_rows: list[dict[str, Any]] = field(default_factory=list)
     list_sql: str | None = None
@@ -523,13 +560,11 @@ _SQL_CLAUSE_STOPWORDS = {
 }
 
 
-def _orders_alias(sql: str) -> str | None:
-    """Qualifier to use for order columns, or None when injecting ORDER BY is unsafe.
+def _table_alias(sql: str, table_name: str) -> str | None:
+    """Qualifier to use for table columns, or None when injecting ORDER BY is unsafe.
 
-    Looks only at the top-level FROM clause, so a nested ``FROM orders`` (EXISTS / IN / derived
-    table) cannot leak an alias that is invisible outside that subquery. Returns None for
-    compound selects and derived-table sources, where appended columns may not exist in the
-    result set.
+    Looks only at the top-level FROM clause, so a nested subquery cannot leak an alias
+    that is invisible outside that subquery. Returns None for compound selects and derived tables.
     """
     clauses, masked = _top_level_clauses(sql)
     if any(keyword in _COMPOUND_KEYWORDS for keyword, _, _ in clauses):
@@ -549,7 +584,7 @@ def _orders_alias(sql: str) -> str | None:
         return None
 
     match = re.search(
-        r"\borders\b(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?",
+        rf"\b{table_name}\b(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*))?",
         segment,
         re.IGNORECASE,
     )
@@ -558,10 +593,18 @@ def _orders_alias(sql: str) -> str | None:
     alias = match.group(1)
     if not alias or alias.upper() in _SQL_CLAUSE_STOPWORDS:
         if re.search(r"\bJOIN\b", masked, re.IGNORECASE):
-            # Unaliased orders table in a join: the table name is the unambiguous qualifier.
-            return "orders"
+            # Unaliased table in a join: the table name is the unambiguous qualifier.
+            return table_name
         return ""
     return alias
+
+
+def _orders_alias(sql: str) -> str | None:
+    return _table_alias(sql, "orders")
+
+
+def _customers_alias(sql: str) -> str | None:
+    return _table_alias(sql, "customers")
 
 
 _TRAILING_LIMIT = re.compile(
@@ -599,6 +642,15 @@ def prepare_list_sql(sql: str) -> str:
             body = f"{body}, {prefix}id DESC"
         return f"{body} {tail}".strip()
 
+    c_alias = _customers_alias(body)
+    if c_alias is not None:
+        prefix = f"{c_alias}." if c_alias else ""
+        if not has_top_order:
+            body = f"{body} ORDER BY {prefix}id DESC"
+        elif not re.search(r"\bid\b", _mask_sql_literals(body), re.IGNORECASE):
+            body = f"{body}, {prefix}id DESC"
+        return f"{body} {tail}".strip()
+
     if _is_compound(body) and not has_top_order:
         # Compound branches: qualify by the first projected column set, which is `id` for
         # order listings. Only safe because both branches project the same columns.
@@ -607,8 +659,6 @@ def prepare_list_sql(sql: str) -> str:
             return f"{body} ORDER BY id DESC {tail}".strip()
 
     # Derived table / unknown shape: leave ordering untouched rather than emit invalid SQL.
-    # ponytail: paging may be unstable for these rare shapes; add a column-aware wrapper when
-    # the LLM starts emitting them (prompt currently asks for plain `SELECT ... FROM orders`).
     logger.warning("Search SQL has no safe ORDER BY to inject: %s", cleaned)
     return cleaned
 
@@ -976,6 +1026,29 @@ def _is_aggregate_statement(sql: str) -> bool:
     return bool(re.search(r"\b(COUNT|SUM|AVG|MAX|MIN|TOTAL|GROUP_CONCAT)\s*\(", projection, re.IGNORECASE))
 
 
+def _dict_to_customer(row: dict[str, Any]) -> Customer:
+    """Convert row dict to Customer domain model."""
+    phones = _parse_json_list(row.get("phones"))
+    addresses = _parse_json_list(row.get("addresses"))
+    return Customer(
+        id=row.get("id"),
+        name=row.get("name", ""),
+        phones=phones if isinstance(phones, list) else [],
+        addresses=addresses if isinstance(addresses, list) else [],
+        notes=row.get("notes") or "",
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+def _rows_are_customers(rows: list[dict[str, Any]]) -> bool:
+    """True when rows carry the columns needed to render customer cards."""
+    if not rows:
+        return False
+    keys = set(rows[0].keys())
+    return ({"name", "phones"}.issubset(keys) or {"id", "name", "addresses"}.issubset(keys)) and not _rows_are_orders(rows)
+
+
 def _rows_are_orders(rows: list[dict[str, Any]]) -> bool:
     """True when rows carry the columns needed to render order cards."""
     return bool(rows) and ORDER_RESULT_FIELDS.issubset(set(rows[0].keys()))
@@ -1075,6 +1148,7 @@ async def _execute_search_plan(
     list_purpose: str | None = None
     total_count: int | None = None
     orders: list[Order] = []
+    customers: list[Customer] = []
     sql_parts: list[str] = []
 
     if plan.list_query is not None:
@@ -1087,12 +1161,16 @@ async def _execute_search_plan(
             (page_size, offset),
         ) as cursor:
             list_rows = [dict(row) for row in await cursor.fetchall()]
-        if list_rows and not _rows_are_orders(list_rows):
-            raise ValueError(
-                "Truy vấn list không trả về đơn hàng (thiếu cột bắt buộc)."
-            )
-        orders = [_dict_to_order(row) for row in list_rows]
-        await hydrate_customer_stats(db, orders)
+        if list_rows:
+            if _rows_are_orders(list_rows):
+                orders = [_dict_to_order(row) for row in list_rows]
+                await hydrate_customer_stats(db, orders)
+            elif _rows_are_customers(list_rows):
+                customers = [_dict_to_customer(row) for row in list_rows]
+            else:
+                raise ValueError(
+                    "Truy vấn list không trả về đơn hàng hoặc khách hàng (thiếu cột bắt buộc)."
+                )
         sql_parts.append(list_sql)
 
     aggregate_parts: list[dict[str, Any]] = []
@@ -1126,10 +1204,17 @@ async def _execute_search_plan(
             ),
         )
 
-    if plan.list_query is not None and aggregate_parts:
+    if customers and aggregate_parts:
+        result_type = SearchResultType.MIXED
+    elif customers:
+        result_type = SearchResultType.CUSTOMERS
+    elif plan.list_query is not None and aggregate_parts:
         result_type = SearchResultType.MIXED
     elif plan.list_query is not None:
-        result_type = SearchResultType.ORDERS
+        if _customers_alias(list_sql or "") is not None and _orders_alias(list_sql or "") is None:
+            result_type = SearchResultType.CUSTOMERS
+        else:
+            result_type = SearchResultType.ORDERS
     else:
         result_type = SearchResultType.AGGREGATE
 
@@ -1137,6 +1222,7 @@ async def _execute_search_plan(
         result_type=result_type,
         sql_executed=sql_executed,
         orders=orders,
+        customers=customers,
         summary_text=summary_text,
         raw_rows=raw_rows,
         list_sql=list_sql,

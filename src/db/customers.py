@@ -12,6 +12,7 @@ _CUSTOMER_FILLERS = {
     "khach", "khách", "tim", "tìm", "tra", "cuu", "cứu", "kiem", "kiểm", "xem",
     "cua", "của", "cho", "sdt", "so", "số", "dien", "điện", "thoai", "thoại",
     "ten", "tên", "dia", "địa", "chi", "chỉ", "hang", "hàng",
+    "o", "ở", "tai", "tại", "ve", "về", "tp", "thanh", "thành", "pho", "phố", "tinh", "tỉnh",
 }
 _HONORIFICS = {"anh", "chi", "chị", "bac", "bác", "ong", "ông", "co", "cô", "chu", "chú", "em"}
 
@@ -106,6 +107,31 @@ async def search_customers(
     Every substantive token must match the concatenated profile or appear as a substring of
     one of the customer's phones (partial phone lookup). Tokens are bound as SQL parameters.
     """
+    clean_q = remove_accents(query).strip().lower()
+
+    # Slot-aware matching when explicit "tên X" or "ở/tại/địa chỉ Y" cues exist
+    name_m = re.search(r"\bten\s+([^,]+?)(?:\s+(?:o|tai|dia\s+chi|sdt|so\s+dien\s+thoai)\b|$)", clean_q)
+    addr_m = re.search(r"\b(?:o|tai|dia\s+chi)\s+([^,]+?)(?:\s+(?:ten|sdt|so\s+dien\s+thoai)\b|$)", clean_q)
+    name_tokens = [t for t in re.split(r"\s+", name_m.group(1)) if t and t not in _CUSTOMER_FILLERS and t not in _HONORIFICS] if name_m else []
+    addr_tokens = [t for t in re.split(r"\s+", addr_m.group(1)) if t and t not in _CUSTOMER_FILLERS and t not in _HONORIFICS] if addr_m else []
+
+    if name_tokens or addr_tokens:
+        slot_conds: list[str] = []
+        slot_params: list[str] = []
+        for tok in name_tokens:
+            slot_conds.append("word_match(c.name, ?) = 1")
+            slot_params.append(tok)
+        for tok in addr_tokens:
+            slot_conds.append("(word_match(c.addresses, ?) = 1 OR unaccent(c.addresses) LIKE ?)")
+            slot_params.extend([tok, f"%{tok}%"])
+        if slot_conds:
+            slot_params.append(limit)
+            slot_sql = f"SELECT c.* FROM customers c WHERE {' AND '.join(slot_conds)} ORDER BY c.id LIMIT ?"
+            async with db.execute(slot_sql, slot_params) as cursor:
+                rows = await cursor.fetchall()
+            if rows:
+                return [_row_to_customer(row) for row in rows]
+
     tokens = [t for t in re.split(r"\s+", remove_accents(query)) if t]
     tokens = [t for t in tokens if t not in _CUSTOMER_FILLERS and t not in _HONORIFICS]
     if not tokens:

@@ -105,10 +105,43 @@ async def test_search_customers_spacing_variant_falls_back_to_substring(test_db)
 
 @pytest.mark.asyncio
 async def test_process_search_query_routes_customer_without_llm(test_db):
+    """When LLM is unavailable (offline), process_search_query falls back to deterministic lookup."""
     await _seed_customers(test_db)
 
-    mock_client = MagicMock()
-    mock_client.chat.completions.create = AsyncMock()
+    message = MagicMock(spec=Message)
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.effective_message = message
+    update.effective_chat = None
+
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "gpt-4o-mini"
+    app_context.openai_client = None
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {}
+    context.application.bot_data = {"app_context": app_context}
+
+    await process_search_query(update, context, "tìm khách 0903626566")
+
+    message.reply_text.assert_awaited_once()
+    text = message.reply_text.call_args[1]["text"]
+    assert "ANH TUẤN" in text
+    assert "HỒ SƠ KHÁCH HÀNG" in text
+
+
+@pytest.mark.asyncio
+async def test_process_search_query_routes_customer_with_text_to_sql(test_db):
+    """Unified Text-to-SQL search correctly returns customer profile when LLM generates customer query."""
+    await _seed_customers(test_db)
+
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = (
+        '{"list": {"purpose": "Tìm khách tên Tuấn", "sql": "SELECT c.* FROM customers c WHERE unaccent(c.name) LIKE \'%tuan%\' ORDER BY c.id DESC"}, "aggregates": []}'
+    )
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
 
     message = MagicMock(spec=Message)
     message.reply_text = AsyncMock()
@@ -125,13 +158,62 @@ async def test_process_search_query_routes_customer_without_llm(test_db):
     context.user_data = {}
     context.application.bot_data = {"app_context": app_context}
 
-    await process_search_query(update, context, "tìm khách 0903626566")
+    await process_search_query(update, context, "tìm khách tên Tuấn")
 
-    mock_client.chat.completions.create.assert_not_called()
     message.reply_text.assert_awaited_once()
     text = message.reply_text.call_args[1]["text"]
     assert "ANH TUẤN" in text
     assert "HỒ SƠ KHÁCH HÀNG" in text
+
+
+@pytest.mark.asyncio
+async def test_search_customer_field_isolation_lam_vs_gia_lam(test_db):
+    """User asks 'tìm khách tên lâm ở hà nội'; non-Lâm living at Gia Lâm must NOT match."""
+    # Seed customer 1: named Lâm in Hà Nội
+    cid1 = await create_customer(
+        test_db,
+        Customer(
+            name="Nguyễn Văn Lâm",
+            phones=["0911223344"],
+            addresses=["15 Hàng Bông, Hà Nội"],
+        ),
+    )
+    # Seed customer 2: named Tuấn living in Gia Lâm, Hà Nội
+    cid2 = await create_customer(
+        test_db,
+        Customer(
+            name="Trần Văn Tuấn",
+            phones=["0988776655"],
+            addresses=["Thị trấn Trâu Quỳ, Gia Lâm, Hà Nội"],
+        ),
+    )
+
+    # 1. Deterministic slot-aware fallback test
+    results = await search_customers(test_db, "tìm khách tên lâm ở hà nội")
+    result_ids = [c.id for c in results]
+    assert cid1 in result_ids
+    assert cid2 not in result_ids, "Customer living in Gia Lâm must NOT match 'tên lâm'"
+
+    # 2. Text-to-SQL search test
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = (
+        '{"list": {"purpose": "Tìm khách tên Lâm ở Hà Nội", '
+        '"sql": "SELECT c.* FROM customers c WHERE unaccent(c.name) LIKE \'%lam%\' AND unaccent(c.addresses) LIKE \'%ha noi%\' ORDER BY c.id DESC"}, '
+        '"aggregates": []}'
+    )
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+
+    from src.services.order_search import run_order_search, SearchResultType
+    sr = await run_order_search(
+        client=mock_client,
+        model_id="gpt-4o-mini",
+        db=test_db,
+        query="tìm khách tên lâm ở hà nội",
+    )
+    assert sr.result_type == SearchResultType.CUSTOMERS
+    assert len(sr.customers) == 1
+    assert sr.customers[0].id == cid1
 
 
 @pytest.mark.asyncio

@@ -1134,6 +1134,156 @@ async def test_run_order_search_unaccent_join_customers_deterministic(test_db):
     assert result.orders[0].customer_name == "Tuấn Thắm"
 
 
+@pytest.mark.asyncio
+async def test_multi_word_customer_name_search_with_spaces_and_tokenized_matching(test_db):
+    """Names with spaces (e.g. 'Nguyễn Văn Lâm', 'Tuấn Thắm') match even with missing middle words or honorifics."""
+    from src.db.customers import create_customer
+    from src.db.orders import create_order
+    from src.models.customer import Customer
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import SearchResultType, run_order_search
+
+    cid1 = await create_customer(
+        test_db,
+        Customer(name="Nguyễn Văn Lâm", phones=["0901111222"], addresses=["Hà Nội"]),
+    )
+    oid1 = await create_order(
+        test_db,
+        Order(
+            customer_id=cid1,
+            customer_name="Nguyễn Văn Lâm",
+            customer_phone="0901111222",
+            shipping_address="Hà Nội",
+            items_text="1 cuốn Tuấn Vũ",
+            total_amount=150000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+
+    cid2 = await create_customer(
+        test_db,
+        Customer(name="Kiên", phones=["0988048855"], addresses=["Hòa Bình"]),
+    )
+    oid2 = await create_order(
+        test_db,
+        Order(
+            customer_id=cid2,
+            customer_name="Kiên",
+            customer_phone="0988048855",
+            shipping_address="Hòa Bình",
+            items_text="2 cuốn Giao Linh",
+            total_amount=300000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+
+    # 1. Searching "tìm đơn của anh Kiên" -> stripped honorific matches "Kiên"
+    sql_kien = (
+        "SELECT o.* FROM orders o LEFT JOIN customers c ON c.id = o.customer_id "
+        "WHERE unaccent(o.customer_name) LIKE '%kien%' OR unaccent(c.name) LIKE '%kien%' "
+        "ORDER BY o.created_at DESC, o.id DESC"
+    )
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = _list_plan(sql_kien, purpose="Đơn anh Kiên")
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+
+    res_kien = await run_order_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="tìm đơn của anh Kiên",
+    )
+    assert res_kien.result_type == SearchResultType.ORDERS
+    assert len(res_kien.orders) == 1
+    assert res_kien.orders[0].id == oid2
+
+    # 2. Searching "tìm đơn của Nguyễn Lâm" -> tokenized AND matches "Nguyễn Văn Lâm"
+    sql_lam = (
+        "SELECT o.* FROM orders o LEFT JOIN customers c ON c.id = o.customer_id "
+        "WHERE (unaccent(o.customer_name) LIKE '%nguyen%' AND unaccent(o.customer_name) LIKE '%lam%') "
+        "OR (unaccent(c.name) LIKE '%nguyen%' AND unaccent(c.name) LIKE '%lam%') "
+        "ORDER BY o.created_at DESC, o.id DESC"
+    )
+    mock_choice.message.content = _list_plan(sql_lam, purpose="Đơn Nguyễn Lâm")
+    res_lam = await run_order_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="tìm đơn của Nguyễn Lâm",
+    )
+    assert res_lam.result_type == SearchResultType.ORDERS
+    assert len(res_lam.orders) == 1
+    assert res_lam.orders[0].id == oid1
+
+
+@pytest.mark.asyncio
+async def test_multi_field_combination_and_search(test_db):
+    """Multi-field queries combining name + address + payment_method + status."""
+    from src.db.customers import create_customer
+    from src.db.orders import create_order
+    from src.models.customer import Customer
+    from src.models.order import Order, OrderStatus
+    from src.services.order_search import SearchResultType, run_order_search
+
+    cid = await create_customer(
+        test_db,
+        Customer(name="Anh Kiên", phones=["0988048855"], addresses=["Hà Nội", "Hòa Bình"]),
+    )
+    # Order 1: Chuyển khoản, Hà Nội, đã giao
+    oid1 = await create_order(
+        test_db,
+        Order(
+            customer_id=cid,
+            customer_name="Anh Kiên",
+            customer_phone="0988048855",
+            shipping_address="Hà Nội",
+            items_text="3 cuốn Tuấn Vũ",
+            total_amount=450000,
+            payment_method="CHUYEN_KHOAN",
+            status=OrderStatus.DA_GIAO,
+        ),
+    )
+    # Order 2: COD, Hòa Bình, chờ làm
+    oid2 = await create_order(
+        test_db,
+        Order(
+            customer_id=cid,
+            customer_name="Anh Kiên",
+            customer_phone="0988048855",
+            shipping_address="Hòa Bình",
+            items_text="1 cuốn Chế Linh",
+            total_amount=150000,
+            payment_method="COD",
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+
+    sql_combined = (
+        "SELECT o.* FROM orders o LEFT JOIN customers c ON c.id = o.customer_id "
+        "WHERE (unaccent(o.customer_name) LIKE '%kien%' OR unaccent(c.name) LIKE '%kien%') "
+        "AND (unaccent(o.shipping_address) LIKE '%ha noi%' OR unaccent(c.addresses) LIKE '%ha noi%') "
+        "AND o.payment_method = 'CHUYEN_KHOAN' "
+        "AND o.status = 'DA_GIAO' "
+        "ORDER BY o.created_at DESC, o.id DESC"
+    )
+    mock_client = AsyncMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = _list_plan(sql_combined, purpose="Đơn Kiên Hà Nội chuyển khoản đã giao")
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+
+    res = await run_order_search(
+        client=mock_client,
+        model_id="mock-model",
+        db=test_db,
+        query="đơn chuyển khoản đã giao của anh Kiên ở Hà Nội",
+    )
+    assert res.result_type == SearchResultType.ORDERS
+    assert len(res.orders) == 1
+    assert res.orders[0].id == oid1
+
+
+
 
 
 
