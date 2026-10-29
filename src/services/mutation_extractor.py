@@ -203,16 +203,16 @@ QUY TẮC TÌM KIẾM BẮT BUỘC:
      + TUYỆT ĐỐI KHÔNG tìm theo địa chỉ mới "Điện Biên"!
      + TUYỆT ĐỐI KHÔNG tìm tên khách "Hà" trên cột shipping_address để tránh nhầm đơn ship đi "Hà Nội", "Hà Nam", "Hà Tĩnh"!
    - Người nói: "đổi sđt khách Nam thành 0988776655":
-     + Tên khách tìm kiếm: `unaccent(customer_name) LIKE '%nam%'`
+     + Tên khách tìm kiếm: `word_match(customer_name, 'nam') = 1`
      + TUYỆT ĐỐI KHÔNG tìm theo SĐT mới "0988776655"!
    - Người nói: "sửa đơn 12 ...":
      + `id = 12`
 2. Tên khách hàng & Danh xưng:
    - Lược bỏ danh xưng giao tiếp ('anh', 'chị', 'bác', 'ông', 'bà', 'cô', 'chú', 'em') khi tìm tên.
-   - TÊN NHIỀU TỪ CÓ DẤU CÁCH (ví dụ "Bác Ba", "Nguyễn Văn Lâm", "Tuấn Thắm"): BẮT BUỘC dùng tokenized AND:
-     `unaccent(o.customer_name) LIKE '%tuan%' AND unaccent(o.customer_name) LIKE '%tham%'`
+   - TÊN KHÁCH HÀNG: BẮT BUỘC dùng `word_match(col, 'keyword') = 1` cho từng từ trong tên khách (tránh dùng `LIKE '%ha%'` vì sẽ khớp nhầm 'Phạm' (p-ha-m) hay 'Thanh' (t-ha-nh)):
+     `word_match(o.customer_name, 'tuan') = 1 AND word_match(o.customer_name, 'tham') = 1`
    - NÊN LEFT JOIN customers c ON c.id = o.customer_id để tìm cả snapshot lẫn master profile:
-     `((unaccent(o.customer_name) LIKE '%tuan%' AND unaccent(o.customer_name) LIKE '%tham%') OR (unaccent(c.name) LIKE '%tuan%' AND unaccent(c.name) LIKE '%tham%'))`
+     `((word_match(o.customer_name, 'tuan') = 1 AND word_match(o.customer_name, 'tham') = 1) OR (word_match(c.name, 'tuan') = 1 AND word_match(c.name, 'tham') = 1))`
 3. Ưu tiên các đơn đang trong vòng đời xử lý (chưa hoàn thành):
    Status active gồm: 'CHO_LAM', 'DANG_LAM', 'DA_DONG_GOI', 'DA_TAO_DON', 'SHIPPER_DA_LAY'.
    Luôn sắp xếp:

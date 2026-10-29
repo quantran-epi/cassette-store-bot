@@ -402,3 +402,78 @@ async def test_customer_search_with_aggregates_classifies_as_customers_and_pagin
     rejected = await fetch_search_page(test_db, "SELECT * FROM customers", 1, 5)
     assert rejected == [], "fetch_search_page must return empty list for non-order rows"
 
+
+@pytest.mark.asyncio
+async def test_search_customer_name_word_match_no_substring_collision_ha_trang_vs_pham_thi_trang(test_db):
+    """Verify 'Hạ Trắng' does not collide with 'Phạm Thị Trang' via word_match."""
+    from src.db.customers import is_customer_analytics, is_customer_search
+    from src.services.order_search import is_search_intent, SearchResultType, run_order_search
+
+    # Seed Customer 1: Hạ Trắng
+    cid1 = await create_customer(
+        test_db,
+        Customer(
+            name="Hạ Trắng",
+            phones=["0901234567"],
+            addresses=["12 Tràng Tiền, Hà Nội"],
+        ),
+    )
+    # Seed Customer 2: Phạm Thị Trang
+    cid2 = await create_customer(
+        test_db,
+        Customer(
+            name="Phạm Thị Trang",
+            phones=["0987654321"],
+            addresses=["45 Hai Bà Trưng, Hà Nội"],
+        ),
+    )
+
+    # 1. Verify intent routing for "Khách hạ trắng đã bao lâu rồi ko mua?"
+    q = "Khách hạ trắng đã bao lâu rồi ko mua?"
+    assert is_search_intent(q) is True
+    assert is_customer_analytics(q) is True
+    assert is_customer_search(q) is False
+
+    # 2. Verify raw SQL behavior: LIKE %ha% collides with "Phạm", word_match does NOT
+    async with test_db.execute(
+        "SELECT id FROM customers WHERE unaccent(name) LIKE '%ha%' AND unaccent(name) LIKE '%trang%'"
+    ) as cursor:
+        like_ids = [r["id"] for r in await cursor.fetchall()]
+    assert cid1 in like_ids and cid2 in like_ids, "LIKE %ha% collides with Pham"
+
+    async with test_db.execute(
+        "SELECT id FROM customers WHERE word_match(name, 'ha') = 1 AND word_match(name, 'trang') = 1"
+    ) as cursor:
+        wm_ids = [r["id"] for r in await cursor.fetchall()]
+    assert wm_ids == [cid1], "word_match must strictly match 'Hạ Trắng' only"
+
+    # 3. Text-to-SQL search plan execution
+    plan_json = (
+        '{"list": {"purpose": "Hồ sơ khách Hạ Trắng", '
+        '"sql": "SELECT c.* FROM customers c WHERE word_match(c.name, \'ha\') = 1 AND word_match(c.name, \'trang\') = 1 ORDER BY CASE WHEN unaccent(c.name) = \'ha trang\' THEN 0 ELSE 1 END, c.id DESC"}, '
+        '"aggregates": [{"purpose": "Lần mua gần nhất", '
+        '"sql": "SELECT MAX(datetime(o.created_at, \'+7 hours\')) AS last_order_time FROM orders o JOIN customers c ON c.id = o.customer_id WHERE word_match(c.name, \'ha\') = 1 AND word_match(c.name, \'trang\') = 1 AND o.status = \'DA_GIAO\'"}]}'
+    )
+    mock_client = AsyncMock()
+    mock_choice1 = MagicMock()
+    mock_choice1.message.content = plan_json
+    mock_choice2 = MagicMock()
+    mock_choice2.message.content = "Dạ khách Hạ Trắng đã mua từ 2 tháng trước bác nhé!"
+    mock_client.chat.completions.create.side_effect = [
+        MagicMock(choices=[mock_choice1]),
+        MagicMock(choices=[mock_choice2]),
+    ]
+
+    sr = await run_order_search(
+        client=mock_client,
+        model_id="gpt-4o-mini",
+        db=test_db,
+        query=q,
+    )
+    assert sr.result_type == SearchResultType.CUSTOMERS
+    assert len(sr.customers) == 1
+    assert sr.customers[0].id == cid1
+    assert sr.customers[0].name == "Hạ Trắng"
+    assert all(c.id != cid2 for c in sr.customers)
+
+

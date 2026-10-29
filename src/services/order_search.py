@@ -50,6 +50,10 @@ STRONG_SEARCH_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\b(?:may|bao\s+nhieu)\s+don\b"),
     re.compile(r"\blich\s+su\s+(?:mua|don)\b"),
     re.compile(r"\b(?:tra\s+cuu|tim\s+kiem|xem\s+lai\s+don|kiem\s+tra\s+don)\b"),
+    re.compile(r"\bbao\s+lau\b"),
+    re.compile(r"\b(?:lan\s+)?(?:cuoi|gan\s+nhat)\b"),
+    re.compile(r"\b(?:da|tung|co)\b.*?\b(?:mua|dat)\b", re.DOTALL),
+    re.compile(r"\b(?:chua|ko|khong)\s+mua\b"),
 )
 
 SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
@@ -65,6 +69,10 @@ CUSTOMER_ANALYTICS_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\btop(?:\s+\d+)?\s+khach\b"),
     re.compile(
         r"\bkhach\b.*\b(?:mua|chi\s+tieu|dat)\b.*\b(?:nhieu|it|cao)\s+nhat\b"
+    ),
+    re.compile(
+        r"\bkhach\b.*?\b(?:bao\s+lau|khi\s+nao|chua\s+mua|ko\s+mua|khong\s+mua)\b",
+        re.DOTALL,
     ),
 )
 
@@ -160,6 +168,10 @@ Table orders (
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );
+
+CÁC HÀM TỰ TẠO TRÊN SQLITE (CUSTOM FUNCTIONS):
+- unaccent(text): chuyển text tiếng Việt thành chữ thường không dấu (VD: unaccent('Đà Nẵng') -> 'da nang').
+- word_match(haystack, needle): trả về 1 nếu needle khớp nguyên từ (word boundary \\b) trong haystack không phân biệt dấu/hoa thường; trả về 0 nếu needle chỉ là chuỗi con dính trong từ khác. BẮT BUỘC dùng cho tên khách hàng.
 """.strip()
 
 SQL_DOMAIN_RULES = """
@@ -168,16 +180,18 @@ SQL_DOMAIN_RULES = """
    - "Hôm nay": `date(o.created_at, '+7 hours') = '{current_date_vn}'`
    - "Hôm qua": `date(o.created_at, '+7 hours') = date('{current_date_vn}', '-1 day')`
 6. Phân biệt rạch ròi các trường và tìm kiếm tiếng Việt:
-   - BẮT BUỘC dùng `unaccent(...) LIKE unaccent('%keyword%')` hoặc `unaccent(...) LIKE '%keyword_khong_dau%'` ở CẢ HAI VẾ cho mọi text tiếng Việt. TUYỆT ĐỐI KHÔNG dùng LIKE trực tiếp trên raw Unicode vì SQLite LIKE không case-insensitive với ký tự có dấu.
-   - TÊN KHÁCH HÀNG: Cụm từ chỉ người ("tên X", "khách tên X", "anh X", "chị X", "bác X", "ông X", "bà X", "cô X", "chú X", "em X", "đơn của X").
-     + BẮT BUỘC chỉ lọc trên cột tên: `c.name` (khi tìm khách) hoặc `o.customer_name` / `c.name` (khi tìm đơn).
+   - BẮT BUỘC dùng `unaccent(...) LIKE unaccent('%keyword%')` hoặc `unaccent(...) LIKE '%keyword_khong_dau%'` ở CẢ HAI VẾ cho địa chỉ, bài hát, ghi chú. TUYỆT ĐỐI KHÔNG dùng LIKE trực tiếp trên raw Unicode vì SQLite LIKE không case-insensitive với ký tự có dấu.
+   - TÊN KHÁCH HÀNG: Cụm từ chỉ người ("tên X", "khách tên X", "anh X", "chị X", "bác X", "ông X", "bà X", "cô X", "chú X", "em X", "đơn của X", "khách X").
+     + BẮT BUỘC dùng `word_match(col, 'keyword') = 1` cho từng từ trong tên khách hàng: `c.name` (khi tìm khách) hoặc `o.customer_name` / `c.name` (khi tìm đơn).
+     + TUYỆT ĐỐI KHÔNG dùng `unaccent(...) LIKE '%ha%'` hay `LIKE '%keyword%'` cho tên khách vì sẽ bị va chạm chuỗi con (substring collision): ví dụ `%ha%` sẽ khớp nhầm chữ 'Phạm' (p-ha-m), 'Thanh' (t-ha-nh), 'Phan' (p-ha-n), 'Thái' (t-ha-i), làm lẫn khách 'Phạm Thị Trang' vào 'Hạ Trắng'!
+     + `word_match('Phạm Thị Trang', 'ha')` trả về 0; `word_match('Hạ Trắng', 'ha')` trả về 1.
      + TUYỆT ĐỐI KHÔNG tìm tên khách trên cột địa chỉ hay ghi chú (tránh nhầm: khách tên "Lâm" thì không được khớp địa chỉ "Gia Lâm", tên "Hà" không được khớp "Hà Nội/Hà Nam").
      + Lược bỏ danh xưng giao tiếp (`anh`, `chị`, `bác`, `ông`, `bà`, `cô`, `chú`, `em`) vì trong DB tên có thể không lưu danh xưng hoặc lưu khác danh xưng.
-     + TÊN NHIỀU TỪ CÓ DẤU CÁCH: BẮT BUỘC dùng tokenized AND cho từng từ (ví dụ "Nguyễn Văn Lâm" hoặc "Tuấn Thắm"):
-       `unaccent(c.name) LIKE '%nguyen%' AND unaccent(c.name) LIKE '%lam%'` (hoặc `unaccent(o.customer_name)`).
-       TUYỆT ĐỐI KHÔNG dùng LIKE nguyên cụm `%nguyen van lam%` hay `%nguyen lam%` vì sẽ trượt nếu DB lưu thiếu từ đệm hoặc khác khoảng trắng.
+     + TÊN NHIỀU TỪ CÓ DẤU CÁCH (ví dụ "Bác Ba", "Nguyễn Văn Lâm", "Tuấn Thắm", "Hạ Trắng"): BẮT BUỘC dùng `word_match` tokenized AND cho từng từ:
+       `word_match(c.name, 'ha') = 1 AND word_match(c.name, 'trang') = 1` (hoặc `o.customer_name`).
      + Khi tìm đơn theo tên khách, luôn `LEFT JOIN customers c ON c.id = o.customer_id` để tìm cả trên snapshot `o.customer_name` lẫn master `c.name`:
-       `((unaccent(o.customer_name) LIKE '%tuan%' AND unaccent(o.customer_name) LIKE '%tham%') OR (unaccent(c.name) LIKE '%tuan%' AND unaccent(c.name) LIKE '%tham%'))`
+       `((word_match(o.customer_name, 'ha') = 1 AND word_match(o.customer_name, 'trang') = 1) OR (word_match(c.name, 'ha') = 1 AND word_match(c.name, 'trang') = 1))`
+     + Ưu tiên xếp hạng tên khớp chính xác: `ORDER BY CASE WHEN unaccent(c.name) = 'ha trang' THEN 0 ELSE 1 END, c.id DESC`.
    - ĐỊA CHỈ: Cụm từ chỉ nơi chốn ("ở Y", "tại Y", "địa chỉ Y", "gửi về Y", "ship đi Y", "khách ở Y").
      + BẮT BUỘC chỉ lọc trên cột địa chỉ: `c.addresses` hoặc `o.shipping_address`.
      + Ví dụ "ở Hà Nội" -> `unaccent(c.addresses) LIKE '%ha noi%'` (hoặc `unaccent(o.shipping_address) LIKE '%ha noi%'`).
@@ -195,9 +209,9 @@ SQL_DOMAIN_RULES = """
    - MÃ VẬN ĐƠN: `o.tracking_code LIKE '%mã%'`.
    - BẮT BUỘC KẾT HỢP CÁC TRƯỜNG BẰNG `AND`:
      + "tìm khách tên Lâm ở Hà Nội":
-       `SELECT c.* FROM customers c WHERE unaccent(c.name) LIKE '%lam%' AND unaccent(c.addresses) LIKE '%ha noi%' ORDER BY c.id DESC`
+       `SELECT c.* FROM customers c WHERE word_match(c.name, 'lam') = 1 AND unaccent(c.addresses) LIKE '%ha noi%' ORDER BY c.id DESC`
      + "tìm đơn của anh Kiên ở Hòa Bình chưa giao":
-       `SELECT o.* FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE (unaccent(o.customer_name) LIKE '%kien%' OR unaccent(c.name) LIKE '%kien%') AND (unaccent(o.shipping_address) LIKE '%hoa binh%' OR unaccent(c.addresses) LIKE '%hoa binh%') AND o.status NOT IN ('DA_GIAO', 'BOM_HANG', 'HUY_DON') ORDER BY o.created_at DESC, o.id DESC`
+       `SELECT o.* FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE (word_match(o.customer_name, 'kien') = 1 OR word_match(c.name, 'kien') = 1) AND (unaccent(o.shipping_address) LIKE '%hoa binh%' OR unaccent(c.addresses) LIKE '%hoa binh%') AND o.status NOT IN ('DA_GIAO', 'BOM_HANG', 'HUY_DON') ORDER BY o.created_at DESC, o.id DESC`
 7. Câu hỏi về SỐ LƯỢNG BĂNG/CUỐN/PHÔI (không phải số đơn): dùng cột `tape_quantity`.
    - Đơn cũ có `tape_quantity IS NULL` (chưa có dữ liệu số lượng) — KHÔNG fallback `tape_count(items_text)`.
    - Tổng dùng `SUM(COALESCE(tape_quantity, 0))`; cùng query trả thêm `COUNT(*) FILTER (WHERE tape_quantity IS NULL) AS orders_without_tape_data`.
@@ -216,6 +230,8 @@ SQL_DOMAIN_RULES = """
 9. Xếp hạng / thống kê theo khách hàng:
    - "Mua" và "chi tiêu" chỉ tính đơn hoàn thành: luôn lọc `o.status = 'DA_GIAO'`.
    - Gom khách theo `o.customer_id`, không gom theo tên/SĐT snapshot; join `customers` để lấy hồ sơ hiện tại.
+   - "Bao lâu rồi không mua" / "lần gần nhất mua khi nào":
+     `SELECT MAX(datetime(o.created_at, '+7 hours')) AS last_order_time, c.id AS customer_id, c.name AS customer_name FROM orders o JOIN customers c ON c.id = o.customer_id WHERE (word_match(c.name, 'ha') = 1 AND word_match(c.name, 'trang') = 1) AND o.status = 'DA_GIAO' GROUP BY c.id, c.name`
    - "Khách nào mua nhiều đơn nhất": `SELECT c.id AS customer_id, c.name AS customer_name, c.phones AS customer_phones, COUNT(*) AS completed_orders, SUM(o.total_amount) AS completed_spend FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'DA_GIAO' GROUP BY c.id, c.name, c.phones ORDER BY completed_orders DESC, completed_spend DESC, c.id ASC LIMIT 1`
    - "Top 5 khách mua nhiều nhất": dùng truy vấn trên với `LIMIT 5`.
    - "Khách nào chi tiêu nhiều nhất": đổi thứ tự thành `ORDER BY completed_spend DESC, completed_orders DESC, c.id ASC LIMIT 1`.
@@ -268,13 +284,13 @@ QUY TẮC BẮT BUỘC:
    Tối đa 1 list và tối đa 3 aggregates; phải có ít nhất 1 truy vấn (list hoặc aggregates). Được phép có cả hai.
 2. Mỗi truy vấn là MỘT câu SELECT read-only độc lập; KHÔNG dùng dấu `;`, không DDL/DML/PRAGMA.
 3. list:
-   - Nếu câu hỏi tìm kiếm ĐƠN HÀNG (đơn hàng, mã vận đơn, tiền, ca sĩ, phôi, trạng thái đơn...):
+   - Nếu câu hỏi tìm kiếm ĐƠN HÀNG (đơn hàng, mã vận đơn, tiền, ca sĩ, phôi, trạng thái đơn, tìm đơn của ai...):
      dùng `SELECT o.* FROM orders o ... ORDER BY o.created_at DESC, o.id DESC`.
-   - Nếu câu hỏi tìm kiếm KHÁCH HÀNG / HỒ SƠ KHÁCH (tìm khách, danh sách khách, hồ sơ, ai ở đâu, SĐT khách...):
+   - Nếu câu hỏi tìm kiếm KHÁCH HÀNG / HỒ SƠ KHÁCH hoặc hỏi về thông tin / tình trạng của KHÁCH HÀNG (tìm khách, danh sách khách, hồ sơ, ai ở đâu, SĐT khách, khách X đã bao lâu chưa mua, khách X còn hoạt động không...):
      dùng `SELECT c.* FROM customers c ... ORDER BY c.id DESC`.
      Nếu cần lọc theo lịch sử mua hàng thì JOIN `orders o ON o.customer_id = c.id`.
    - KHÔNG thêm LIMIT trừ khi bác chủ yêu cầu rõ số lượng (VD "5 khách đầu tiên", "3 đơn gần nhất").
-   - Nếu câu hỏi THUẦN THỐNG KÊ (chỉ hỏi "bao nhiêu đơn", "mấy khách", "tổng tiền bao nhiêu", "chi tiêu thế nào", "xếp hạng") mà KHÔNG yêu cầu xem hay liệt kê danh sách: để `list: null`.
+   - Nếu câu hỏi THUẦN THỐNG KÊ TOÀN CỬA HÀNG (chỉ hỏi "hôm nay bán bao nhiêu đơn", "tổng doanh thu tháng này", "xếp hạng top 5") mà KHÔNG hỏi về đối tượng khách cụ thể và KHÔNG yêu cầu liệt kê danh sách: để `list: null`.
 4. aggregates: câu thống kê dùng COUNT/SUM/AVG/MIN/MAX; gộp nhiều cột số liệu cần trả lời vào MỘT câu. Chỉ thêm LIMIT khi bác chủ yêu cầu top-n.
    purpose là nhãn tiếng Việt ngắn (tối đa 120 ký tự) mô tả đúng phần câu hỏi mà truy vấn trả lời; không rỗng.
 """.strip()

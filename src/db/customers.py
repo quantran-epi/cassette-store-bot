@@ -26,8 +26,12 @@ _CUSTOMER_ORDER_QUERY_PATTERN = re.compile(
     r"\btop(?:\s+\d+)?\s+khach\b|"
     r"\bkhach\b.*\b(?:mua|chi\s+tieu|dat)\b.*\b(?:nhieu|it|cao)\s+nhat\b|"
     r"\b(?:may|bao\s+nhieu)\s+don\b|"
-    r"\b(?:da|tung|co)\s+mua\b|"
-    r"\blich\s+su\s+(?:mua|don)\b"
+    r"\b(?:da|tung|co)\b.*?\b(?:mua|dat)\b|"
+    r"\bbao\s+lau\b|"
+    r"\b(?:lan\s+)?(?:cuoi|gan\s+nhat)\b|"
+    r"\b(?:chua|ko|khong)\s+mua\b|"
+    r"\blich\s+su\s+(?:mua|don)\b",
+    re.DOTALL,
 )
 
 
