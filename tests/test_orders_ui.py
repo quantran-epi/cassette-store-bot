@@ -78,28 +78,35 @@ def test_customer_frequency_tier_boundaries(orders, tier):
 
 
 @pytest.mark.parametrize(
-    ("spend", "tier"),
+    ("spend", "marker"),
     [
-        (999999, "DƯỚI 1 TRIỆU"),
-        (1000000, "1–DƯỚI 3 TRIỆU"),
-        (2999999, "1–DƯỚI 3 TRIỆU"),
-        (3000000, "3–DƯỚI 10 TRIỆU"),
-        (9999999, "3–DƯỚI 10 TRIỆU"),
-        (10000000, "TỪ 10 TRIỆU"),
+        (999999, "🪙"),
+        (1000000, "🥉"),
+        (2999999, "🥉"),
+        (3000000, "🥈"),
+        (9999999, "🥈"),
+        (10000000, "🥇"),
     ],
 )
-def test_customer_spend_tier_boundaries(spend, tier):
+def test_customer_spend_tier_boundaries(spend, marker):
     text = format_customer_classification(0, spend)
-    assert f"CHI TIÊU:</b> <b>{tier}</b>" in text
-    assert f"({spend:,} đ)".replace(",", ".") in text
+    amount = f"{spend:,}".replace(",", ".")
+    assert text.splitlines()[1] == f"{marker} <b>CHI TIÊU:</b> <b>{amount} đ</b>"
+    assert not any(tier in text for tier in ("DƯỚI 1 TRIỆU", "1–DƯỚI 3 TRIỆU", "3–DƯỚI 10 TRIỆU", "TỪ 10 TRIỆU"))
+
+
+def test_customer_classification_exact_one_purchase_output():
+    assert format_customer_classification(1, 1_000_000) == (
+        "🛍️ <b>TẦN SUẤT:</b> <b>KHÁCH MUA 1 LẦN</b> (1 đơn hoàn thành)\n"
+        "🥉 <b>CHI TIÊU:</b> <b>1.000.000 đ</b>"
+    )
 
 
 def test_customer_classification_clamps_negative_values():
-    text = format_customer_classification(-2, -100)
-    assert "KHÁCH VÃNG LAI" in text
-    assert "(0 đơn hoàn thành)" in text
-    assert "DƯỚI 1 TRIỆU" in text
-    assert "(0 đ)" in text
+    assert format_customer_classification(-2, -100) == (
+        "🆕 <b>TẦN SUẤT:</b> <b>KHÁCH VÃNG LAI</b> (0 đơn hoàn thành)\n"
+        "🪙 <b>CHI TIÊU:</b> <b>0 đ</b>"
+    )
 
 
 def test_render_order_detail_card_html_and_code():
@@ -136,7 +143,7 @@ def test_render_order_detail_card_html_and_code():
     assert "350.000 đ" in card
     assert "2 ảnh" in card
     assert "TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b>" in card
-    assert "CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b>" in card
+    assert "🥇 <b>CHI TIÊU:</b> <b>10.000.000 đ</b>" in card
 
 
 def test_build_order_detail_keyboard_copy_buttons_and_callbacks():
@@ -228,16 +235,16 @@ def test_render_order_list_card_empty_and_populated():
     card = render_order_list_card(orders, "2026-10-24", page=1, total_pages=2, total_orders=6)
     assert "24/10/2026" in card
     assert "Tổng cộng: <b>6 đơn</b> (Trang 1/2)" in card
-    assert "Đơn #1" in card
+    assert "ĐƠN #1 — Khách 1" in card
     assert "Khách 1" in card
     assert "150.000 đ" in card
     assert "⏳ Chờ làm" in card
-    assert "Đơn #2" in card
+    assert "ĐƠN #2 — Khách 2" in card
     assert "Khách 2" in card
     assert "250.000 đ" in card
     assert "✅ Đã giao thành công" in card
     assert "TẦN SUẤT:</b> <b>KHÁCH QUEN</b>" in card
-    assert "CHI TIÊU:</b> <b>1–DƯỚI 3 TRIỆU</b>" in card
+    assert "🥉 <b>CHI TIÊU:</b> <b>1.500.000 đ</b>" in card
     assert card.count("TẦN SUẤT:") == 1  # Order without hydrated stats is not mislabeled as zero.
 
 
@@ -343,7 +350,7 @@ def test_render_status_order_list_card_grouping_and_empty():
     assert "#1" in card and "Khách A" in card and "100.000 đ" in card
     assert "#3" in card and "Khách C" in card and "300.000 đ" in card
     assert "TẦN SUẤT:</b> <b>KHÁCH MUA 1 LẦN</b>" in card
-    assert "CHI TIÊU:</b> <b>1–DƯỚI 3 TRIỆU</b>" in card
+    assert "🥉 <b>CHI TIÊU:</b> <b>1.000.000 đ</b>" in card
     assert card.count("TẦN SUẤT:") == 1
 
     empty = render_status_order_list_card([], OrderStatus.DANG_LAM, 1, 1, 0)
@@ -511,7 +518,7 @@ async def test_handle_menu_reply_today_orders(test_db):
     markup = kwargs.get("reply_markup")
 
     assert "ĐƠN HÀNG NGÀY" in card_text
-    assert f"Đơn #{order_id}" in card_text
+    assert f"ĐƠN #{order_id} — Khách Hôm Nay" in card_text
     assert "Khách Hôm Nay" in card_text
     assert isinstance(markup, InlineKeyboardMarkup)
 

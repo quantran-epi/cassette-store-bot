@@ -100,24 +100,24 @@ def format_customer_classification(completed_orders: int, completed_spend: int) 
     if completed_orders == 0:
         frequency_marker, frequency = "🆕", "KHÁCH VÃNG LAI"
     elif completed_orders == 1:
-        frequency_marker, frequency = "1️⃣", "KHÁCH MUA 1 LẦN"
+        frequency_marker, frequency = "🛍️", "KHÁCH MUA 1 LẦN"
     elif completed_orders < 5:
         frequency_marker, frequency = "🔁", "KHÁCH QUEN"
     else:
         frequency_marker, frequency = "⭐", "KHÁCH THÂN THIẾT"
 
     if completed_spend < 1_000_000:
-        spend_marker, spend_tier = "🪙", "DƯỚI 1 TRIỆU"
+        spend_marker = "🪙"
     elif completed_spend < 3_000_000:
-        spend_marker, spend_tier = "🥉", "1–DƯỚI 3 TRIỆU"
+        spend_marker = "🥉"
     elif completed_spend < 10_000_000:
-        spend_marker, spend_tier = "🥈", "3–DƯỚI 10 TRIỆU"
+        spend_marker = "🥈"
     else:
-        spend_marker, spend_tier = "🥇", "TỪ 10 TRIỆU"
+        spend_marker = "🥇"
     spend = f"{completed_spend:,} đ".replace(",", ".")
     return (
         f"{frequency_marker} <b>TẦN SUẤT:</b> <b>{frequency}</b> ({completed_orders} đơn hoàn thành)\n"
-        f"{spend_marker} <b>CHI TIÊU:</b> <b>{spend_tier}</b> ({spend})"
+        f"{spend_marker} <b>CHI TIÊU:</b> <b>{spend}</b>"
     )
 
 
@@ -535,7 +535,7 @@ def format_order_item_summary(order: Order) -> str:
     classification = _order_classification(order)
     classification_line = f"   {classification.replace(chr(10), chr(10) + '   ')}\n" if classification else ""
     return (
-        f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        f"📦 <b>ĐƠN #{order.id} — {cust_name}</b>\n"
         f"{classification_line}"
         f"   📞 <b>SĐT:</b> {phone}\n"
         f"   📍 <b>Đ/C:</b> {addr}"

@@ -589,6 +589,7 @@ def test_cards_render_high_contrast_uppercase_labels():
 
     # 2. Summary item
     summary = format_order_item_summary(order)
+    assert "📦 <b>ĐƠN #99 — Bác Tư</b>\n" in summary
     assert "📞 <b>SĐT:</b>" in summary
     assert "📍 <b>Đ/C:</b>" in summary
     assert "💰 <b>TIỀN:</b>" in summary
@@ -611,6 +612,24 @@ def test_cards_render_high_contrast_uppercase_labels():
     assert "📍 <b>ĐỊA CHỈ:</b>" in preview_text
     assert "💰 <b>TỔNG TIỀN:</b>" in preview_text
     assert "💵 <b>TIỀN COD THU:</b>" in preview_text
+
+
+def test_format_order_item_summary_bold_line_and_html_escape():
+    """Verify order summary header is fully bold and customer name is HTML-escaped."""
+    from src.bot.keyboards import format_order_item_summary
+
+    order = Order(
+        id=77,
+        customer_name="<Bác> An & Em",
+        customer_phone="0912345678",
+        shipping_address="Hà Nội",
+        items_text="1 cuốn",
+        total_amount=100000,
+        cod_amount=100000,
+    )
+    summary = format_order_item_summary(order)
+    first_line = summary.splitlines()[0]
+    assert first_line == "📦 <b>ĐƠN #77 — &lt;Bác&gt; An &amp; Em</b>"
 
 
 

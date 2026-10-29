@@ -129,12 +129,12 @@ async def test_classification_through_dispatcher(tmp_path):
             for callback in ("ord_ls:CHO_LAM:1", "ord_vls:CHO_LAM:6:1", f"cus_v:{regular}:offline", "sch_bk:offline"):
                 body = await dispatch(data=callback)
                 assert "⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b>" in body
-                assert "🥇 <b>CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b>" in body
+                assert "🥇 <b>CHI TIÊU:</b> <b>10.000.000 đ</b>" in body
             body = await dispatch(data=f"cus_pg:{regular}:2")
             assert "Trang 2/2" in body
             for body in (await dispatch(data=f"cus_v:{bom}:offline"), await dispatch(text="preview")):
                 assert "🆕 <b>TẦN SUẤT:</b> <b>KHÁCH VÃNG LAI</b> (0 đơn hoàn thành)" in body
-                assert "🪙 <b>CHI TIÊU:</b> <b>DƯỚI 1 TRIỆU</b> (0 đ)" in body
+                assert "🪙 <b>CHI TIÊU:</b> <b>0 đ</b>" in body
                 assert "CẢNH BÁO" in body
             with patch("src.bot.handlers.mutation.search_target_orders_for_mutation", AsyncMock(return_value=orders[:2])):
                 body = await dispatch(text="sửa đơn khách quen")
@@ -146,8 +146,8 @@ async def test_classification_through_dispatcher(tmp_path):
 
 
 def test_distinct_tier_markers():
-    for count, spend, frequency, spending in ((0, 0, "🆕", "🪙"), (1, 1000000, "1️⃣", "🥉"), (2, 3000000, "🔁", "🥈"), (5, 10000000, "⭐", "🥇")):
+    for count, spend, frequency, spending in ((0, 0, "🆕", "🪙"), (1, 1000000, "🛍️", "🥉"), (2, 3000000, "🔁", "🥈"), (5, 10000000, "⭐", "🥇")):
         lines = format_customer_classification(count, spend).splitlines()
         assert len(lines) == 2
         assert lines[0].startswith(frequency + " <b>TẦN SUẤT:")
-        assert lines[1].startswith(spending + " <b>CHI TIÊU:")
+        assert lines[1] == f"{spending} <b>CHI TIÊU:</b> <b>{spend:,} đ</b>".replace(",", ".")
