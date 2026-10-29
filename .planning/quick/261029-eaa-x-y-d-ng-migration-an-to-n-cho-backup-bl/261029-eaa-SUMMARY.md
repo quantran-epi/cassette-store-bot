@@ -4,11 +4,11 @@ Xây dựng module và script migration an toàn chuyển đổi dữ liệu leg
 
 ## Thống kê thực thi
 
-- **Customers**: 602 bản ghi (trích xuất từ payload.customer.customers).
-- **Orders**: 792 bản ghi (trích xuất từ payload.order.orders).
+- **Customers**: 602 bản ghi nguồn; dry-run trên DB hiện tại dự kiến tạo 601 và tái sử dụng 1 khách trùng số điện thoại.
+- **Orders**: 792 bản ghi nguồn; dry-run dự kiến tạo đủ 792 đơn.
 - **Bỏ qua**: Toàn bộ codPayments, syncFailures, appContext, trelloCardId.
-- **Idempotency**: Dựa trên số điện thoại khách hàng và mã vận đơn (tracking_code) / ngày tạo (created_at).
-- **Transaction**: Gói trong transaction SQLite đơn (`BEGIN IMMEDIATE`), tự động `ROLLBACK` khi có bất kỳ ngoại lệ nào.
+- **Idempotency**: Customer tái sử dụng theo số điện thoại; order nhận marker `legacy_id` chính xác nên chạy lại không tạo trùng và không bỏ nhầm đơn mới trùng mã vận đơn.
+- **Transaction**: Gói trong transaction SQLite đơn (`BEGIN IMMEDIATE`), tự động `ROLLBACK` khi có bất kỳ ngoại lệ nào; từ chối apply nếu connection đang có transaction.
 - **Dry-run**: Mặc định an toàn, chỉ chạy thật khi truyền cờ `--apply`.
 
 ## Files Changed
@@ -16,7 +16,7 @@ Xây dựng module và script migration an toàn chuyển đổi dữ liệu leg
 - `src/services/legacy_importer.py`: Core parser, mapper, remap ID logic, và `LegacyBlobImporter` engine.
 - `scripts/import_legacy_blob.py`: CLI script hỗ trợ `--blob`, `--dry-run`, `--apply`, `--db`.
 - `scripts/__init__.py`: Package marker cho CLI module execution.
-- `tests/test_legacy_importer.py`: Bộ 7 test cases bao quát parser, field mapping, foreign key remap, dry-run, idempotency, rollback on failure, và preservation of existing new data.
+- `tests/test_legacy_importer.py`: Bộ 13 test bao quát parser validation, field mapping, embedded snapshot, mặt hàng rỗng, foreign key remap, dry-run, idempotency, transaction guard, rollback và bảo toàn dữ liệu mới.
 
 ## Verification
 
