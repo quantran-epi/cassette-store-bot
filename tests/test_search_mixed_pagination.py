@@ -603,7 +603,7 @@ async def test_search_callback_more_fetches_db_page(test_db):
 
     assert "Đơn có Chế Linh hôm nay" in text
     assert "Trang 2/2" in text
-    assert f"Đơn #{ids[1]}" in text or f"Đơn #{ids[0]}" in text
+    assert f"ĐƠN #{ids[1]}" in text or f"ĐƠN #{ids[0]}" in text
     assert "Dạ shop có 7 đơn" in text
     assert not any("Xem thêm" in t for t in flat_texts)
     assert context.user_data["searches"]["sid"]["page"] == 2
@@ -641,8 +641,8 @@ async def test_legacy_snapshot_pagination_unchanged():
 
     text = query.edit_message_text.call_args[1]["text"]
     assert "Trang 2/2" in text
-    assert "Đơn #6" in text
-    assert "Đơn #7" in text
+    assert "ĐƠN #6" in text
+    assert "ĐƠN #7" in text
     assert "Tìm theo" in text
 
 

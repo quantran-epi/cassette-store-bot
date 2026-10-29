@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.models.mutation import IntentType
+from src.models.mutation import IntentDecision, IntentType
 from src.models.order import OrderStatus
 from src.services.intent_router import (
     classify_intent,
@@ -38,47 +38,58 @@ def test_parse_fast_path_status():
     assert parse_fast_path_status("tìm đơn 12") is None
 
 
+async def _intent(text: str, client=None, *, has_reply_order: bool = False) -> IntentType:
+    decision = await classify_intent(text, client, "dummy", has_reply_order)
+    assert isinstance(decision, IntentDecision)
+    return decision.intent
+
+
 @pytest.mark.asyncio
 async def test_classify_intent_reply_and_prefixes():
-    """classify_intent returns MUTATE when replying to order or starts with mutation prefixes."""
-    # Has reply order context
-    res = await classify_intent("đổi địa chỉ sang Cầu Giấy", client=None, model_id="dummy", has_reply_order=True)
-    assert res == IntentType.MUTATE
-
-    # Fast-path status command
-    res = await classify_intent("huỷ đơn 12", client=None, model_id="dummy")
-    assert res == IntentType.MUTATE
-
-    # Mutation prefixes
-    assert await classify_intent("sửa số điện thoại 0912345678", None, "dummy") == IntentType.MUTATE
-    assert await classify_intent("đổi địa chỉ sang 15 Lê Lợi", None, "dummy") == IntentType.MUTATE
-    assert await classify_intent("cập nhật mã vận đơn SPX123", None, "dummy") == IntentType.MUTATE
-    assert await classify_intent("thay ghi chú thành giao sau 6h", None, "dummy") == IntentType.MUTATE
+    assert await _intent("đổi địa chỉ sang Cầu Giấy", has_reply_order=True) == IntentType.MUTATE
+    assert await _intent("huỷ đơn 12") == IntentType.MUTATE
+    assert await _intent("sửa số điện thoại 0912345678") == IntentType.MUTATE
+    assert await _intent("doi dia chi sang 15 Le Loi") == IntentType.MUTATE
+    assert await _intent("cập nhật mã vận đơn SPX123") == IntentType.MUTATE
+    assert await _intent("thay ghi chú thành giao sau 6h") == IntentType.MUTATE
 
 
 @pytest.mark.asyncio
-async def test_classify_intent_search_and_create():
-    """classify_intent detects SEARCH and CREATE accurately."""
-    # Search queries
-    assert await classify_intent("tìm đơn anh Nam", None, "dummy") == IntentType.SEARCH
-    assert await classify_intent("hôm nay bán được bao nhiêu đơn", None, "dummy") == IntentType.SEARCH
-    assert await classify_intent("lịch sử đơn hàng", None, "dummy") == IntentType.SEARCH
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("tìm khách anh Nam", IntentType.CUSTOMER_PROFILE),
+        ("khách Hà Nội", IntentType.CUSTOMER_PROFILE),
+        ("khách Nam đã mua bao giờ chưa", IntentType.ORDER_SEARCH),
+        ("khách Nam có mấy đơn", IntentType.CUSTOMER_ANALYTICS),
+        ("tim khach Nhat", IntentType.CUSTOMER_PROFILE),
+        ("tìm khách Ái", IntentType.CUSTOMER_PROFILE),
+        ("tìm khách 0903123456", IntentType.CUSTOMER_PROFILE),
+        ("tìm đơn anh Nam", IntentType.ORDER_SEARCH),
+        ("tim don anh Nam", IntentType.ORDER_SEARCH),
+        ("lịch sử đơn hàng", IntentType.ORDER_SEARCH),
+        ("0903123456 có mấy đơn rồi", IntentType.CUSTOMER_ANALYTICS),
+        ("Khách nào mua nhiều đơn nhất nhỉ", IntentType.CUSTOMER_ANALYTICS),
+        ("khach nao mua nhieu don nhat", IntentType.CUSTOMER_ANALYTICS),
+        ("khách mua nhiều nhất", IntentType.CUSTOMER_ANALYTICS),
+        ("top 5 khách chi tiêu nhiều nhất", IntentType.CUSTOMER_ANALYTICS),
+        ("ai mua nhiều nhất", IntentType.CUSTOMER_ANALYTICS),
+        ("khách nào chi tiêu nhiều nhất", IntentType.CUSTOMER_ANALYTICS),
+    ],
+)
+async def test_classify_intent_search_routes(text, expected):
+    assert await _intent(text) == expected
 
-    # Order creation (contains phone number without mutation keywords)
+
+@pytest.mark.asyncio
+async def test_classify_intent_create_and_mutate_with_phone():
     raw_order = "Anh Bình 0903123456 số 10 Nguyễn Huệ lấy 2 băng Tuấn Vũ 200k"
-    assert await classify_intent(raw_order, None, "dummy") == IntentType.CREATE
-
-
-@pytest.mark.asyncio
-async def test_classify_intent_ambiguity_favors_mutate():
-    """classify_intent resolves ambiguous text with phone number AND mutation keyword to MUTATE (D-02)."""
-    ambiguous = "sửa địa chỉ đơn 0912345678 thành Cầu Giấy nhé"
-    assert await classify_intent(ambiguous, None, "dummy") == IntentType.MUTATE
+    assert await _intent(raw_order) == IntentType.CREATE
+    assert await _intent("sửa địa chỉ đơn 0912345678 thành Cầu Giấy nhé") == IntentType.MUTATE
 
 
 @pytest.mark.asyncio
 async def test_classify_intent_llm_fallback():
-    """classify_intent falls back to lightweight LLM when regex is uncertain (D-04)."""
     mock_client = MagicMock()
     mock_choice = MagicMock()
     mock_choice.message.content = "MUTATE"
@@ -86,6 +97,7 @@ async def test_classify_intent_llm_fallback():
     mock_resp.choices = [mock_choice]
     mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-    res = await classify_intent("tuần sau giao cũng được nhé shop", mock_client, "gpt-4o-mini")
-    assert res == IntentType.MUTATE
-    assert mock_client.chat.completions.create.called
+    decision = await classify_intent("tuần sau giao cũng được nhé shop", mock_client, "gpt-4o-mini")
+    assert decision.intent == IntentType.MUTATE
+    assert decision.source == "llm"
+    mock_client.chat.completions.create.assert_awaited_once()

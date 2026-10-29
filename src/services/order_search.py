@@ -33,31 +33,70 @@ def _parse_json_list(raw: Any) -> list:
 logger = logging.getLogger(__name__)
 
 SEARCH_PREFIX_KEYWORDS: tuple[str, ...] = (
-    "tìm",
-    "tra cứu",
-    "kiểm tra",
-    "xem lại đơn",
-    "hỏi đơn",
+    "tim",
+    "tra cuu",
+    "kiem tra",
+    "xem lai don",
+    "hoi don",
 )
 
 PHONE_PATTERN = re.compile(r"(?:(?:\+84|84|0)[35789])\d{8}\b")
 
-SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
-    # "đã/từng mua ... chưa / bao giờ chưa / không"
-    re.compile(r"\b(?:đã|từng)\s+mua\b.*?\b(?:chưa|bao\s+giờ\s+chưa|không)\b", re.IGNORECASE | re.DOTALL),
-    # "có mua ... không / chưa / bao giờ chưa"
-    re.compile(r"\bcó\s+mua\b.*?\b(?:không|chưa|bao\s+giờ\s+chưa)\b", re.IGNORECASE | re.DOTALL),
-    # "mấy đơn / bao nhiêu đơn"
-    re.compile(r"\b(?:mấy|bao\s+nhiêu)\s+đơn\b", re.IGNORECASE),
-    # "bán được bao nhiêu / mấy"
-    re.compile(r"\bbán\s+(?:được\s+)?(?:bao\s+nhiêu|mấy)\b", re.IGNORECASE),
-    # "lịch sử mua / lịch sử đơn"
-    re.compile(r"\blịch\s+sử\s+(?:mua|đơn)\b", re.IGNORECASE),
-    # "tra cứu / tìm kiếm / xem lại đơn / kiểm tra đơn"
-    re.compile(r"\b(?:tra\s+cứu|tìm\s+kiếm|xem\s+lại\s+đơn|kiểm\s+tra\s+đơn)\b", re.IGNORECASE),
-    # question markers with customer or order inquiry
-    re.compile(r"\b(?:mua|đơn)\b.*?\b(?:bao\s+giờ\s+chưa|chưa\s+nhỉ|chưa\s+bác|chưa\s+shop|không\s+nhỉ)\b", re.IGNORECASE | re.DOTALL),
+# These patterns are matched against lowercase, accent-free Vietnamese.
+STRONG_SEARCH_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"\b(?:da|tung)\s+mua\b"),
+    re.compile(r"\bco\s+mua\b.*?\b(?:khong|chua|bao\s+gio\s+chua)\b", re.DOTALL),
+    re.compile(r"\b(?:may|bao\s+nhieu)\s+don\b"),
+    re.compile(r"\blich\s+su\s+(?:mua|don)\b"),
+    re.compile(r"\b(?:tra\s+cuu|tim\s+kiem|xem\s+lai\s+don|kiem\s+tra\s+don)\b"),
 )
+
+SEARCH_CONVERSATIONAL_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"\bban\s+(?:duoc\s+)?(?:bao\s+nhieu|may)\b"),
+    re.compile(
+        r"\b(?:mua|don)\b.*?\b(?:bao\s+gio\s+chua|chua\s+nhi|chua\s+bac|chua\s+shop|khong\s+nhi)\b",
+        re.DOTALL,
+    ),
+)
+
+CUSTOMER_ANALYTICS_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"\b(?:khach\s+nao|ai)\b.*\b(?:mua|chi\s+tieu|dat|don)\b"),
+    re.compile(r"\btop(?:\s+\d+)?\s+khach\b"),
+    re.compile(
+        r"\bkhach\b.*\b(?:mua|chi\s+tieu|dat)\b.*\b(?:nhieu|it|cao)\s+nhat\b"
+    ),
+)
+
+GENERAL_ANALYTICS_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(r"\b(?:may|bao\s+nhieu)\s+don\b"),
+    re.compile(r"\bban\s+(?:duoc\s+)?(?:bao\s+nhieu|may)\b"),
+)
+
+
+def _normalize_intent_text(text: str) -> str:
+    return remove_accents(text).strip().lower()
+
+
+def is_analytics_intent(text: str) -> bool:
+    """Detect aggregate/ranking questions without interpreting names as keywords."""
+    normalized = _normalize_intent_text(text)
+    patterns = CUSTOMER_ANALYTICS_PATTERNS + GENERAL_ANALYTICS_PATTERNS
+    return any(pattern.search(normalized) for pattern in patterns)
+
+
+def is_search_intent(text: str) -> bool:
+    """Detect explicit or conversational order queries; phone alone still means create."""
+    normalized = _normalize_intent_text(text)
+    if any(normalized.startswith(prefix) for prefix in SEARCH_PREFIX_KEYWORDS):
+        return True
+    if any(pattern.search(normalized) for pattern in STRONG_SEARCH_PATTERNS):
+        return True
+    if PHONE_PATTERN.search(text):
+        return False
+    return is_analytics_intent(text) or any(
+        pattern.search(normalized) for pattern in SEARCH_CONVERSATIONAL_PATTERNS
+    )
+
 
 FORBIDDEN_SQL_KEYWORDS: set[str] = {
     "INSERT",
@@ -145,6 +184,12 @@ SQL_DOMAIN_RULES = """
    - Khung giờ: `strftime('%H', o.created_at, '+7 hours')` rồi GROUP BY và ORDER BY COUNT(*) DESC.
    - Thứ trong tuần: `strftime('%w', o.created_at, '+7 hours')`.
    - Ví dụ: "khung giờ nào bán được nhiều đơn nhất" → `SELECT strftime('%H', created_at, '+7 hours') AS hour, COUNT(*) AS total_orders FROM orders GROUP BY hour ORDER BY total_orders DESC LIMIT 1`
+9. Xếp hạng / thống kê theo khách hàng:
+   - "Mua" và "chi tiêu" chỉ tính đơn hoàn thành: luôn lọc `o.status = 'DA_GIAO'`.
+   - Gom khách theo `o.customer_id`, không gom theo tên/SĐT snapshot; join `customers` để lấy hồ sơ hiện tại.
+   - "Khách nào mua nhiều đơn nhất": `SELECT c.id AS customer_id, c.name AS customer_name, c.phones AS customer_phones, COUNT(*) AS completed_orders, SUM(o.total_amount) AS completed_spend FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.status = 'DA_GIAO' GROUP BY c.id, c.name, c.phones ORDER BY completed_orders DESC, completed_spend DESC, c.id ASC LIMIT 1`
+   - "Top 5 khách mua nhiều nhất": dùng truy vấn trên với `LIMIT 5`.
+   - "Khách nào chi tiêu nhiều nhất": đổi thứ tự thành `ORDER BY completed_spend DESC, completed_orders DESC, c.id ASC LIMIT 1`.
 """.strip()
 
 LEGACY_QUERY_RULES = """
@@ -262,21 +307,6 @@ class SearchPlan:
     list_query: PlannedQuery | None
     aggregates: list[PlannedQuery]
     raw_json: str
-
-
-def is_search_intent(text: str) -> bool:
-    """Check if text indicates order search intent via keywords or conversational inquiry patterns (G-04-3)."""
-    trimmed = text.strip().lower()
-    # Explicit search prefix commands always take precedence
-    if any(trimmed.startswith(prefix) for prefix in SEARCH_PREFIX_KEYWORDS):
-        return True
-
-    # Do not treat conversational text as search if it contains a valid phone number,
-    # unless it explicitly starts with search prefix keywords
-    if PHONE_PATTERN.search(text):
-        return False
-
-    return any(pattern.search(trimmed) for pattern in SEARCH_CONVERSATIONAL_PATTERNS)
 
 
 SINGLE_STATEMENT_RULES = (

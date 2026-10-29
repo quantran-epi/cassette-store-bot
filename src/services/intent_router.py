@@ -3,9 +3,11 @@ import re
 
 from openai import AsyncOpenAI
 
-from src.models.mutation import IntentType
+from src.db.connection import remove_accents
+from src.db.customers import is_customer_analytics, is_customer_search
+from src.models.mutation import IntentDecision, IntentType
 from src.models.order import OrderStatus
-from src.services.order_search import PHONE_PATTERN, is_search_intent
+from src.services.order_search import PHONE_PATTERN, is_analytics_intent, is_search_intent
 
 logger = logging.getLogger(__name__)
 
@@ -60,59 +62,68 @@ async def classify_intent(
     client: AsyncOpenAI | None,
     model_id: str,
     has_reply_order: bool = False,
-) -> IntentType:
-    """3-Way Intent Router categorizing messages into CREATE, SEARCH, or MUTATE (D-01 to D-06)."""
-    trimmed = text.strip().lower()
+) -> IntentDecision:
+    """Route once using deterministic rules, then LLM only for ambiguous text."""
+    normalized = remove_accents(text).strip().lower()
 
-    # Step 1: Replying to bot order card message always routes to MUTATE
-    if has_reply_order:
-        return IntentType.MUTATE
+    if has_reply_order or parse_fast_path_status(text) is not None:
+        return IntentDecision(intent=IntentType.MUTATE)
 
-    # Step 2: Unambiguous status fast-paths
-    if parse_fast_path_status(text) is not None:
-        return IntentType.MUTATE
+    normalized_mutation_prefixes = tuple(remove_accents(p) for p in MUTATION_PREFIXES)
+    if normalized.startswith(normalized_mutation_prefixes):
+        return IntentDecision(intent=IntentType.MUTATE)
 
-    # Step 3: Explicit mutation prefixes
-    if any(trimmed.startswith(p) for p in MUTATION_PREFIXES):
-        return IntentType.MUTATE
+    if any(cue in normalized for cue in ("sua", "doi", "huy")):
+        return IntentDecision(intent=IntentType.MUTATE)
 
-    # Step 4: Explicit or conversational search intent
+    if is_customer_search(text):
+        return IntentDecision(intent=IntentType.CUSTOMER_PROFILE)
+
+    if is_customer_analytics(text) and not re.search(
+        r"\b(?:da|tung|co)\s+mua\b|\blich\s+su\s+(?:mua|don)\b", normalized
+    ):
+        return IntentDecision(intent=IntentType.CUSTOMER_ANALYTICS)
+
+    if is_analytics_intent(text):
+        return IntentDecision(intent=IntentType.CUSTOMER_ANALYTICS)
+
     if is_search_intent(text):
-        return IntentType.SEARCH
+        return IntentDecision(intent=IntentType.ORDER_SEARCH)
 
-    # Step 5: Ambiguity check (contains phone number AND mutation keyword) -> prioritize MUTATE per D-02
-    if any(cue in trimmed for cue in ("sửa", "đổi", "huỷ", "hủy")):
-        return IntentType.MUTATE
-
-    # Step 6: Contains Vietnamese phone number -> CREATE
     if PHONE_PATTERN.search(text):
-        return IntentType.CREATE
+        return IntentDecision(intent=IntentType.CREATE)
 
-    # Step 7: Fallback lightweight LLM classification (10-20 tokens per D-04)
+    if client is None:
+        return IntentDecision(intent=IntentType.CREATE, source="fallback")
+
     if client is not None:
         try:
             prompt = (
-                "Phân loại tin nhắn sau thành đúng 1 trong 3 nhãn: CREATE, SEARCH, MUTATE.\n"
-                "- CREATE: Tạo đơn hàng mới (chứa thông tin khách, địa chỉ, hàng hoá).\n"
-                "- SEARCH: Tìm kiếm, tra cứu đơn hàng, xem lịch sử hoặc thống kê.\n"
-                "- MUTATE: Yêu cầu sửa đổi, cập nhật thông tin, thay đổi trạng thái đơn hàng.\n"
+                "Phân loại tin nhắn sau thành đúng 1 nhãn:\n"
+                "CREATE: tạo đơn hàng mới.\n"
+                "MUTATE: sửa đơn hoặc đổi trạng thái.\n"
+                "CUSTOMER_PROFILE: tìm hồ sơ khách theo tên, SĐT hoặc địa chỉ.\n"
+                "ORDER_SEARCH: tìm đơn hoặc lịch sử mua.\n"
+                "CUSTOMER_ANALYTICS: đếm, tổng hợp hoặc xếp hạng khách/đơn.\n"
+                "UNCLEAR: không đủ chắc chắn để chọn các nhãn trên.\n"
                 f"Tin nhắn: <message>{text}</message>\n"
-                "Chỉ trả về duy nhất 1 từ: CREATE, SEARCH, hoặc MUTATE."
+                "Chỉ trả về đúng 1 nhãn."
             )
             response = await client.chat.completions.create(
                 model=model_id,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=5,
+                max_tokens=8,
                 temperature=0.0,
             )
-            val = (response.choices[0].message.content or "").strip().upper()
-            if "MUTATE" in val:
-                return IntentType.MUTATE
-            if "SEARCH" in val:
-                return IntentType.SEARCH
-            if "CREATE" in val:
-                return IntentType.CREATE
+            raw = (response.choices[0].message.content or "").strip().upper()
+            label = raw.split()[0] if raw else "UNCLEAR"
+            try:
+                intent = IntentType(label)
+            except ValueError:
+                intent = IntentType.UNCLEAR
+            return IntentDecision(intent=intent, source="llm", confidence=0.8)
         except Exception as e:
             logger.warning("LLM intent classification fallback failed: %s", e)
+            return IntentDecision(intent=IntentType.CREATE, source="fallback", confidence=0.0)
 
-    return IntentType.CREATE
+    return IntentDecision(intent=IntentType.UNCLEAR, source="fallback", confidence=0.0)

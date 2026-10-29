@@ -18,7 +18,6 @@ from src.models.extractor import ExtractedOrder
 from src.models.mutation import IntentType
 from src.services.extractor import extract_order_from_text
 from src.services.intent_router import classify_intent, extract_order_id_from_reply
-from src.services.order_search import is_search_intent
 from src.services.tape_parser import build_tape_columns
 
 logger = logging.getLogger(__name__)
@@ -402,7 +401,7 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     reply_text = (reply_msg.text or reply_msg.caption) if reply_msg else None
     reply_order_id = extract_order_id_from_reply(reply_text)
 
-    intent = await run_with_typing(
+    decision = await run_with_typing(
         update.message.chat,
         classify_intent(
             text=text,
@@ -412,26 +411,36 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         ),
     )
 
-    if intent == IntentType.MUTATE:
+    if decision.intent == IntentType.MUTATE:
         from src.bot.handlers.mutation import handle_mutation_flow
 
         await handle_mutation_flow(update, context, text)
         return
 
-    # Check for search_state or search_intent per D-01, D-02, D-03
+    # Search-menu state forces order search, but still uses one downstream route.
     search_state = context.user_data.get("search_state")
     if search_state:
         if time.time() <= search_state.get("expires_at", 0):
             from src.bot.handlers.search import process_search_query
 
-            await process_search_query(update, context, text)
+            await process_search_query(update, context, text, intent=IntentType.ORDER_SEARCH)
             return
         context.user_data.pop("search_state", None)
 
-    if intent == IntentType.SEARCH or is_search_intent(text):
+    if decision.intent in (
+        IntentType.CUSTOMER_PROFILE,
+        IntentType.ORDER_SEARCH,
+        IntentType.CUSTOMER_ANALYTICS,
+    ):
         from src.bot.handlers.search import process_search_query
 
-        await process_search_query(update, context, text)
+        await process_search_query(update, context, text, intent=decision.intent)
+        return
+
+    if decision.intent == IntentType.UNCLEAR:
+        await update.message.reply_text(
+            "Bác muốn tìm khách, tìm đơn hay tạo đơn mới ạ?",
+        )
         return
 
     if not openai_client or not settings:

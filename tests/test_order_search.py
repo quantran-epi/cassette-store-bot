@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.db.connection import remove_accents
+from src.models.mutation import IntentType
 from src.services.order_search import (
     SYSTEM_PROMPT_SUMMARY,
     is_search_intent,
@@ -104,6 +105,9 @@ def test_is_search_intent_conversational_questions():
     assert is_search_intent("chị Mai có mua băng bao giờ chưa?") is True
     assert is_search_intent("hôm nay bán được bao nhiêu đơn?") is True
     assert is_search_intent("anh Nam đã từng mua băng chưa?") is True
+    assert is_search_intent("Khách nào mua nhiều đơn nhất nhỉ") is True
+    assert is_search_intent("ai mua nhiều đơn nhất") is True
+    assert is_search_intent("khách nào mua nhiều nhất") is True
     # Multiline query test with re.DOTALL per WR-03
     assert is_search_intent("Anh Tuấn đã từng mua băng\nbao giờ chưa?") is True
 
@@ -599,17 +603,17 @@ def test_render_search_multi_card():
     assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in card
     assert "7 đơn hàng" in card
     assert "Trang 1/2" in card
-    assert "Đơn #1" in card
+    assert "ĐƠN #1" in card
     assert "Khách A" in card
     assert "0901" in card
     assert "HN" in card
     assert "150.000 đ" in card
-    assert "Đơn #2" in card
+    assert "ĐƠN #2" in card
     assert "Khách B" in card
     assert "0902" in card
     assert "HCM" in card
     assert "250.000 đ" in card
-    assert "\n\n📦 <b>Đơn #2</b>" in card
+    assert "\n\n📦 <b>ĐƠN #2 — Khách B</b>" in card
 
     kb = build_search_multi_keyboard(orders=orders, search_id="s123", page=1, total_pages=2)
     flat_btns = [btn for row in kb.inline_keyboard for btn in row]
@@ -697,14 +701,18 @@ async def test_search_routing_in_ingest(test_db):
 
     with patch("src.bot.handlers.search.process_search_query", new_callable=AsyncMock) as mock_search:
         await handle_text_order(update, context)
-        mock_search.assert_awaited_once_with(update, context, "tìm đơn anh Tuấn")
+        mock_search.assert_awaited_once_with(
+            update, context, "tìm đơn anh Tuấn", intent=IntentType.ORDER_SEARCH
+        )
 
     # Routing when search_state is active
     context.user_data = {"search_state": {"expires_at": time.time() + 100}}
     message.text = "Tuấn Vũ"
     with patch("src.bot.handlers.search.process_search_query", new_callable=AsyncMock) as mock_search:
         await handle_text_order(update, context)
-        mock_search.assert_awaited_once_with(update, context, "Tuấn Vũ")
+        mock_search.assert_awaited_once_with(
+            update, context, "Tuấn Vũ", intent=IntentType.ORDER_SEARCH
+        )
 
 
 @pytest.mark.asyncio
@@ -775,8 +783,8 @@ async def test_search_callback_pagination():
     query.edit_message_text.assert_awaited_once()
     text = query.edit_message_text.call_args[1]["text"]
     assert "Trang 2/2" in text
-    assert "Đơn #6" in text
-    assert "Đơn #7" in text
+    assert "ĐƠN #6" in text
+    assert "ĐƠN #7" in text
 
 
 def test_order_detail_keyboard_custom_back():

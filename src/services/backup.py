@@ -74,7 +74,8 @@ async def execute_backup(
     gz_path = os.path.join(backup_dir, f"cassette_store_backup_{ts}.sqlite3.gz")
 
     # 1. Atomic hot snapshot on live WAL SQLite connection
-    await db.execute("VACUUM INTO ?", (raw_path,))
+    cursor = await db.execute("VACUUM INTO ?", (raw_path,))
+    await cursor.close()
     raw_size = os.path.getsize(raw_path)
 
     # 2. Gzip compression with guaranteed raw file cleanup in try...finally

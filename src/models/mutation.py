@@ -10,11 +10,23 @@ VN_PHONE_REGEX = re.compile(r"^0[35789]\d{8}$")
 
 
 class IntentType(str, Enum):
-    """3-way intent classification for incoming chat messages (D-03)."""
+    """Central route classification for incoming chat messages."""
 
     CREATE = "CREATE"
-    SEARCH = "SEARCH"
     MUTATE = "MUTATE"
+    CUSTOMER_PROFILE = "CUSTOMER_PROFILE"
+    ORDER_SEARCH = "ORDER_SEARCH"
+    CUSTOMER_ANALYTICS = "CUSTOMER_ANALYTICS"
+    UNCLEAR = "UNCLEAR"
+    SEARCH = "ORDER_SEARCH"  # Backward-compatible alias.
+
+
+class IntentDecision(BaseModel):
+    """One routing decision shared by ingestion and downstream handlers."""
+
+    intent: IntentType
+    source: str = "rule"
+    confidence: float = 1.0
 
 
 class OrderMutationDelta(BaseModel):

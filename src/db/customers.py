@@ -15,7 +15,18 @@ _CUSTOMER_FILLERS = {
 }
 _HONORIFICS = {"anh", "chi", "chị", "bac", "bác", "ong", "ông", "co", "cô", "chu", "chú", "em"}
 
-_CUSTOMER_SEARCH_PREFIXES = ("khach", "tim", "tra cuu", "kiem tra", "xem")
+_CUSTOMER_SEARCH_PATTERN = re.compile(
+    r"^(?:tim|tra\s+cuu|kiem\s+tra|xem)\s+(?:thong\s+tin\s+)?khach\b|"
+    r"^khach\b(?!.*\b(?:\+?84|0)[35789]\d{8}\b.*\b(?:bang|cuon|lay|gui|thu|cod|\d+k\b))"
+)
+_CUSTOMER_ORDER_QUERY_PATTERN = re.compile(
+    r"\b(?:khach\s+nao|ai)\b.*\b(?:mua|chi\s+tieu|dat|don)\b|"
+    r"\btop(?:\s+\d+)?\s+khach\b|"
+    r"\bkhach\b.*\b(?:mua|chi\s+tieu|dat)\b.*\b(?:nhieu|it|cao)\s+nhat\b|"
+    r"\b(?:may|bao\s+nhieu)\s+don\b|"
+    r"\b(?:da|tung|co)\s+mua\b|"
+    r"\blich\s+su\s+(?:mua|don)\b"
+)
 
 
 def _row_to_customer(row: aiosqlite.Row) -> Customer:
@@ -76,11 +87,15 @@ async def get_customer_by_phone(db: aiosqlite.Connection, phone: str) -> Custome
 
 
 def is_customer_search(query: str) -> bool:
-    """True when the query asks to look a customer up (no LLM involved)."""
-    clean = remove_accents(query).strip()
-    if "khach" not in clean:
-        return False
-    return clean.startswith(_CUSTOMER_SEARCH_PREFIXES)
+    """True for direct customer profile lookup, not order analytics."""
+    clean = remove_accents(query).strip().lower()
+    return bool(_CUSTOMER_SEARCH_PATTERN.search(clean)) and not _CUSTOMER_ORDER_QUERY_PATTERN.search(clean)
+
+
+def is_customer_analytics(query: str) -> bool:
+    """True when query ranks or aggregates customers by order activity."""
+    return bool(_CUSTOMER_ORDER_QUERY_PATTERN.search(remove_accents(query).strip().lower()))
+
 
 
 async def search_customers(

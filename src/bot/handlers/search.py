@@ -29,6 +29,7 @@ from src.db.orders import (
     get_orders_by_customer_id,
 )
 from src.models.customer import Customer
+from src.models.mutation import IntentType
 from src.models.order import Order
 from src.services.order_search import (
     SearchResult,
@@ -259,9 +260,19 @@ async def _render_customer_detail(
 
 
 async def process_search_query(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    query_text: str,
+    *,
+    intent: IntentType | None = None,
 ) -> None:
-    """Process natural language search query and reply with confirmation/result card per D-04..D-11."""
+    """Process one centrally-routed customer or order query."""
+    if intent is None:
+        intent = (
+            IntentType.CUSTOMER_PROFILE
+            if is_customer_search(query_text)
+            else IntentType.ORDER_SEARCH
+        )
     # Clear search state upon receiving query
     context.user_data.pop("search_state", None)
 
@@ -286,7 +297,7 @@ async def process_search_query(
                 return
 
             # Deterministic customer lookup: no LLM, no typing action, works without a client.
-            if is_customer_search(query_text):
+            if intent == IntentType.CUSTOMER_PROFILE:
                 matches = await search_customers(active_db, query_text)
                 search_id = uuid.uuid4().hex[:8]
                 context.user_data.setdefault("customer_searches", {})[search_id] = {

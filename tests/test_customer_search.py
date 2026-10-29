@@ -17,7 +17,13 @@ def test_is_customer_search_detects_forms():
     assert is_customer_search("tìm khách Hà Nội") is True
     assert is_customer_search("khách Hà Nội") is True
     assert is_customer_search("tra cứu khách chị Lan") is True
+    assert is_customer_search("tìm khách Nhất") is True
+    assert is_customer_search("tìm khách Ai") is True
 
+    assert is_customer_search("Khách nào mua nhiều đơn nhất nhỉ") is False
+    assert is_customer_search("khách nào chi tiêu nhiều nhất") is False
+    assert is_customer_search("top khách mua nhiều đơn") is False
+    assert is_customer_search("ai mua nhiều đơn nhất") is False
     assert is_customer_search("tìm đơn anh Tuấn") is False
     assert is_customer_search("hôm nay bán bao nhiêu đơn") is False
     assert is_customer_search("không liên quan") is False
@@ -185,7 +191,7 @@ async def test_customer_chooser_and_paging_callbacks(test_db):
     detail_text = query.edit_message_text.call_args[1]["text"]
     assert "Trang 1/2" in detail_text
     assert "TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b> (5 đơn hoàn thành)" in detail_text
-    assert "CHI TIÊU:</b> <b>TỪ 10 TRIỆU</b> (10.000.000 đ)" in detail_text
+    assert "🥇 <b>CHI TIÊU:</b> <b>10.000.000 đ</b>" in detail_text
     assert "CẢNH BÁO: Khách từng có 1 đơn BOM HÀNG!" in detail_text
     assert "🚫 Bom hàng" in detail_text
 
