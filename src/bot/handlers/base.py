@@ -51,14 +51,13 @@ async def run_with_typing(chat, coro: Coroutine[Any, Any, Any]) -> Any:
 TRY_ACTIONS: dict[str, str] = {
     "today_orders": "ord_dt:{today}",
     "date_picker": "ord_act:pick_date",
-    "new_order": "ord_act:new",
     "search": "sch_new",
     "pending_orders": "ord_ls:CHO_LAM:1",
 }
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /start command for whitelisted users with persistent 2x2 reply keyboard."""
+    """Handle /start command for whitelisted users with persistent reply keyboard."""
     user = update.effective_user
     user_id = user.id if user else "Unknown"
     first_name = user.first_name if user else "bác"

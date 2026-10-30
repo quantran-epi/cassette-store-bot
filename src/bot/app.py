@@ -363,7 +363,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         MessageHandler(
             filters.Regex(
-                r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|📝 Nhập đơn mới|🔍 Tra cứu đơn|❓ Trợ giúp)$"
+                r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|🔍 Tra cứu đơn|❓ Trợ giúp)$"
             ),
             handle_menu_reply,
         ),

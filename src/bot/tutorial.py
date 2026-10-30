@@ -15,8 +15,8 @@ TUTORIAL_PAGES: list[dict] = [
             "1. 📦 Đơn hôm nay - xem đơn trong ngày.\n"
             "2. ⏳ Đơn chờ làm - xem đơn đang chờ làm.\n"
             "3. 📋 Xem theo ngày - xem đơn ngày trước.\n"
-            "4. 📝 Nhập đơn mới - dán tin nhắn của khách.\n"
-            "5. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường."
+            "4. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường.\n"
+            "5. Gửi tin nhắn đặt hàng bất kỳ - bot tự nhận là đơn mới."
         ),
         "try_kind": None,
     },
@@ -46,16 +46,6 @@ TUTORIAL_PAGES: list[dict] = [
             "3. Chạm nút xem đơn để xem chi tiết."
         ),
         "try_kind": "date_picker",
-    },
-    {
-        "title": "📝 <b>NHẬP ĐƠN MỚI</b>",
-        "body": (
-            "1. Bấm nút 📝 Nhập đơn mới.\n"
-            "2. Dán tin nhắn khách gửi (hoặc gửi ảnh kèm chú thích).\n"
-            "3. Chờ bot bóc tách thông tin.\n"
-            "4. Bấm nút ✅ Xác nhận để lưu đơn."
-        ),
-        "try_kind": "new_order",
     },
     {
         "title": "🔍 <b>TRA CỨU ĐƠN</b>",

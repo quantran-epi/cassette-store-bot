@@ -52,19 +52,19 @@ def test_status_names_and_next_status_map():
 
 
 def test_build_main_menu_reply_keyboard_structure():
-    """Reply Keyboard is 3x2, persistent, and resizable (D-01, UI-02)."""
+    """Reply Keyboard omits new-order button; text ingestion is the fast path."""
     markup = build_main_menu_reply_keyboard()
     assert isinstance(markup, ReplyKeyboardMarkup)
     assert markup.resize_keyboard is True
     assert markup.is_persistent is True
-    assert len(markup.keyboard) == 3
-    for row in markup.keyboard:
-        assert len(row) == 2
 
     rows = [[btn.text for btn in row] for row in markup.keyboard]
-    assert rows[0] == ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"]
-    assert rows[1] == ["📋 Xem theo ngày", "📝 Nhập đơn mới"]
-    assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
+    assert rows == [
+        ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
+        ["📋 Xem theo ngày", "🔍 Tra cứu đơn"],
+        ["❓ Trợ giúp"],
+    ]
+    assert "📝 Nhập đơn mới" not in [text for row in rows for text in row]
 
 
 @pytest.mark.parametrize(
@@ -451,7 +451,7 @@ def test_build_status_selection_keyboard():
 
 @pytest.mark.asyncio
 async def test_start_command_sends_reply_keyboard():
-    """start_command attaches 3x2 persistent ReplyKeyboardMarkup (D-01, UI-01, UI-02)."""
+    """start_command attaches persistent ReplyKeyboardMarkup without new-order button."""
     user = User(id=12345, first_name="Bác Ba", is_bot=False)
     chat = Chat(id=12345, type="private")
     message = MagicMock(spec=Message)
@@ -476,11 +476,12 @@ async def test_start_command_sends_reply_keyboard():
     assert isinstance(markup, ReplyKeyboardMarkup)
     assert markup.resize_keyboard is True
     assert markup.is_persistent is True
-    assert len(markup.keyboard) == 3
     rows = [[btn.text for btn in row] for row in markup.keyboard]
-    assert rows[0] == ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"]
-    assert rows[1] == ["📋 Xem theo ngày", "📝 Nhập đơn mới"]
-    assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
+    assert rows == [
+        ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
+        ["📋 Xem theo ngày", "🔍 Tra cứu đơn"],
+        ["❓ Trợ giúp"],
+    ]
 
 
 @pytest.mark.asyncio
@@ -627,7 +628,7 @@ async def test_handle_order_nav_callback_status_list(test_db):
 
 @pytest.mark.asyncio
 async def test_handle_menu_reply_other_buttons():
-    """Clicking date picker, new order, or help returns appropriate responses."""
+    """Clicking date picker or help returns appropriate responses."""
     user = User(id=123, first_name="Bác Năm", is_bot=False)
     message = MagicMock(spec=Message)
     message.reply_text = AsyncMock()
@@ -644,15 +645,7 @@ async def test_handle_menu_reply_other_buttons():
     assert "CHỌN NGÀY XEM ĐƠN HÀNG" in kwargs.get("text", "")
     assert isinstance(kwargs.get("reply_markup"), InlineKeyboardMarkup)
 
-    # 2. 📝 Nhập đơn mới
-    message.reply_text.reset_mock()
-    message.text = "📝 Nhập đơn mới"
-    await handle_menu_reply(update, context)
-    args, kwargs = message.reply_text.call_args
-    text_val = args[0] if args else kwargs.get("text", "")
-    assert "NHẬP ĐƠN HÀNG MỚI" in text_val
-
-    # 3. ❓ Trợ giúp
+    # 2. ❓ Trợ giúp
     message.reply_text.reset_mock()
     message.text = "❓ Trợ giúp"
     await handle_menu_reply(update, context)

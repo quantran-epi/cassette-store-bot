@@ -70,7 +70,7 @@ NEXT_STATUS_MAP: dict[OrderStatus, tuple[OrderStatus, str]] = {
 
 
 def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
-    """Build persistent 3x2 Reply Keyboard for elderly-friendly navigation."""
+    """Build persistent Reply Keyboard for elderly-friendly navigation."""
     keyboard = [
         [
             KeyboardButton("📦 Đơn hôm nay"),
@@ -78,12 +78,9 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
         ],
         [
             KeyboardButton("📋 Xem theo ngày"),
-            KeyboardButton("📝 Nhập đơn mới"),
-        ],
-        [
             KeyboardButton("🔍 Tra cứu đơn"),
-            KeyboardButton("❓ Trợ giúp"),
         ],
+        [KeyboardButton("❓ Trợ giúp")],
     ]
     return ReplyKeyboardMarkup(
         keyboard,

@@ -313,18 +313,40 @@ async def test_mutation_callback_cancel_and_expiry(mock_context):
 
 
 @pytest.mark.asyncio
-async def test_ingest_routes_mutate_intent(mock_context):
-    """Test ingest.handle_text_order routes MUTATE intent directly to mutation flow."""
+async def test_ingest_treats_mutation_like_text_as_new_order(mock_context):
+    """Natural text never enters mutation flow without an explicit menu action."""
+    from src.models.extractor import ExtractedOrder
+
     update = MagicMock(spec=Update)
     update.message = MagicMock(spec=Message)
     update.message.text = "huỷ đơn 5"
     update.message.reply_to_message = None
     update.message.reply_text = AsyncMock()
 
-    with patch("src.bot.handlers.mutation.handle_mutation_flow", new=AsyncMock()) as mock_mut_flow:
+    extracted = ExtractedOrder(
+        customer_name="Khách mới",
+        customer_phone="0912345678",
+        items_text="1 băng",
+        total_amount=100000,
+        cod_amount=100000,
+    )
+    with (
+        patch(
+            "src.bot.handlers.mutation.handle_mutation_flow", new=AsyncMock()
+        ) as mock_mut_flow,
+        patch(
+            "src.bot.handlers.ingest.extract_order_from_text",
+            new=AsyncMock(return_value=extracted),
+        ),
+        patch(
+            "src.bot.handlers.ingest.process_extracted_order", new=AsyncMock()
+        ) as mock_create,
+    ):
         await handle_text_order(update, mock_context)
-        assert mock_mut_flow.called
-        assert mock_mut_flow.call_args[0][2] == "huỷ đơn 5"
+
+    mock_mut_flow.assert_not_awaited()
+    mock_create.assert_awaited_once()
+    assert mock_create.await_args.kwargs["raw_text"] == "huỷ đơn 5"
 
 
 @pytest.mark.asyncio

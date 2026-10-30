@@ -72,7 +72,7 @@ async def _render_status_list_page(
 
 
 async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle 3x2 Reply Keyboard button clicks per D-01, D-02, D-03, D-04."""
+    """Handle main Reply Keyboard button clicks."""
     if context.user_data:
         context.user_data.pop("action_state", None)
 
@@ -138,16 +138,6 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(
             text="📅 <b>CHỌN NGÀY XEM ĐƠN HÀNG</b>\n\nBác chạm vào ngày muốn xem bên dưới nhé:",
             reply_markup=keyboard,
-            parse_mode="HTML",
-        )
-        return
-
-    if text == "📝 Nhập đơn mới":
-        await update.message.reply_text(
-            "📝 <b>NHẬP ĐƠN HÀNG MỚI</b>\n\n"
-            "Bác chỉ cần dán đoạn tin nhắn đặt hàng của khách vào đây "
-            "(hoặc gửi ảnh chụp đơn hàng kèm chú thích text).\n\n"
-            "Bot sẽ tự động bóc tách tên, số điện thoại, địa chỉ và tiền hàng cho bác duyệt!",
             parse_mode="HTML",
         )
         return

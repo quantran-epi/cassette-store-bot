@@ -696,14 +696,34 @@ async def test_search_routing_in_ingest(test_db):
     update.message = message
 
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
-    context.application.bot_data = {"db": test_db}
+    context.application.bot_data = {
+        "db": test_db,
+        "settings": MagicMock(nine_router_model_id="test-model"),
+        "openai_client": MagicMock(),
+    }
     context.user_data = {}
 
-    with patch("src.bot.handlers.search.process_search_query", new_callable=AsyncMock) as mock_search:
+    from src.models.extractor import ExtractedOrder
+
+    extracted = ExtractedOrder(
+        customer_name="Anh Tuấn",
+        customer_phone="0903123456",
+        items_text="1 băng",
+        total_amount=100000,
+        cod_amount=100000,
+    )
+    with patch(
+        "src.bot.handlers.search.process_search_query", new_callable=AsyncMock
+    ) as mock_search, patch(
+        "src.bot.handlers.ingest.extract_order_from_text",
+        new=AsyncMock(return_value=extracted),
+    ) as mock_extract, patch(
+        "src.bot.handlers.ingest.process_extracted_order", new=AsyncMock()
+    ) as mock_create:
         await handle_text_order(update, context)
-        mock_search.assert_awaited_once_with(
-            update, context, "tìm đơn anh Tuấn", intent=IntentType.ORDER_SEARCH
-        )
+        mock_search.assert_not_awaited()
+        mock_extract.assert_awaited_once()
+        mock_create.assert_awaited_once()
 
     # Routing when search_state is active
     context.user_data = {"search_state": {"expires_at": time.time() + 100}}

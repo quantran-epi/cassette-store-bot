@@ -198,14 +198,6 @@ async def test_try_now_dispatches_to_existing_handlers():
     ) as mock_nav, patch(
         "src.bot.handlers.search.handle_search_callback", new_callable=AsyncMock
     ) as mock_search:
-        update, _ = _tutorial_query("help:try:new_order")
-        await handle_tutorial_callback(update, MagicMock())
-        mock_nav.assert_awaited_once()
-        sent = mock_nav.await_args.args[0].callback_query
-        assert sent.data == "ord_act:new"
-        assert sent.id == "cb-1"
-        mock_search.assert_not_awaited()
-
         update, _ = _tutorial_query("help:try:today_orders")
         await handle_tutorial_callback(update, MagicMock())
         assert mock_nav.await_args.args[0].callback_query.data.startswith("ord_dt:")
@@ -235,7 +227,7 @@ async def test_try_now_dispatches_to_existing_handlers():
 @pytest.mark.asyncio
 async def test_try_now_works_with_immutable_real_callback_query():
     """Regression: PTB freezes CallbackQuery, so assigning query.data raises."""
-    update, query = _real_tutorial_query("help:try:new_order")
+    update, query = _real_tutorial_query("help:try:today_orders")
 
     with patch(
         "src.bot.handlers.orders.handle_order_nav_callback", new_callable=AsyncMock
@@ -243,8 +235,8 @@ async def test_try_now_works_with_immutable_real_callback_query():
         await handle_tutorial_callback(update, MagicMock())
 
     mock_nav.assert_awaited_once()
-    assert mock_nav.await_args.args[0].callback_query.data == "ord_act:new"
-    assert query.data == "help:try:new_order"
+    assert mock_nav.await_args.args[0].callback_query.data.startswith("ord_dt:")
+    assert query.data == "help:try:today_orders"
 
 
 @pytest.mark.asyncio

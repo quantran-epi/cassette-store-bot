@@ -17,7 +17,6 @@ from src.db.orders import get_customer_order_stats
 from src.models.extractor import ExtractedOrder
 from src.models.mutation import IntentType
 from src.services.extractor import extract_order_from_text
-from src.services.intent_router import classify_intent, extract_order_id_from_reply
 from src.services.tape_parser import build_tape_columns
 
 logger = logging.getLogger(__name__)
@@ -384,7 +383,17 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
             return
 
-    # 3-Way Intent Routing (CREATE vs SEARCH vs MUTATE) per MUT-01..MUT-05, D-01..D-05
+    # Search only after user explicitly entered search mode from the menu.
+    search_state = context.user_data.get("search_state")
+    if search_state:
+        if time.time() <= search_state.get("expires_at", 0):
+            from src.bot.handlers.search import process_search_query
+
+            await process_search_query(update, context, text, intent=IntentType.ORDER_SEARCH)
+            return
+        context.user_data.pop("search_state", None)
+
+    # All other text is the fast path for creating a new order.
     app_context = context.application.bot_data.get("app_context")
     if not app_context:
         settings = context.application.bot_data.get("settings")
@@ -396,52 +405,6 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     active_model = context.application.bot_data.get("active_model_id") or (
         settings.nine_router_model_id if settings else ""
     )
-
-    reply_msg = update.message.reply_to_message
-    reply_text = (reply_msg.text or reply_msg.caption) if reply_msg else None
-    reply_order_id = extract_order_id_from_reply(reply_text)
-
-    decision = await run_with_typing(
-        update.message.chat,
-        classify_intent(
-            text=text,
-            client=openai_client,
-            model_id=active_model,
-            has_reply_order=bool(reply_order_id),
-        ),
-    )
-
-    if decision.intent == IntentType.MUTATE:
-        from src.bot.handlers.mutation import handle_mutation_flow
-
-        await handle_mutation_flow(update, context, text)
-        return
-
-    # Search-menu state forces order search, but still uses one downstream route.
-    search_state = context.user_data.get("search_state")
-    if search_state:
-        if time.time() <= search_state.get("expires_at", 0):
-            from src.bot.handlers.search import process_search_query
-
-            await process_search_query(update, context, text, intent=IntentType.ORDER_SEARCH)
-            return
-        context.user_data.pop("search_state", None)
-
-    if decision.intent in (
-        IntentType.CUSTOMER_PROFILE,
-        IntentType.ORDER_SEARCH,
-        IntentType.CUSTOMER_ANALYTICS,
-    ):
-        from src.bot.handlers.search import process_search_query
-
-        await process_search_query(update, context, text, intent=decision.intent)
-        return
-
-    if decision.intent == IntentType.UNCLEAR:
-        await update.message.reply_text(
-            "Bác muốn tìm khách, tìm đơn hay tạo đơn mới ạ?",
-        )
-        return
 
     if not openai_client or not settings:
         logger.error("OpenAI client or settings missing from application data")
