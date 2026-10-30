@@ -663,6 +663,32 @@ async def test_handle_menu_reply_other_buttons():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("menu", ["📋 Xem theo ngày", "✏️ Sửa đơn"])
+async def test_menu_switch_clears_old_modes_and_preserves_draft(menu):
+    """Đổi menu phải bỏ chế độ cũ, giữ nguyên nháp chưa lưu."""
+    import time
+
+    message = MagicMock(spec=Message)
+    message.text = menu
+    message.reply_text = AsyncMock()
+    update = MagicMock(spec=Update)
+    update.message = message
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    draft = {"draft_id": "draft-1"}
+    context.user_data = {
+        "mutation_state": {"expires_at": time.time() + 120},
+        "search_state": {"expires_at": time.time() + 120},
+        "active_draft_id": "draft-1",
+        "pending_orders": {"draft-1": draft},
+    }
+    await handle_menu_reply(update, context)
+    assert "search_state" not in context.user_data
+    assert ("mutation_state" in context.user_data) == (menu == "✏️ Sửa đơn")
+    assert context.user_data["active_draft_id"] == "draft-1"
+    assert context.user_data["pending_orders"]["draft-1"] is draft
+
+
+@pytest.mark.asyncio
 async def test_handle_order_nav_callback_flow(test_db):
     """Test date selection, pagination, detail card view, and back navigation."""
     from datetime import datetime

@@ -376,6 +376,47 @@ async def test_ingest_routes_next_text_to_mutation_after_menu(mock_context):
 
 
 @pytest.mark.asyncio
+async def test_expired_mutation_state_creates_new_order(mock_context):
+    """Chế độ sửa hết hạn phải trở về luồng tạo đơn."""
+    from src.models.extractor import ExtractedOrder
+
+    update = MagicMock(spec=Update)
+    update.message = MagicMock(spec=Message)
+    update.message.text = "chị Lan 0912345678 lấy 1 băng"
+    update.message.reply_text = AsyncMock()
+    mock_context.user_data = {"mutation_state": {"expires_at": time.time() - 1}}
+    extracted = ExtractedOrder(customer_phone="0912345678", items_text="1 băng")
+    with (
+        patch("src.bot.handlers.mutation.handle_mutation_flow", new=AsyncMock()) as mutate,
+        patch("src.bot.handlers.ingest.extract_order_from_text", new=AsyncMock(return_value=extracted)),
+        patch("src.bot.handlers.ingest.process_extracted_order", new=AsyncMock()) as create,
+    ):
+        await handle_text_order(update, mock_context)
+    mutate.assert_not_awaited()
+    create.assert_awaited_once()
+    assert "mutation_state" not in mock_context.user_data
+
+
+@pytest.mark.asyncio
+async def test_mutation_state_precedes_active_draft_without_deleting_it(mock_context):
+    """Chọn sửa đơn phải ưu tiên hơn sửa nháp, không xoá nháp."""
+    update = MagicMock(spec=Update)
+    update.message = MagicMock(spec=Message)
+    update.message.text = "đổi địa chỉ đơn 5 sang Hà Nội"
+    draft = {"draft_id": "draft-1"}
+    mock_context.user_data = {
+        "mutation_state": {"expires_at": time.time() + 120},
+        "active_draft_id": "draft-1",
+        "pending_orders": {"draft-1": draft},
+    }
+    with patch("src.bot.handlers.mutation.handle_mutation_flow", new=AsyncMock()) as mutate:
+        await handle_text_order(update, mock_context)
+    mutate.assert_awaited_once_with(update, mock_context, update.message.text)
+    assert mock_context.user_data["active_draft_id"] == "draft-1"
+    assert mock_context.user_data["pending_orders"]["draft-1"] is draft
+
+
+@pytest.mark.asyncio
 async def test_mutation_flow_finds_order_when_updating_phone(mock_context):
     """Test order discovery succeeds when mutating phone with customer keyword (CR-01)."""
     async with get_db_connection(":memory:") as db:
