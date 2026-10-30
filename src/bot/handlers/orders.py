@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from contextlib import nullcontext
 from datetime import datetime
 from math import ceil
@@ -75,6 +76,8 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Handle main Reply Keyboard button clicks."""
     if context.user_data:
         context.user_data.pop("action_state", None)
+        context.user_data.pop("mutation_state", None)
+        context.user_data.pop("search_state", None)
 
     if not update.message or not update.message.text:
         return
@@ -138,6 +141,16 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(
             text="📅 <b>CHỌN NGÀY XEM ĐƠN HÀNG</b>\n\nBác chạm vào ngày muốn xem bên dưới nhé:",
             reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        return
+
+    if text == "✏️ Sửa đơn":
+        context.user_data["mutation_state"] = {"expires_at": time.time() + 120}
+        await update.message.reply_text(
+            "✏️ <b>SỬA ĐƠN HÀNG</b>\n\n"
+            "Bác nhập nội dung cần sửa, kèm mã đơn hoặc thông tin khách nhé.\n"
+            "Ví dụ: <code>đổi địa chỉ đơn 12 sang Hà Nội</code>",
             parse_mode="HTML",
         )
         return

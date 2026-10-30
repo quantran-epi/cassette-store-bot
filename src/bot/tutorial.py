@@ -15,8 +15,9 @@ TUTORIAL_PAGES: list[dict] = [
             "1. 📦 Đơn hôm nay - xem đơn trong ngày.\n"
             "2. ⏳ Đơn chờ làm - xem đơn đang chờ làm.\n"
             "3. 📋 Xem theo ngày - xem đơn ngày trước.\n"
-            "4. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường.\n"
-            "5. Gửi tin nhắn đặt hàng bất kỳ - bot tự nhận là đơn mới."
+            "4. ✏️ Sửa đơn - sửa đơn bằng câu nói thường.\n"
+            "5. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường.\n"
+            "6. Gửi tin nhắn đặt hàng bất kỳ - bot tự nhận là đơn mới."
         ),
         "try_kind": None,
     },

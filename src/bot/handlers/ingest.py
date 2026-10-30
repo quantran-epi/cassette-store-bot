@@ -274,6 +274,16 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             # Expired after 120s: clean up state and proceed to regular ingestion
             context.user_data.pop("action_state", None)
 
+    mutation_state = context.user_data.get("mutation_state")
+    if mutation_state:
+        if time.time() <= mutation_state.get("expires_at", 0):
+            context.user_data.pop("mutation_state", None)
+            from src.bot.handlers.mutation import handle_mutation_flow
+
+            await handle_mutation_flow(update, context, text)
+            return
+        context.user_data.pop("mutation_state", None)
+
     # Check for active preview draft editing session (no timeout - ends on confirm or cancel)
     active_draft_id = context.user_data.get("active_draft_id")
     pending_orders = context.user_data.get("pending_orders", {})

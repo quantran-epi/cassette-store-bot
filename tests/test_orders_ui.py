@@ -61,8 +61,8 @@ def test_build_main_menu_reply_keyboard_structure():
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows == [
         ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
-        ["📋 Xem theo ngày", "🔍 Tra cứu đơn"],
-        ["❓ Trợ giúp"],
+        ["📋 Xem theo ngày", "✏️ Sửa đơn"],
+        ["🔍 Tra cứu đơn", "❓ Trợ giúp"],
     ]
     assert "📝 Nhập đơn mới" not in [text for row in rows for text in row]
 
@@ -479,8 +479,8 @@ async def test_start_command_sends_reply_keyboard():
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows == [
         ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
-        ["📋 Xem theo ngày", "🔍 Tra cứu đơn"],
-        ["❓ Trợ giúp"],
+        ["📋 Xem theo ngày", "✏️ Sửa đơn"],
+        ["🔍 Tra cứu đơn", "❓ Trợ giúp"],
     ]
 
 
@@ -628,7 +628,7 @@ async def test_handle_order_nav_callback_status_list(test_db):
 
 @pytest.mark.asyncio
 async def test_handle_menu_reply_other_buttons():
-    """Clicking date picker or help returns appropriate responses."""
+    """Date picker, edit mode, and help return appropriate responses."""
     user = User(id=123, first_name="Bác Năm", is_bot=False)
     message = MagicMock(spec=Message)
     message.reply_text = AsyncMock()
@@ -637,6 +637,7 @@ async def test_handle_menu_reply_other_buttons():
     update.message = message
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     context.application.bot_data = {}
+    context.user_data = {}
 
     # 1. 📋 Xem theo ngày
     message.text = "📋 Xem theo ngày"
@@ -645,7 +646,14 @@ async def test_handle_menu_reply_other_buttons():
     assert "CHỌN NGÀY XEM ĐƠN HÀNG" in kwargs.get("text", "")
     assert isinstance(kwargs.get("reply_markup"), InlineKeyboardMarkup)
 
-    # 2. ❓ Trợ giúp
+    # 2. ✏️ Sửa đơn
+    message.reply_text.reset_mock()
+    message.text = "✏️ Sửa đơn"
+    await handle_menu_reply(update, context)
+    assert context.user_data["mutation_state"]["expires_at"] > 0
+    assert "SỬA ĐƠN HÀNG" in message.reply_text.call_args.args[0]
+
+    # 3. ❓ Trợ giúp
     message.reply_text.reset_mock()
     message.text = "❓ Trợ giúp"
     await handle_menu_reply(update, context)

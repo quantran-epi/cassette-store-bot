@@ -78,9 +78,12 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
         ],
         [
             KeyboardButton("📋 Xem theo ngày"),
-            KeyboardButton("🔍 Tra cứu đơn"),
+            KeyboardButton("✏️ Sửa đơn"),
         ],
-        [KeyboardButton("❓ Trợ giúp")],
+        [
+            KeyboardButton("🔍 Tra cứu đơn"),
+            KeyboardButton("❓ Trợ giúp"),
+        ],
     ]
     return ReplyKeyboardMarkup(
         keyboard,

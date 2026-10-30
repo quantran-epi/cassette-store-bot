@@ -350,6 +350,32 @@ async def test_ingest_treats_mutation_like_text_as_new_order(mock_context):
 
 
 @pytest.mark.asyncio
+async def test_ingest_routes_next_text_to_mutation_after_menu(mock_context):
+    """Edit menu state consumes exactly one message through mutation flow."""
+    update = MagicMock(spec=Update)
+    update.message = MagicMock(spec=Message)
+    update.message.text = "đổi địa chỉ đơn 5 sang Hà Nội"
+    update.message.reply_text = AsyncMock()
+    mock_context.user_data = {"mutation_state": {"expires_at": time.time() + 120}}
+
+    with (
+        patch(
+            "src.bot.handlers.mutation.handle_mutation_flow", new=AsyncMock()
+        ) as mock_mut_flow,
+        patch(
+            "src.bot.handlers.ingest.extract_order_from_text", new=AsyncMock()
+        ) as mock_create,
+    ):
+        await handle_text_order(update, mock_context)
+
+    mock_mut_flow.assert_awaited_once_with(
+        update, mock_context, "đổi địa chỉ đơn 5 sang Hà Nội"
+    )
+    mock_create.assert_not_awaited()
+    assert "mutation_state" not in mock_context.user_data
+
+
+@pytest.mark.asyncio
 async def test_mutation_flow_finds_order_when_updating_phone(mock_context):
     """Test order discovery succeeds when mutating phone with customer keyword (CR-01)."""
     async with get_db_connection(":memory:") as db:
