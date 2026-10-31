@@ -1412,3 +1412,14 @@ def test_app_action_pattern_matches_more_and_less():
     assert app_pattern.match("ord_act:less:123") is not None
     assert app_pattern.match("ord_act:track:123") is not None
 
+
+def test_divider_single_source_of_truth():
+    """Verify DIVIDER is consistent across modules and has exact length 16."""
+    from src.bot.keyboards import DIVIDER as KB_DIVIDER
+    from src.services.notifications import DIVIDER as NOTIF_DIVIDER
+
+    assert KB_DIVIDER == "••••••••••••••••"
+    assert len(KB_DIVIDER) == 16
+    assert NOTIF_DIVIDER == KB_DIVIDER
+
+

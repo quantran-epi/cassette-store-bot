@@ -17,6 +17,7 @@ from src.bot.handlers.search import (
     _total_pages,
 )
 from src.bot.keyboards import (
+    DIVIDER,
     build_bulk_confirm_keyboard,
     build_bulk_done_keyboard,
     build_bulk_intro_keyboard,
@@ -311,10 +312,10 @@ async def handle_bulk_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         await _safe_edit(
             query,
-            "🔍 <b>TÌM ĐƠN ĐỂ ĐỔI TRẠNG THÁI</b>\n"
-            "──────────────\n"
-            "Bác gõ tên khách, số điện thoại, hoặc từ khoá vào ô chat (ví dụ: 'đơn hôm nay' hoặc 'tìm anh Tuấn').\n\n"
-            "Bot sẽ trả về danh sách có nút chọn cho bác tick!",
+            f"🔍 <b>TÌM ĐƠN ĐỂ ĐỔI TRẠNG THÁI</b>\n"
+            f"{DIVIDER}\n"
+            f"Bác gõ tên khách, số điện thoại, hoặc từ khoá vào ô chat (ví dụ: 'đơn hôm nay' hoặc 'tìm anh Tuấn').\n\n"
+            f"Bot sẽ trả về danh sách có nút chọn cho bác tick!",
             kb,
         )
         return

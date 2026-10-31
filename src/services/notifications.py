@@ -8,12 +8,12 @@ from zoneinfo import ZoneInfo
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 
+from src.bot.keyboards import DIVIDER
 from src.models.order import Order
 
 logger = logging.getLogger(__name__)
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-DIVIDER = "••••••••••••••••"  # 16 bullet dots divider
 
 
 def _format_time_vn(val: Any, is_utc: bool = False) -> str:
