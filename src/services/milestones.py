@@ -92,25 +92,69 @@ def get_default_milestone_template(
     target_type: MilestoneTargetType,
     target_value: int,
     only_delivered: bool,
+    variant: int = 0,
 ) -> str:
-    """Generate default lively celebration message template."""
+    """Generate default lively celebration message template with varied flavors."""
     period_label = PERIOD_LABELS.get(period, "giai đoạn này")
     condition_label = "thành công" if only_delivered else "được đặt"
 
     if target_type == MilestoneTargetType.ORDER_COUNT:
-        return (
-            f"🎉 <b>KỶ LỤC MỚI: {target_value:,} ĐƠN HÀNG!</b> 🎉\n"
-            f"{DIVIDER}\n"
-            f"📻 Tiệm Băng Cassette vừa cán mốc <b>{{current_value}} đơn {condition_label}</b> {period_label}!\n"
-            "🔥 Xin chúc mừng toàn thể shop buôn may bán đắt, âm nhạc ngập tràn!"
-        )
+        variants = [
+            (
+                f"🎉 <b>KỶ LỤC MỚI: {target_value:,} ĐƠN HÀNG!</b> 🎉\n"
+                f"{DIVIDER}\n"
+                f"📻 Tiệm Băng Cassette vừa cán mốc <b>{{current_value}} đơn {condition_label}</b> {period_label}!\n"
+                "🔥 Xin chúc mừng toàn thể shop buôn may bán đắt, âm nhạc ngập tràn!"
+            ),
+            (
+                f"📼 <b>MỐC SON Ý NGHĨA: {target_value:,} ĐƠN!</b> 📼\n"
+                f"{DIVIDER}\n"
+                f"🎶 Từng cuộn băng trao đi là ngần ấy tình yêu âm nhạc được lan toả!\n"
+                f"✨ Shop đã chạm mốc <b>{{current_value}} đơn {condition_label}</b> {period_label}. Xin chúc mừng!"
+            ),
+            (
+                f"🚀 <b>BÙNG NỔ ĐƠN HÀNG: {target_value:,} ĐƠN!</b> 🚀\n"
+                f"{DIVIDER}\n"
+                f"🔥 Tiệm Băng Cassette vừa thiết lập kỷ lục mới với <b>{{current_value}} đơn {condition_label}</b> {period_label}!\n"
+                "🏆 Chúc shop giữ vững phong độ, tiếp tục phá vỡ mọi cột mốc tiếp theo!"
+            ),
+            (
+                f"📻 <b>BẢN HÒA CA CHIẾN THẮNG!</b> 📻\n"
+                f"{DIVIDER}\n"
+                f"🎵 Giai điệu rực rỡ nhất {period_label} chính là con số <b>{{current_value}} đơn {condition_label}</b>!\n"
+                "🎉 Chúc mừng đại gia đình shop, tiếp tục quẩy hết mình cùng những cuộn băng!"
+            ),
+        ]
+        return variants[variant % len(variants)]
+
     val_str = format_amount_vnd(target_value)
-    return (
-        f"🎉 <b>CÁN MỐC DOANH THU: {val_str}!</b> 🎉\n"
-        f"{DIVIDER}\n"
-        f"📻 Tiệm Băng Cassette vừa đạt doanh thu <b>{{current_value}}</b> {period_label}!\n"
-        "🔥 Xin chúc mừng mốc doanh thu tuyệt vời! Tiếp tục phát huy nhé!"
-    )
+    rev_variants = [
+        (
+            f"🎉 <b>CÁN MỐC DOANH THU: {val_str}!</b> 🎉\n"
+            f"{DIVIDER}\n"
+            f"📻 Tiệm Băng Cassette vừa đạt doanh thu <b>{{current_value}}</b> {period_label}!\n"
+            "🔥 Xin chúc mừng mốc doanh thu tuyệt vời! Tiếp tục phát huy nhé!"
+        ),
+        (
+            f"💰 <b>KỶ LỤC DOANH SỐ MỚI: {val_str}!</b> 💰\n"
+            f"{DIVIDER}\n"
+            f"✨ Cột mốc <b>{{current_value}}</b> {period_label} là minh chứng cho sự tin yêu của những người yêu băng cổ!\n"
+            "🎉 Chúc shop ngày càng phát tài phát lộc, khách quen ngập tràn!"
+        ),
+        (
+            f"🚀 <b>DOANH THU BỨT PHÁ: {val_str}!</b> 🚀\n"
+            f"{DIVIDER}\n"
+            f"🔥 Tiệm Băng Cassette bùng nổ mạnh mẽ với doanh số <b>{{current_value}}</b> {period_label}!\n"
+            "🏆 Cột mốc rất đáng tự hào, chúc shop bứt phá hơn nữa!"
+        ),
+        (
+            f"📻 <b>TIỀM LỰC VỮNG VÀNG: {val_str}!</b> 📻\n"
+            f"{DIVIDER}\n"
+            f"🎶 Con số <b>{{current_value}}</b> {period_label} đã chính thức được ghi danh vào bảng vàng của Tiệm!\n"
+            "🎉 Xin nhiệt liệt chúc mừng thành quả xuất sắc của cả đội ngũ!"
+        ),
+    ]
+    return rev_variants[variant % len(rev_variants)]
 
 
 async def suggest_milestone_template(
@@ -120,10 +164,11 @@ async def suggest_milestone_template(
     only_delivered: bool,
     client: AsyncOpenAI | None = None,
     model: str = "gpt-4o-mini",
+    variant: int = 0,
 ) -> str:
     """Generate or suggest celebratory template, using LLM if available."""
     default_tpl = get_default_milestone_template(
-        period, target_type, target_value, only_delivered
+        period, target_type, target_value, only_delivered, variant=variant
     )
     if not client:
         return default_tpl
@@ -137,14 +182,14 @@ async def suggest_milestone_template(
     condition_desc = "đã giao thành công" if only_delivered else "đặt hàng (trừ đơn bom)"
 
     prompt = (
-        f"Hãy viết một thông báo chúc mừng ngắn gọn (khoảng 2-3 câu), hào hứng, ấm áp bằng tiếng Việt "
+        f"Hãy viết một thông báo chúc mừng độc đáo, phong cách khác biệt (khoảng 2-3 câu), hào hứng, ấm áp bằng tiếng Việt "
         f"dành cho tiệm bán băng cassette cổ ('Tiệm Băng Cassette').\n"
-        f"Chủ đề: Shop vừa đạt mốc kỷ lục {metric_label} ({condition_desc}) trong {period_label}.\n"
+        f"Chủ đề: Shop vừa đạt mốc kỷ lục {metric_label} ({condition_desc}) trong {period_label} (Mẫu biến thể #{variant + 1}).\n"
         f"Yêu cầu:\n"
-        f"- Bắt đầu bằng dòng tiêu đề viết hoa kèm emoji (VD: 🎉 KỶ LỤC MỚI: ... 🎉).\n"
-        f"- Trong phần thân, hãy dùng chính xác token '{{current_value}}' tại vị trí con số/số tiền đạt được "
+        f"- Bắt đầu bằng dòng tiêu đề viết hoa kèm emoji (VD: 🎉 KỶ LỤC MỚI: ... 🎉 hoặc 📻 BẢN HÒA CA: ...).\n"
+        f"- Trong phần thân, BẮT BUỘC dùng chính xác token '{{current_value}}' tại vị trí con số/số tiền đạt được "
         f"để hệ thống tự thay số thực tế vào.\n"
-        f"- Dùng icon âm nhạc/băng cassette/pháo hoa (📻, 📼, 🎉, 🔥).\n"
+        f"- Dùng icon âm nhạc/băng cassette/pháo hoa (📻, 📼, 🎉, 🔥, 🎶).\n"
         f"- Giữ phong cách cổ điển, thân tình, tràn đầy năng lượng.\n"
         f"- Chỉ xuất ra nội dung text thuần (cho phép thẻ b, i của HTML), không kèm lời giải thích."
     )

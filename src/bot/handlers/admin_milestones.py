@@ -3,6 +3,7 @@ import time
 from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.admin import _get_active_db_context
@@ -444,6 +445,27 @@ async def handle_milestone_callback(
                 return
 
 
+def _resolve_llm_client_and_model(context: ContextTypes.DEFAULT_TYPE) -> tuple[Any, str]:
+    """Resolve OpenAI/9router client and active model ID across bot contexts."""
+    bot_data = getattr(context, "bot_data", None)
+    if not isinstance(bot_data, dict) and hasattr(context, "application"):
+        bot_data = getattr(context.application, "bot_data", None)
+    if not isinstance(bot_data, dict):
+        bot_data = {}
+
+    client = bot_data.get("openai_client")
+    if not client:
+        app_context = bot_data.get("app_context")
+        if app_context:
+            client = getattr(app_context, "openai_client", None)
+
+    settings = bot_data.get("settings")
+    active_model = bot_data.get("active_model_id") or (
+        getattr(settings, "nine_router_model_id", "gpt-4o-mini") if settings else "gpt-4o-mini"
+    )
+    return client, active_model
+
+
 async def _show_wizard_template_choice(
     query: Any,
     context: ContextTypes.DEFAULT_TYPE,
@@ -461,14 +483,17 @@ async def _show_wizard_template_choice(
         except Exception:
             pass
 
-    period = draft["period"]
-    t_type = draft["target_type"]
-    t_val = draft["target_value"]
-    only_del = draft["only_delivered"]
+    period = draft.get("period", MilestonePeriod.WEEK)
+    t_type = draft.get("target_type", MilestoneTargetType.ORDER_COUNT)
+    t_val = draft.get("target_value", 50)
+    only_del = draft.get("only_delivered", False)
 
-    client = context.bot_data.get("openai_client")
-    settings = context.bot_data.get("settings")
-    model = getattr(settings, "llm_model", "gpt-4o-mini") if settings else "gpt-4o-mini"
+    retry_count = draft.get("retry_count", 0)
+    if force_ai:
+        retry_count += 1
+        draft["retry_count"] = retry_count
+
+    client, model = _resolve_llm_client_and_model(context)
 
     coro = suggest_milestone_template(
         period=period,
@@ -477,6 +502,7 @@ async def _show_wizard_template_choice(
         only_delivered=only_del,
         client=client,
         model=model,
+        variant=retry_count,
     )
     if chat:
         tpl = await run_with_typing(chat, coro)
@@ -504,7 +530,15 @@ async def _show_wizard_template_choice(
         "Bác muốn dùng luôn mẫu này hay tự chỉnh sửa?"
     )
     if query:
-        await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+        try:
+            await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+            if force_ai:
+                await query.answer("✨ Đã tạo mẫu lời chúc mới!", show_alert=False)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await query.answer("✨ Đã làm mới lời chúc!", show_alert=False)
+            else:
+                raise
 
 
 async def handle_milestone_text_input(
@@ -550,11 +584,9 @@ async def handle_milestone_text_input(
         )
 
         # Send next step
-        period = draft["period"]
-        only_del = draft["only_delivered"]
-        client = context.bot_data.get("openai_client")
-        settings = context.bot_data.get("settings")
-        model = getattr(settings, "llm_model", "gpt-4o-mini") if settings else "gpt-4o-mini"
+        period = draft.get("period", MilestonePeriod.WEEK)
+        only_del = draft.get("only_delivered", False)
+        client, model = _resolve_llm_client_and_model(context)
 
         coro = suggest_milestone_template(
             period=period,
@@ -563,6 +595,7 @@ async def handle_milestone_text_input(
             only_delivered=only_del,
             client=client,
             model=model,
+            variant=draft.get("retry_count", 0),
         )
         if update.effective_chat:
             tpl = await run_with_typing(update.effective_chat, coro)
