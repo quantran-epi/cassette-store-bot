@@ -158,6 +158,12 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await handle_search_menu_reply(update, context)
         return
 
+    if text == "🔄 Đổi trạng thái":
+        from src.bot.handlers.bulk_status import start_bulk_status
+
+        await start_bulk_status(update, context)
+        return
+
     if text == "❓ Trợ giúp":
         await send_tutorial(update, context, 0, message=update.message)
         return

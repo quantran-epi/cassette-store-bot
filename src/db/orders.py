@@ -163,6 +163,7 @@ async def get_order_by_id(db: aiosqlite.Connection, order_id: int) -> Order | No
         stats = await get_customer_order_stats(db, order.customer_id)
         order.customer_completed_orders = stats["total_orders"]
         order.customer_completed_spend = stats["total_spent"]
+        order.customer_any_order_count = stats["any_orders"]
     return order
 
 
@@ -345,10 +346,12 @@ async def hydrate_customer_stats(db: aiosqlite.Connection, orders: Sequence[Orde
     placeholders = ",".join("?" for _ in customer_ids)
     async with db.execute(
         f"""
-        SELECT customer_id, COUNT(*) AS completed_orders,
-               COALESCE(SUM(total_amount), 0) AS completed_spend
+        SELECT customer_id,
+               COUNT(CASE WHEN status = 'DA_GIAO' THEN 1 END) AS completed_orders,
+               COALESCE(SUM(CASE WHEN status = 'DA_GIAO' THEN total_amount ELSE 0 END), 0) AS completed_spend,
+               COUNT(*) AS any_orders
         FROM orders
-        WHERE status = 'DA_GIAO' AND customer_id IN ({placeholders})
+        WHERE customer_id IN ({placeholders})
         GROUP BY customer_id
         """,
         customer_ids,
@@ -359,6 +362,7 @@ async def hydrate_customer_stats(db: aiosqlite.Connection, orders: Sequence[Orde
             row = stats.get(order.customer_id)
             order.customer_completed_orders = row["completed_orders"] if row else 0
             order.customer_completed_spend = row["completed_spend"] if row else 0
+            order.customer_any_order_count = row["any_orders"] if row else None
 
 
 async def get_customer_order_stats(db: aiosqlite.Connection, customer_id: int) -> dict[str, int]:
@@ -367,18 +371,20 @@ async def get_customer_order_stats(db: aiosqlite.Connection, customer_id: int) -
         SELECT
             COUNT(CASE WHEN status = 'DA_GIAO' THEN 1 END) AS total_orders,
             COALESCE(SUM(CASE WHEN status = 'DA_GIAO' THEN total_amount ELSE 0 END), 0) AS total_spent,
-            COUNT(CASE WHEN status = 'BOM_HANG' THEN 1 END) AS bom_count
+            COUNT(CASE WHEN status = 'BOM_HANG' THEN 1 END) AS bom_count,
+            COUNT(*) AS any_orders
         FROM orders
         WHERE customer_id = ?
     """
     async with db.execute(query, (customer_id,)) as cursor:
         row = await cursor.fetchone()
         if not row:
-            return {"total_orders": 0, "total_spent": 0, "bom_count": 0}
+            return {"total_orders": 0, "total_spent": 0, "bom_count": 0, "any_orders": 0}
         return {
             "total_orders": row["total_orders"],
             "total_spent": row["total_spent"],
             "bom_count": row["bom_count"],
+            "any_orders": row["any_orders"],
         }
 
 
@@ -728,10 +734,98 @@ async def mutate_order_with_lock(
     return True, changes, fresh_order
 
 
+async def bulk_update_order_status(
+    db: aiosqlite.Connection,
+    order_ids: Sequence[int],
+    new_status: OrderStatus,
+    user_id: int | None = None,
+    user_name: str | None = None,
+) -> list[int]:
+    """Bulk update status for a list of orders (up to 20), recording history for each."""
+    unique_ids = [oid for oid in dict.fromkeys(order_ids) if isinstance(oid, int)][:20]
+    if not unique_ids:
+        return []
+
+    ph = ",".join("?" for _ in unique_ids)
+    async with db.execute(
+        f"SELECT id, status FROM orders WHERE id IN ({ph})",
+        unique_ids,
+    ) as cursor:
+        current_rows = await cursor.fetchall()
+
+    if not current_rows:
+        return []
+
+    await db.execute(
+        f"""
+        UPDATE orders
+        SET status = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id IN ({ph})
+        """,
+        (new_status.value, *unique_ids),
+    )
+
+    clean_user_id: int | None = None
+    if user_id is not None:
+        try:
+            clean_user_id = int(user_id)
+        except (ValueError, TypeError):
+            clean_user_id = None
+    clean_user_name = user_name if isinstance(user_name, str) else None
+
+    for r in current_rows:
+        old_val = r["status"]
+        oid = r["id"]
+        await db.execute(
+            """
+            INSERT INTO order_history (order_id, user_id, user_name, action, changes_json)
+            VALUES (?, ?, ?, 'STATUS_CHANGE', ?)
+            """,
+            (
+                oid,
+                clean_user_id,
+                clean_user_name,
+                json.dumps(
+                    {"status": {"old": old_val, "new": new_status.value}},
+                    ensure_ascii=False,
+                ),
+            ),
+        )
+
+    await db.commit()
+    return [r["id"] for r in current_rows]
+
+
+async def find_orders_by_tracking_codes(
+    db: aiosqlite.Connection,
+    codes: Sequence[str],
+) -> list[Order]:
+    """Find orders matching a list of tracking codes (case-insensitive, trimmed)."""
+    cleaned = [c.strip().upper() for c in codes if c and c.strip()]
+    if not cleaned:
+        return []
+    # Deduplicate while preserving order
+    deduped = list(dict.fromkeys(cleaned))[:30]
+    ph = ",".join("?" for _ in deduped)
+    query = f"""
+        SELECT * FROM orders
+        WHERE UPPER(tracking_code) IN ({ph})
+        ORDER BY created_at DESC, id DESC
+    """
+    async with db.execute(query, deduped) as cursor:
+        rows = await cursor.fetchall()
+    orders = [_row_to_order(r) for r in rows]
+    await hydrate_customer_stats(db, orders)
+    return orders
+
+
 __all__ = [
     "create_order",
     "get_order_by_id",
     "update_order_status",
+    "bulk_update_order_status",
+    "find_orders_by_tracking_codes",
     "update_order_tracking",
     "list_orders_by_date",
     "count_orders_by_date",

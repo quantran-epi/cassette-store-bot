@@ -64,7 +64,7 @@ def test_build_main_menu_reply_keyboard_structure():
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows[0] == ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"]
     assert rows[1] == ["📋 Xem theo ngày", "📝 Nhập đơn mới"]
-    assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
+    assert rows[2] == ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"]
 
 
 @pytest.mark.parametrize(
@@ -480,7 +480,7 @@ async def test_start_command_sends_reply_keyboard():
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows[0] == ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"]
     assert rows[1] == ["📋 Xem theo ngày", "📝 Nhập đơn mới"]
-    assert rows[2] == ["🔍 Tra cứu đơn", "❓ Trợ giúp"]
+    assert rows[2] == ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"]
 
 
 @pytest.mark.asyncio

@@ -82,7 +82,7 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
         ],
         [
             KeyboardButton("🔍 Tra cứu đơn"),
-            KeyboardButton("❓ Trợ giúp"),
+            KeyboardButton("🔄 Đổi trạng thái"),
         ],
     ]
     return ReplyKeyboardMarkup(
@@ -120,6 +120,11 @@ def format_customer_classification(completed_orders: int, completed_spend: int) 
         f"{spend_marker} <b>CHI TIÊU:</b> <b>{spend}</b>"
     )
 
+
+def _returning_marker(order: Order) -> str:
+    """Icon for a customer with any prior order in the system (any status, not just delivered)."""
+    count = order.customer_any_order_count
+    return " 🔂" if isinstance(count, int) and count >= 2 else ""
 
 def _order_classification(order: Order) -> str:
     if isinstance(order.customer_completed_orders, int) and isinstance(
@@ -187,7 +192,7 @@ def render_order_detail_card(
         f"📦 <b>CHI TIẾT ĐƠN HÀNG #{order.id}</b>\n"
         f"🔄 <b>TRẠNG THÁI:</b> <b>{status_label}</b>\n"
         f"{DIVIDER}\n"
-        f"👤 <b>KHÁCH:</b> {html.escape(order.customer_name)}\n"
+        f"👤 <b>KHÁCH:</b> {html.escape(order.customer_name)}{_returning_marker(order)}\n"
         f"{classification_line}"
         f"📞 <b>SĐT:</b> <code>{html.escape(order.customer_phone)}</code> <i>(chạm để copy)</i>\n"
         f"📍 <b>ĐỊA CHỈ:</b> <code>{html.escape(order.shipping_address)}</code>\n"
@@ -535,7 +540,7 @@ def format_order_item_summary(order: Order) -> str:
     classification = _order_classification(order)
     classification_line = f"   {classification.replace(chr(10), chr(10) + '   ')}\n" if classification else ""
     return (
-        f"📦 <b>ĐƠN #{order.id} — {cust_name}</b>\n"
+        f"📦 <b>ĐƠN #{order.id} — {cust_name}{_returning_marker(order)}</b>\n"
         f"{classification_line}"
         f"   📞 <b>SĐT:</b> {phone}\n"
         f"   📍 <b>Đ/C:</b> {addr}"
@@ -580,7 +585,7 @@ def render_order_list_card(
 def format_order_compact_line(order: Order) -> str:
     """Compact order summary with classification when aggregate stats are hydrated."""
     total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
-    line = f"📦 <b>#{order.id}</b> · {html.escape(order.customer_name)} · {total_fmt}"
+    line = f"📦 <b>#{order.id}</b> · {html.escape(order.customer_name)}{_returning_marker(order)} · {total_fmt}"
     classification = _order_classification(order)
     return f"{line}\n   {classification.replace(chr(10), chr(10) + '   ')}" if classification else line
 
@@ -825,7 +830,7 @@ def render_search_single_order_card(order: Order, query: str, purpose: str | Non
     classification = _order_classification(order)
     classification_line = f"{classification}\n" if classification else ""
     return (
-        heading + f"📦 <b>Đơn #{order.id}</b> - {cust_name}\n"
+        heading + f"📦 <b>Đơn #{order.id}</b> - {cust_name}{_returning_marker(order)}\n"
         f"{classification_line}"
         f"📞 <b>SĐT:</b> {phone_display}\n"
         f"📍 <b>ĐỊA CHỈ:</b> {addr}\n"
@@ -1608,3 +1613,311 @@ def render_customer_detail_card(
         )
 
     return text, InlineKeyboardMarkup(keyboard)
+
+
+# ============================================================================
+# BULK STATUS CHANGE KEYBOARDS & CARDS
+# ============================================================================
+
+
+def _status_short_emoji(st: OrderStatus) -> str:
+    """Compact status icon for button labels."""
+    mapping = {
+        OrderStatus.CHO_LAM: "⏳",
+        OrderStatus.DANG_LAM: "🛠️",
+        OrderStatus.DA_DONG_GOI: "📦",
+        OrderStatus.DA_TAO_DON: "📑",
+        OrderStatus.SHIPPER_DA_LAY: "🚚",
+        OrderStatus.DA_GIAO: "✅",
+        OrderStatus.BOM_HANG: "🚫",
+        OrderStatus.HUY_DON: "❌",
+    }
+    return mapping.get(st, "•")
+
+
+def _format_bulk_button_label(order: Order, checked: bool) -> str:
+    """Format single-order checkbox button per user requirement:
+    name, 4 last digits of phone, status icon, and tracking code if present."""
+    mark = "☑" if checked else "☐"
+    name = (order.customer_name or "Khách").strip()
+    if len(name) > 10:
+        name = name[:9] + "…"
+
+    phone = re.sub(r"\D", "", order.customer_phone or "")
+    phone_part = phone[-4:] if len(phone) >= 4 else (phone or "")
+
+    st_ico = _status_short_emoji(order.status)
+    track = (order.tracking_code or "").strip()
+    track_part = f" · {track[-6:]}" if track else ""
+
+    phone_str = f" · {phone_part}" if phone_part else ""
+    label = f"{mark} #{order.id} {name}{phone_str}{track_part} {st_ico}"
+    # Telegram button text limit safe guard (64 chars)
+    return label[:48]
+
+
+def render_bulk_intro_card() -> str:
+    """Render step 1/3 intro card."""
+    return (
+        "🔄 <b>ĐỔI TRẠNG THÁI HÀNG LOẠT</b>\n"
+        "<i>Bước 1/3 — Chọn đơn cần đổi</i>\n"
+        f"{DIVIDER}\n"
+        "Bác chọn đơn theo 1 trong 2 cách:\n\n"
+        "• Bấm <b>🔍 Tìm đơn</b> rồi gõ tên khách, SĐT hoặc ngày như bình thường.\n"
+        "• Hoặc bấm <b>📋 Dán mã vận đơn</b> rồi dán 1 loạt mã (mỗi mã 1 dòng) vào ô chat.\n\n"
+        "Mỗi đơn sẽ có nút bật/tắt (☐/☑) và nút 👁️ để xem chi tiết."
+    )
+
+
+def build_bulk_intro_keyboard() -> InlineKeyboardMarkup:
+    """Build step 1/3 entry keyboard."""
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🔍 Tìm đơn", callback_data="bs:search")],
+            [InlineKeyboardButton("📋 Dán mã vận đơn", callback_data="bs:paste")],
+            [InlineKeyboardButton("❌ Huỷ", callback_data="bs:cancel")],
+        ]
+    )
+
+
+def render_bulk_paste_prompt_card() -> str:
+    """Render prompt asking user to paste tracking codes."""
+    return (
+        "🔄 <b>ĐỔI TRẠNG THÁI HÀNG LOẠT</b>\n"
+        "📋 <b>DÁN MÃ VẬN ĐƠN</b>\n"
+        f"{DIVIDER}\n"
+        "Bác hãy dán danh sách mã vận đơn vào ô chat, mỗi mã một dòng.\n\n"
+        "Ví dụ:\n"
+        "<code>GHN123456</code>\n"
+        "<code>VN987654321</code>\n\n"
+        "<i>(Hết hạn sau 120 giây)</i>"
+    )
+
+
+def build_bulk_paste_prompt_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("⬅️ Quay lại", callback_data="bs:start"),
+                InlineKeyboardButton("❌ Huỷ", callback_data="bs:cancel"),
+            ]
+        ]
+    )
+
+
+def render_bulk_pick_card(
+    orders: Sequence[Order],
+    selected_ids: set[int],
+    page: int,
+    total_pages: int,
+    total_orders: int,
+    query_display: str | None = None,
+    missing_codes: Sequence[str] | None = None,
+) -> str:
+    """Render paginated order picker card with detailed summaries."""
+    q_str = f"Tìm theo: '{html.escape(query_display)}' — " if query_display else ""
+    lines = [
+        "🔄 <b>ĐỔI TRẠNG THÁI HÀNG LOẠT</b>",
+        f"<i>Bước 1/3 — {q_str}{total_orders} đơn (Trang {page}/{total_pages})</i>",
+        DIVIDER,
+    ]
+
+    if missing_codes:
+        esc_missing = ", ".join(f"<code>{html.escape(c)}</code>" for c in missing_codes[:5])
+        extra = f" (+{len(missing_codes) - 5} mã khác)" if len(missing_codes) > 5 else ""
+        lines.append(f"⚠️ <b>Không tìm thấy mã:</b> {esc_missing}{extra}\n")
+
+    if not orders:
+        lines.append("<i>Không có đơn nào để hiển thị.</i>")
+    else:
+        for o in orders:
+            mark = "☑" if o.id in selected_ids else "☐"
+            st_label = STATUS_NAMES.get(o.status, o.status.value)
+            tot = f"{o.total_amount:,} đ".replace(",", ".")
+            phone = (
+                f"<code>{html.escape(o.customer_phone)}</code>"
+                if o.customer_phone
+                else "<i>(Chưa có SĐT)</i>"
+            )
+            track = (
+                f" · Mã: <code>{html.escape(o.tracking_code)}</code>"
+                if o.tracking_code
+                else ""
+            )
+            lines.append(
+                f"{mark} <b>#{o.id} · {html.escape(o.customer_name)}{_returning_marker(o)}</b>\n"
+                f"   📞 {phone} · 💰 {tot} · {st_label}{track}"
+            )
+
+    lines.append(DIVIDER)
+    count = len(selected_ids)
+    lines.append(f"Đã chọn: <b>{count} đơn</b> (tối đa 20)")
+    lines.append("Bác bấm nút để chọn/bỏ chọn, hoặc bấm 👁️ để xem chi tiết:")
+    return "\n".join(lines)
+
+
+def build_bulk_pick_keyboard(
+    orders: Sequence[Order],
+    selected_ids: set[int],
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    """Build picker keyboard with toggle + detail button per order."""
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for o in orders:
+        if o.id is None:
+            continue
+        checked = o.id in selected_ids
+        btn_label = _format_bulk_button_label(o, checked)
+        buttons.append(
+            [
+                InlineKeyboardButton(btn_label, callback_data=f"bs:t:{o.id}"),
+                InlineKeyboardButton("👁️", callback_data=f"bs:v:{o.id}"),
+            ]
+        )
+
+    # Pagination row
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 1:
+            nav_row.append(InlineKeyboardButton("⬅️ Trước", callback_data=f"bs:pg:{page - 1}"))
+        nav_row.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="ord_noop"))
+        if page < total_pages:
+            nav_row.append(InlineKeyboardButton("Sau ➡️", callback_data=f"bs:pg:{page + 1}"))
+        buttons.append(nav_row)
+
+    # Next action
+    count = len(selected_ids)
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                f"➡️ Tiếp tục ({count} đơn)",
+                callback_data="bs:next",
+            )
+        ]
+    )
+
+    # Utilities
+    buttons.append(
+        [
+            InlineKeyboardButton("🔍 Tìm lại", callback_data="bs:search"),
+            InlineKeyboardButton("📋 Dán mã khác", callback_data="bs:paste"),
+            InlineKeyboardButton("❌ Huỷ", callback_data="bs:cancel"),
+        ]
+    )
+    return InlineKeyboardMarkup(buttons)
+
+
+def render_bulk_status_card(selected_orders: Sequence[Order]) -> str:
+    """Render step 2/3 status selection card."""
+    count = len(selected_orders)
+    id_list = ", ".join(f"#{o.id}" for o in selected_orders[:10])
+    if count > 10:
+        id_list += f" (+{count - 10} đơn nữa)"
+    return (
+        "🔄 <b>ĐỔI TRẠNG THÁI HÀNG LOẠT</b>\n"
+        f"<i>Bước 2/3 — Chọn trạng thái MỚI cho {count} đơn ({id_list})</i>\n"
+        f"{DIVIDER}\n"
+        "Bác chạm vào trạng thái muốn chuyển sang:"
+    )
+
+
+def build_bulk_status_keyboard() -> InlineKeyboardMarkup:
+    """Build step 2/3 status keyboard (8 statuses).
+    First row has common end states, followed by 2-column lifecycle."""
+    buttons: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton("✅ Đã giao", callback_data=f"bs:st:{OrderStatus.DA_GIAO.value}"),
+            InlineKeyboardButton("🚚 Shipper đã lấy", callback_data=f"bs:st:{OrderStatus.SHIPPER_DA_LAY.value}"),
+        ],
+        [
+            InlineKeyboardButton("📦 Đã đóng gói", callback_data=f"bs:st:{OrderStatus.DA_DONG_GOI.value}"),
+            InlineKeyboardButton("📑 Đã tạo đơn", callback_data=f"bs:st:{OrderStatus.DA_TAO_DON.value}"),
+        ],
+        [
+            InlineKeyboardButton("⏳ Chờ làm", callback_data=f"bs:st:{OrderStatus.CHO_LAM.value}"),
+            InlineKeyboardButton("🛠️ Đang làm", callback_data=f"bs:st:{OrderStatus.DANG_LAM.value}"),
+        ],
+        [
+            InlineKeyboardButton("🚫 Bom hàng", callback_data=f"bs:st:{OrderStatus.BOM_HANG.value}"),
+            InlineKeyboardButton("❌ Huỷ đơn", callback_data=f"bs:st:{OrderStatus.HUY_DON.value}"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Quay lại chọn đơn", callback_data="bs:back:1"),
+            InlineKeyboardButton("❌ Huỷ", callback_data="bs:cancel"),
+        ],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+def render_bulk_confirm_card(
+    orders: Sequence[Order],
+    target_status: OrderStatus,
+) -> str:
+    """Render step 3/3 confirmation card."""
+    target_label = STATUS_NAMES.get(target_status, target_status.value)
+    lines = [
+        "🔄 <b>ĐỔI TRẠNG THÁI HÀNG LOẠT</b>",
+        f"<i>Bước 3/3 — Xác nhận đổi {len(orders)} đơn</i>",
+        DIVIDER,
+        f"➡️ <b>TRẠNG THÁI MỚI:</b> <b>{target_label}</b>\n",
+        "<b>Danh sách đơn sẽ đổi:</b>",
+    ]
+    for o in orders[:15]:
+        cur_label = STATUS_NAMES.get(o.status, o.status.value)
+        lines.append(
+            f"• <b>#{o.id}</b> · {html.escape(o.customer_name)}: {cur_label} → <b>{target_label}</b>"
+        )
+    if len(orders) > 15:
+        lines.append(f"• <i>...và {len(orders) - 15} đơn khác nữa</i>")
+
+    lines.append(DIVIDER)
+    lines.append("⚠️ Bác kiểm tra kỹ rồi bấm <b>Xác nhận</b> nhé (không tự hoàn tác được).")
+    return "\n".join(lines)
+
+
+def build_bulk_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Build step 3/3 confirmation keyboard."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Xác nhận đổi", callback_data="bs:cf"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Chọn trạng thái khác", callback_data="bs:back:2"),
+                InlineKeyboardButton("❌ Huỷ", callback_data="bs:cancel"),
+            ],
+        ]
+    )
+
+
+def render_bulk_done_card(
+    orders: Sequence[Order],
+    target_status: OrderStatus,
+) -> str:
+    """Render completion card."""
+    target_label = STATUS_NAMES.get(target_status, target_status.value)
+    lines = [
+        f"✅ <b>ĐÃ ĐỔI XONG {len(orders)} ĐƠN</b>",
+        f"Trạng thái mới: <b>{target_label}</b>",
+        DIVIDER,
+    ]
+    for o in orders[:15]:
+        lines.append(f"• <b>#{o.id}</b> · {html.escape(o.customer_name)}")
+    if len(orders) > 15:
+        lines.append(f"• <i>...và {len(orders) - 15} đơn khác</i>")
+    lines.append(DIVIDER)
+    lines.append("Bác có thể tiếp tục công việc bình thường nhé!")
+    return "\n".join(lines)
+
+
+def build_bulk_done_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🔄 Đổi đợt khác", callback_data="bs:start"),
+            ]
+        ]
+    )
+

@@ -401,6 +401,25 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     reply_text = (reply_msg.text or reply_msg.caption) if reply_msg else None
     reply_order_id = extract_order_id_from_reply(reply_text)
 
+    # Intercept text if bulk status change state is active
+    bulk_state = context.user_data.get("bulk_status")
+    if bulk_state and time.time() <= bulk_state.get("expires_at", 0):
+        if bulk_state.get("awaiting_codes"):
+            from src.bot.handlers.bulk_status import handle_bulk_codes_text
+
+            await handle_bulk_codes_text(update, context, text)
+            return
+        if bulk_state.get("awaiting_query"):
+            from src.bot.handlers.search import process_search_query
+
+            bulk_state.pop("awaiting_query", None)
+            await process_search_query(
+                update, context, text, intent=IntentType.ORDER_SEARCH, bulk=True
+            )
+            return
+    elif bulk_state:
+        context.user_data.pop("bulk_status", None)
+
     decision = await run_with_typing(
         update.message.chat,
         classify_intent(

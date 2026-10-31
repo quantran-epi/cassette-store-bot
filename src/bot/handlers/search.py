@@ -296,6 +296,7 @@ async def process_search_query(
     query_text: str,
     *,
     intent: IntentType | None = None,
+    bulk: bool = False,
 ) -> None:
     """Process one centrally-routed customer or order query."""
     if intent is None:
@@ -444,14 +445,22 @@ async def process_search_query(
             else:
                 card_text, kb = _render_customer_empty_card(query_text)
                 text = prefix + card_text
-        elif total > 0 and matches:
+        elif total > 1 and matches:
+            # If multiple entities matched, disambiguate before showing aggregate calculations
+            disambiguation_prefix = (
+                prefix
+                + "⚠️ <b>CẦN LÀM RÕ THỰC THỂ:</b>\n"
+                + "Dạ câu hỏi của bác có thể áp dụng cho nhiều khách hàng khác nhau.\n\n"
+                if result.summary_text
+                else prefix
+            )
             text, kb = _render_customer_chooser(
                 customers=matches,
                 search_id=search_id,
                 page=1,
                 total_pages=total_pages,
                 total_customers=total,
-                prefix=prefix,
+                prefix=disambiguation_prefix,
             )
         else:
             card_text, kb = _render_customer_empty_card(query_text)
@@ -476,6 +485,17 @@ async def process_search_query(
         return
 
     # Handle ORDERS and MIXED results per D-08, D-09, D-10 with DB-backed pagination
+    if bulk:
+        from src.bot.handlers.bulk_status import render_and_store_bulk_picker
+
+        await render_and_store_bulk_picker(
+            update=update,
+            context=context,
+            result=result,
+            query_display=query_text,
+        )
+        return
+
     card_text, kb = _render_list_view(
         result=result,
         query_text=query_text,
