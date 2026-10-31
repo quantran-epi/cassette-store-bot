@@ -644,6 +644,7 @@ async def test_handle_menu_reply_other_buttons():
     update = MagicMock(spec=Update)
     update.effective_user = user
     update.message = message
+    update.effective_message = message
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     context.application.bot_data = {}
     context.user_data = {}
@@ -669,6 +670,14 @@ async def test_handle_menu_reply_other_buttons():
     args, kwargs = message.reply_text.call_args
     text_val = args[0] if args else kwargs.get("text", "")
     assert "HƯỚNG DẪN SỬ DỤNG BOT" in text_val
+
+    # 4. 🔄 Đổi trạng thái
+    message.reply_text.reset_mock()
+    message.text = "🔄 Đổi trạng thái"
+    await handle_menu_reply(update, context)
+    args, kwargs = message.reply_text.call_args
+    text_val = args[0] if args else kwargs.get("text", "")
+    assert "ĐỔI TRẠNG THÁI HÀNG LOẠT" in text_val
 
 
 @pytest.mark.asyncio
@@ -1375,3 +1384,31 @@ def test_render_order_detail_card_legacy_null_shows_dash():
     assert "PHÔI BĂNG:</b> —" in card
     assert "CA SĨ:</b> —" in card
     assert "PHÔI BĂNG:</b> 0" not in card
+
+
+def test_order_action_callback_pattern_matches_more_and_less():
+    """Verify ACTION_CALLBACK_PATTERN matches more/less actions for expand/collapse."""
+    from src.bot.handlers.order_actions import ACTION_CALLBACK_PATTERN
+
+    m_more = ACTION_CALLBACK_PATTERN.match("ord_act:more:42")
+    assert m_more is not None
+    assert m_more.group(1) == "more"
+    assert m_more.group(2) == "42"
+
+    m_less = ACTION_CALLBACK_PATTERN.match("ord_act:less:42")
+    assert m_less is not None
+    assert m_less.group(1) == "less"
+    assert m_less.group(2) == "42"
+
+
+def test_app_action_pattern_matches_more_and_less():
+    """Verify app.py CallbackQueryHandler pattern includes more and less."""
+    import re
+
+    app_pattern = re.compile(
+        r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm|edit_menu|edit_fld|more|less)(:\d+)?(:[a-z_]+)?$"
+    )
+    assert app_pattern.match("ord_act:more:123") is not None
+    assert app_pattern.match("ord_act:less:123") is not None
+    assert app_pattern.match("ord_act:track:123") is not None
+

@@ -10,10 +10,10 @@ from src.bot.keyboards import (
 from src.models.order import Order, OrderStatus
 
 
-def test_divider_length_is_14():
-    """Verify section divider is exactly 14 characters per D-19."""
-    assert len(DIVIDER) == 14
-    assert DIVIDER == "••••••••••••••"
+def test_divider_length_is_16():
+    """Verify section divider is exactly 16 characters."""
+    assert len(DIVIDER) == 16
+    assert DIVIDER == "••••••••••••••••"
 
 
 def test_render_order_list_card_spacing():

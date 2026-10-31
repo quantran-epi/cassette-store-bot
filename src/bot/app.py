@@ -364,7 +364,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         MessageHandler(
             filters.Regex(
-                r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|✏️ Sửa đơn|🔍 Tra cứu đơn|❓ Trợ giúp)$"
+                r"^(📦 Đơn hôm nay|⏳ Đơn chờ làm|📋 Xem theo ngày|✏️ Sửa đơn|🔍 Tra cứu đơn|🔄 Đổi trạng thái|❓ Trợ giúp)$"
             ),
             handle_menu_reply,
         ),
@@ -429,7 +429,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         CallbackQueryHandler(
             handle_order_action_callback,
-            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm|edit_menu|edit_fld)(:\d+)?(:[a-z_]+)?$",
+            pattern=r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm|edit_menu|edit_fld|more|less)(:\d+)?(:[a-z_]+)?$",
         ),
         group=0,
     )

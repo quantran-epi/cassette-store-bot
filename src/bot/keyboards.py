@@ -25,7 +25,7 @@ from src.services.tape_parser import (
 # Timezone Vietnam UTC+7
 TZ_VN = timezone(timedelta(hours=7))
 
-DIVIDER = "••••••••••••••"  # 14 bullet dots divider per UI spec
+DIVIDER = "••••••••••••••••"  # 16 bullet dots divider
 ITEM_DIVIDER = "────────"  # Short divider between order list items
 
 STATUS_NAMES: dict[OrderStatus, str] = {

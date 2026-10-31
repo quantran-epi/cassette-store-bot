@@ -588,10 +588,10 @@ def test_format_reminder_broadcast_with_times_and_relative_note():
     # Verify note creation time (UTC 07:30 -> VN 14:30) is clearly displayed
     assert "GHI CHÚ LÚC:" in msg
     assert "14:30 27/10/2026" in msg
-    # Verify dividers use consistent 14-char DIVIDER
+    # Verify dividers use consistent DIVIDER
     assert DIVIDER in msg
     assert "────────────────────" not in msg
-    assert DIVIDER == "••••••••••••••"
+    assert DIVIDER == "••••••••••••••••"
 
     # Case 2: Reminder without created_at (only remind_at)
     msg_no_created = format_reminder_broadcast({

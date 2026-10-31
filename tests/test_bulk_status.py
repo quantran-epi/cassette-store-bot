@@ -335,3 +335,35 @@ def test_bulk_cards_rendering():
 
     done = render_bulk_done_card(orders, OrderStatus.DA_GIAO)
     assert "ĐÃ ĐỔI XONG 2 ĐƠN" in done
+
+
+@pytest.mark.asyncio
+async def test_start_bulk_status_via_menu_reply(test_db):
+    """Clicking menu '🔄 Đổi trạng thái' launches bulk flow intro card."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from telegram import Message, Update
+    from telegram.ext import ContextTypes
+
+    from src.bot.handlers.orders import handle_menu_reply
+
+    message = MagicMock(spec=Message)
+    message.text = "🔄 Đổi trạng thái"
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.message = message
+    update.effective_message = message
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.user_data = {}
+    context.application.bot_data = {"db": test_db}
+
+    await handle_menu_reply(update, context)
+
+    message.reply_text.assert_awaited_once()
+    sent_text = message.reply_text.call_args[1]["text"]
+    assert "ĐỔI TRẠNG THÁI HÀNG LOẠT" in sent_text
+    assert "Bước 1/3" in sent_text
+    assert "bulk_status" in context.user_data
+
