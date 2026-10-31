@@ -157,8 +157,14 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     raise
             return
 
-        if data == "adm:dash:refresh":
-            await query.answer("Đã làm mới dữ liệu")
+        if data.startswith("adm:ms:"):
+            from src.bot.handlers.admin_milestones import handle_milestone_callback
+
+            await handle_milestone_callback(update, context)
+            return
+
+        if data in ("adm:dash:refresh", "adm:dash:main"):
+            await query.answer("Đã làm mới dữ liệu" if data == "adm:dash:refresh" else None)
             is_maint = context.bot_data.get("maintenance_mode", False)
             card_text = await render_dashboard_card(context, user_role)
             keyboard = build_admin_main_keyboard(user_role, maintenance_mode=is_maint)

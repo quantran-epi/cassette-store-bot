@@ -256,10 +256,18 @@ async def handle_text_order(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             "await_model_name",
             "await_backup_time",
             "await_user_rename",
+            "await_milestone_val",
+            "await_milestone_tpl",
+            "await_milestone_edit_tpl",
         ):
-            from src.bot.handlers.admin import handle_admin_text_input
+            if action_name.startswith("await_milestone_"):
+                from src.bot.handlers.admin_milestones import handle_milestone_text_input
 
-            handled = await handle_admin_text_input(update, context)
+                handled = await handle_milestone_text_input(update, context)
+            else:
+                from src.bot.handlers.admin import handle_admin_text_input
+
+                handled = await handle_admin_text_input(update, context)
             if handled:
                 return
 

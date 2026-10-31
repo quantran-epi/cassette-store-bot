@@ -159,4 +159,38 @@ async def init_db(db: aiosqlite.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_reminders_order_id ON reminders(order_id);
         """
     )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS milestone_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            period TEXT NOT NULL CHECK (period IN ('week', 'month', 'year', 'all_time')),
+            target_type TEXT NOT NULL CHECK (target_type IN ('order_count', 'revenue')),
+            target_value INTEGER NOT NULL,
+            only_delivered INTEGER NOT NULL DEFAULT 0,
+            message_template TEXT NOT NULL,
+            effect_enabled INTEGER NOT NULL DEFAULT 1,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS milestone_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_id INTEGER NOT NULL,
+            period_key TEXT NOT NULL,
+            current_value INTEGER NOT NULL,
+            triggered_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (rule_id) REFERENCES milestone_rules(id) ON DELETE CASCADE,
+            UNIQUE(rule_id, period_key)
+        );
+        """
+    )
+    await db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_milestone_logs_rule_period ON milestone_logs(rule_id, period_key);
+        """
+    )
     await db.commit()

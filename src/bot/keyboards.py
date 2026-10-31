@@ -15,6 +15,7 @@ from telegram import (
 
 from src.bot.security import UserRole
 from src.models.customer import Customer
+from src.models.milestone import MilestonePeriod, MilestoneRule, MilestoneTargetType
 from src.models.order import Order, OrderStatus
 from src.services.tape_parser import (
     build_tape_columns,
@@ -1083,6 +1084,9 @@ def build_admin_main_keyboard(
         ],
         [
             InlineKeyboardButton("⏰ Đặt giờ sao lưu", callback_data="adm:bkp:menu"),
+            InlineKeyboardButton("🎯 Mốc chúc mừng", callback_data="adm:ms:list"),
+        ],
+        [
             InlineKeyboardButton("🔄 Làm mới", callback_data="adm:dash:refresh"),
         ],
     ]
@@ -1983,4 +1987,204 @@ def build_bulk_done_keyboard() -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def build_milestone_list_keyboard(
+    rules: Sequence[MilestoneRule],
+) -> InlineKeyboardMarkup:
+    """Build milestone rules listing keyboard with management actions."""
+    rows: list[list[InlineKeyboardButton]] = []
+
+    period_short = {
+        MilestonePeriod.WEEK: "Tuần",
+        MilestonePeriod.MONTH: "Tháng",
+        MilestonePeriod.YEAR: "Năm",
+        MilestonePeriod.ALL_TIME: "Toàn bộ",
+    }
+
+    for r in rules:
+        status_icon = "🟢" if r.is_active else "⚪"
+        p_name = period_short.get(r.period, r.period.value)
+        if r.target_type == MilestoneTargetType.REVENUE:
+            val_label = (
+                f"{r.target_value // 1_000_000}tr"
+                if r.target_value >= 1_000_000 and r.target_value % 1_000_000 == 0
+                else f"{r.target_value:,}đ".replace(",", ".")
+            )
+        else:
+            val_label = f"{r.target_value} đơn"
+
+        cond_icon = "✅" if r.only_delivered else "📦"
+        effect_icon = "🎆" if r.effect_enabled else ""
+        btn_text = f"{status_icon} [{p_name}] {val_label} {cond_icon} {effect_icon}".strip()
+        rows.append(
+            [InlineKeyboardButton(btn_text, callback_data=f"adm:ms:view:{r.id}")]
+        )
+
+    rows.append(
+        [InlineKeyboardButton("➕ Thêm mốc mới", callback_data="adm:ms:add:period")]
+    )
+    rows.append(
+        [InlineKeyboardButton("⬅️ Về trang Admin", callback_data="adm:dash:main")]
+    )
+    return InlineKeyboardMarkup(rows)
+
+
+def build_milestone_detail_keyboard(
+    rule: MilestoneRule,
+) -> InlineKeyboardMarkup:
+    """Build action keyboard for a single milestone rule."""
+    rid = rule.id
+    toggle_text = "⏸ Tạm dừng mốc" if rule.is_active else "▶️ Kích hoạt mốc"
+    effect_text = "🎆 Tắt pháo hoa" if rule.effect_enabled else "🎆 Bật pháo hoa"
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(toggle_text, callback_data=f"adm:ms:toggle:{rid}"),
+                InlineKeyboardButton(effect_text, callback_data=f"adm:ms:effect:{rid}"),
+            ],
+            [
+                InlineKeyboardButton("✏️ Sửa lời chúc", callback_data=f"adm:ms:edittpl:{rid}"),
+                InlineKeyboardButton("🗑 Xoá mốc", callback_data=f"adm:ms:delprompt:{rid}"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Danh sách mốc", callback_data="adm:ms:list"),
+            ],
+        ]
+    )
+
+
+def build_milestone_confirm_delete_keyboard(rule_id: int) -> InlineKeyboardMarkup:
+    """Build confirmation keyboard for milestone deletion."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("⚠️ Xác nhận xoá", callback_data=f"adm:ms:delconfirm:{rule_id}"),
+                InlineKeyboardButton("❌ Huỷ", callback_data=f"adm:ms:view:{rule_id}"),
+            ]
+        ]
+    )
+
+
+def build_milestone_period_keyboard() -> InlineKeyboardMarkup:
+    """Wizard step 1: Select time period."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📅 Theo Tuần", callback_data="adm:ms:wiz:period:week"),
+                InlineKeyboardButton("🗓 Theo Tháng", callback_data="adm:ms:wiz:period:month"),
+            ],
+            [
+                InlineKeyboardButton("📆 Theo Năm", callback_data="adm:ms:wiz:period:year"),
+                InlineKeyboardButton("♾️ Toàn bộ shop", callback_data="adm:ms:wiz:period:all_time"),
+            ],
+            [
+                InlineKeyboardButton("❌ Huỷ bỏ", callback_data="adm:ms:list"),
+            ],
+        ]
+    )
+
+
+def build_milestone_target_type_keyboard() -> InlineKeyboardMarkup:
+    """Wizard step 2: Select metric type."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📦 Số lượng đơn hàng", callback_data="adm:ms:wiz:type:order_count"),
+                InlineKeyboardButton("💰 Doanh số tiền (VNĐ)", callback_data="adm:ms:wiz:type:revenue"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:ms:add:period"),
+                InlineKeyboardButton("❌ Huỷ", callback_data="adm:ms:list"),
+            ],
+        ]
+    )
+
+
+def build_milestone_condition_keyboard() -> InlineKeyboardMarkup:
+    """Wizard step 3: Select delivery condition."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "✅ Chỉ đơn giao thành công", callback_data="adm:ms:wiz:cond:delivered"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "📦 Mọi đơn đặt (trừ bom/huỷ)", callback_data="adm:ms:wiz:cond:any"
+                ),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:ms:wiz:cond:back"),
+                InlineKeyboardButton("❌ Huỷ", callback_data="adm:ms:list"),
+            ],
+        ]
+    )
+
+
+def build_milestone_value_shortcuts_keyboard(
+    target_type: MilestoneTargetType,
+) -> InlineKeyboardMarkup:
+    """Wizard step 4: Value shortcuts + custom prompt."""
+    if target_type == MilestoneTargetType.ORDER_COUNT:
+        shortcuts = [
+            ("20 đơn", "adm:ms:wiz:val:20"),
+            ("50 đơn", "adm:ms:wiz:val:50"),
+            ("100 đơn", "adm:ms:wiz:val:100"),
+            ("200 đơn", "adm:ms:wiz:val:200"),
+            ("500 đơn", "adm:ms:wiz:val:500"),
+            ("1.000 đơn", "adm:ms:wiz:val:1000"),
+        ]
+    else:
+        shortcuts = [
+            ("5 triệu", "adm:ms:wiz:val:5000000"),
+            ("10 triệu", "adm:ms:wiz:val:10000000"),
+            ("20 triệu", "adm:ms:wiz:val:20000000"),
+            ("50 triệu", "adm:ms:wiz:val:50000000"),
+            ("100 triệu", "adm:ms:wiz:val:100000000"),
+            ("200 triệu", "adm:ms:wiz:val:200000000"),
+        ]
+
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(shortcuts[0][0], callback_data=shortcuts[0][1]),
+            InlineKeyboardButton(shortcuts[1][0], callback_data=shortcuts[1][1]),
+        ],
+        [
+            InlineKeyboardButton(shortcuts[2][0], callback_data=shortcuts[2][1]),
+            InlineKeyboardButton(shortcuts[3][0], callback_data=shortcuts[3][1]),
+        ],
+        [
+            InlineKeyboardButton(shortcuts[4][0], callback_data=shortcuts[4][1]),
+            InlineKeyboardButton(shortcuts[5][0], callback_data=shortcuts[5][1]),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Quay lại", callback_data="adm:ms:wiz:val:back"),
+            InlineKeyboardButton("❌ Huỷ", callback_data="adm:ms:list"),
+        ],
+    ]
+    return InlineKeyboardMarkup(rows)
+
+
+def build_milestone_template_choice_keyboard() -> InlineKeyboardMarkup:
+    """Wizard step 5: Template confirmation, AI retry, or custom input."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✨ Dùng lời chúc này & Lưu", callback_data="adm:ms:wiz:save:current"),
+            ],
+            [
+                InlineKeyboardButton("🤖 Nhờ AI gợi ý mẫu khác", callback_data="adm:ms:wiz:ai_retry"),
+            ],
+            [
+                InlineKeyboardButton("✏️ Tự gõ lời chúc riêng", callback_data="adm:ms:wiz:custom_tpl"),
+            ],
+            [
+                InlineKeyboardButton("❌ Huỷ bỏ", callback_data="adm:ms:list"),
+            ],
+        ]
+    )
+
 

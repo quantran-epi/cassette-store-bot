@@ -316,6 +316,20 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
                     exclude_user_id=op_uid,
                 )
 
+            if target_status == OrderStatus.DA_GIAO:
+                from src.services.milestones import check_and_trigger_milestones
+
+                whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+                try:
+                    await check_and_trigger_milestones(
+                        bot=context.bot,
+                        db=active_db,
+                        whitelist_ids=whitelist_ids,
+                        trigger_point="order_delivered",
+                    )
+                except Exception as e:
+                    logger.warning("Milestone check failed on DA_GIAO: %s", e)
+
             from src.db.reminders import get_reminders_by_order_id
 
             # Preserve back callback data if present

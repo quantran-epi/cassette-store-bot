@@ -63,6 +63,7 @@ async def broadcast_to_whitelist(
     reply_markup: InlineKeyboardMarkup | None = None,
     exclude_user_id: int | None = None,
     parse_mode: str = "HTML",
+    message_effect_id: str | None = None,
 ) -> int:
     """Broadcast a notification message to whitelisted users, excluding performer.
 
@@ -74,12 +75,23 @@ async def broadcast_to_whitelist(
         if exclude_user_id is not None and uid == exclude_user_id:
             continue
         try:
-            await bot.send_message(
-                chat_id=uid,
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode=parse_mode,
-            )
+            kwargs: dict[str, Any] = {
+                "chat_id": uid,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+            }
+            if message_effect_id:
+                kwargs["message_effect_id"] = message_effect_id
+            try:
+                await bot.send_message(**kwargs)
+            except TelegramError as te:
+                if message_effect_id:
+                    # Retry without effect in case client/bot restriction
+                    kwargs.pop("message_effect_id", None)
+                    await bot.send_message(**kwargs)
+                else:
+                    raise te
             sent_count += 1
         except TelegramError as e:
             logger.warning("Failed to broadcast message to user %s: %s", uid, e)

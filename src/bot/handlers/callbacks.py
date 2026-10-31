@@ -292,6 +292,19 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 ),
             )
 
+            # Check milestone triggers for non-delivered/all orders
+            from src.services.milestones import check_and_trigger_milestones
+
+            try:
+                await check_and_trigger_milestones(
+                    bot=context.bot,
+                    db=active_db,
+                    whitelist_ids=whitelist_ids,
+                    trigger_point="order_created",
+                )
+            except Exception as e:
+                logger.warning("Milestone check failed on order created: %s", e)
+
             photo_tag = ""
             if new_order.photo_file_ids:
                 photo_tag = f"\n📷 <b>ẢNH ĐÍNH KÈM:</b> {len(new_order.photo_file_ids)} ảnh"
@@ -509,6 +522,20 @@ async def handle_mutation_callback(
                     reply_markup=order_view_btn,
                     exclude_user_id=user_id,
                 )
+
+            if new_st == OrderStatus.DA_GIAO:
+                from src.services.milestones import check_and_trigger_milestones
+
+                whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+                try:
+                    await check_and_trigger_milestones(
+                        bot=context.bot,
+                        db=active_db,
+                        whitelist_ids=whitelist_ids,
+                        trigger_point="order_delivered",
+                    )
+                except Exception as e:
+                    logger.warning("Milestone check failed on mutation DA_GIAO: %s", e)
 
             vn_dt = to_vn_datetime(fresh_order.created_at) if isinstance(fresh_order.created_at, datetime) else None
             today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
