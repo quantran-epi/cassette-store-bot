@@ -603,17 +603,17 @@ def test_render_search_multi_card():
     assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in card
     assert "7 đơn hàng" in card
     assert "Trang 1/2" in card
-    assert "ĐƠN #1" in card
+    assert "#1" in card
     assert "Khách A" in card
     assert "0901" in card
     assert "HN" in card
     assert "150.000 đ" in card
-    assert "ĐƠN #2" in card
+    assert "#2" in card
     assert "Khách B" in card
     assert "0902" in card
     assert "HCM" in card
     assert "250.000 đ" in card
-    assert "\n\n📦 <b>ĐƠN #2 — Khách B</b>" in card
+    assert "\n────────\n📦 <b>#2 — Khách B</b>" in card
 
     kb = build_search_multi_keyboard(orders=orders, search_id="s123", page=1, total_pages=2)
     flat_btns = [btn for row in kb.inline_keyboard for btn in row]
@@ -803,8 +803,8 @@ async def test_search_callback_pagination():
     query.edit_message_text.assert_awaited_once()
     text = query.edit_message_text.call_args[1]["text"]
     assert "Trang 2/2" in text
-    assert "ĐƠN #6" in text
-    assert "ĐƠN #7" in text
+    assert "#6" in text
+    assert "#7" in text
 
 
 def test_order_detail_keyboard_custom_back():

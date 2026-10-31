@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_CALLBACK_PATTERN = re.compile(r"^ord_st(_menu|_cf)?:(\d+)(?::([A-Z_]+))?$")
 ACTION_CALLBACK_PATTERN = re.compile(
-    r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm|edit_menu|edit_fld)(?::(\d+))?(?::([a-z_]+))?$"
+    r"^ord_act:(track|add_photo|view_photo|remind|remind_del|cancel|ship_helper|del_prompt|del_confirm|edit_menu|edit_fld|more|less)(?::(\d+))?(?::([a-z_]+))?$"
 )
 SENSITIVE_STATUSES = {OrderStatus.BOM_HANG, OrderStatus.HUY_DON}
 
@@ -318,6 +318,17 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
 
             from src.db.reminders import get_reminders_by_order_id
 
+            # Preserve back callback data if present
+            back_cb = None
+            if query.message and query.message.reply_markup:
+                for row in query.message.reply_markup.inline_keyboard:
+                    for btn in row:
+                        if btn.text and "Quay lại" in btn.text:
+                            back_cb = btn.callback_data
+                            break
+            if not back_cb and context.user_data:
+                back_cb = context.user_data.get(f"ord_back_{order_id}")
+
             reminders = await get_reminders_by_order_id(active_db, order_id)
             card_text = render_order_detail_card(updated_order, reminders=reminders)
             vn_dt = (
@@ -327,7 +338,12 @@ async def handle_order_status_callback(update: Update, context: ContextTypes.DEF
             )
             today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
             keyboard = build_order_detail_keyboard(
-                updated_order, date_str=today_str, page=1, has_reminder=bool(reminders)
+                updated_order,
+                date_str=today_str,
+                page=1,
+                back_callback_data=back_cb,
+                has_reminder=bool(reminders),
+                show_back=bool(back_cb),
             )
             try:
                 await query.edit_message_text(
@@ -758,6 +774,61 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                         f"<i>(Thời gian chờ là 3 phút)</i>"
                     ),
                     reply_markup=cancel_kb,
+                    parse_mode="HTML",
+                )
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    raise
+        return
+
+    # 11. Expand / Collapse order detail buttons
+    if action_type in ("more", "less"):
+        await query.answer()
+        expanded = (action_type == "more")
+        back_cb = None
+        if query.message and query.message.reply_markup:
+            for row in query.message.reply_markup.inline_keyboard:
+                for btn in row:
+                    if btn.text and "Quay lại" in btn.text:
+                        back_cb = btn.callback_data
+                        break
+        if not back_cb and context.user_data:
+            back_cb = context.user_data.get(f"ord_back_{order_id}")
+
+        db_ctx = _get_active_db_context(context)
+        async with db_ctx as active_db:
+            if not active_db:
+                await query.answer("Lỗi kết nối cơ sở dữ liệu!", show_alert=True)
+                return
+            order = await get_order_by_id(active_db, order_id)
+            if not order:
+                await query.edit_message_text("⚠️ Đơn hàng không tồn tại hoặc đã bị xoá.")
+                return
+
+            from src.db.reminders import get_reminders_by_order_id
+
+            reminders = await get_reminders_by_order_id(active_db, order_id)
+            card_text = render_order_detail_card(order, reminders=reminders)
+            vn_dt = (
+                to_vn_datetime(order.created_at)
+                if isinstance(order.created_at, datetime)
+                else None
+            )
+            today_str = vn_dt.strftime("%Y-%m-%d") if vn_dt else ""
+
+            keyboard = build_order_detail_keyboard(
+                order,
+                date_str=today_str,
+                page=1,
+                back_callback_data=back_cb,
+                has_reminder=bool(reminders),
+                expanded=expanded,
+                show_back=bool(back_cb),
+            )
+            try:
+                await query.edit_message_text(
+                    text=card_text,
+                    reply_markup=keyboard,
                     parse_mode="HTML",
                 )
             except BadRequest as e:

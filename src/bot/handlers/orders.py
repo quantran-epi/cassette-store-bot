@@ -161,6 +161,12 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await handle_search_menu_reply(update, context)
         return
 
+    if text == "🔄 Đổi trạng thái":
+        from src.bot.handlers.bulk_status import start_bulk_status
+
+        await start_bulk_status(update, context)
+        return
+
     if text == "❓ Trợ giúp":
         await send_tutorial(update, context, 0, message=update.message)
         return
@@ -272,11 +278,14 @@ async def handle_order_nav_callback(update: Update, context: ContextTypes.DEFAUL
 
             reminders = await get_reminders_by_order_id(active_db, order_id)
             card_text = render_order_detail_card(order, reminders=reminders)
+            back_cb = f"ord_ls:{status.value}:{page}"
+            if context.user_data is not None:
+                context.user_data[f"ord_back_{order_id}"] = back_cb
             keyboard = build_order_detail_keyboard(
                 order,
                 date_str=datetime.now(TZ_VN).strftime("%Y-%m-%d"),
                 page=page,
-                back_callback_data=f"ord_ls:{status.value}:{page}",
+                back_callback_data=back_cb,
                 has_reminder=bool(reminders),
             )
             try:
@@ -366,8 +375,15 @@ async def handle_order_nav_callback(update: Update, context: ContextTypes.DEFAUL
 
             reminders = await get_reminders_by_order_id(active_db, order_id)
             card_text = render_order_detail_card(order, reminders=reminders)
+            back_cb = f"ord_bk:{date_str}:{page}"
+            if context.user_data is not None:
+                context.user_data[f"ord_back_{order_id}"] = back_cb
             keyboard = build_order_detail_keyboard(
-                order, date_str=date_str, page=page, has_reminder=bool(reminders)
+                order,
+                date_str=date_str,
+                page=page,
+                back_callback_data=back_cb,
+                has_reminder=bool(reminders),
             )
 
             try:

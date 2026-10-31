@@ -248,7 +248,7 @@ async def test_get_customer_order_stats(test_db):
     """get_customer_order_stats calculates total orders, spend excluding HUY_DON, and BOM_HANG count."""
     # Customer without orders returns 0 stats
     stats_empty = await get_customer_order_stats(test_db, 99999)
-    assert stats_empty == {"total_orders": 0, "total_spent": 0, "bom_count": 0}
+    assert stats_empty == {"total_orders": 0, "total_spent": 0, "bom_count": 0, "any_orders": 0}
 
     # Create customer
     customer = Customer(
@@ -283,12 +283,13 @@ async def test_get_customer_order_stats(test_db):
         )
 
     stats = await get_customer_order_stats(test_db, cust_id)
-    assert stats == {"total_orders": 2, "total_spent": 1000000, "bom_count": 1}
+    assert stats == {"total_orders": 2, "total_spent": 1000000, "bom_count": 1, "any_orders": 6}
 
     saved = await get_order_by_id(test_db, order_ids[0])
     assert saved is not None
     assert saved.customer_completed_orders == 2
     assert saved.customer_completed_spend == 1000000
+    assert saved.customer_any_order_count == 6
 
 
 @pytest.mark.asyncio

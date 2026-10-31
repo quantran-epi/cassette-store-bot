@@ -31,6 +31,7 @@ from src.bot.handlers.base import (
     ping_command,
     start_command,
 )
+from src.bot.handlers.bulk_status import handle_bulk_callback
 from src.bot.handlers.callbacks import handle_mutation_callback, handle_order_callback
 from src.bot.handlers.ingest import handle_photo_order, handle_text_order
 from src.bot.handlers.logs import handle_logs_callback, logs_command
@@ -396,6 +397,15 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     # Register tutorial navigation callbacks at group 0
     app.add_handler(
         CallbackQueryHandler(handle_tutorial_callback, pattern=r"^help:"),
+        group=0,
+    )
+
+    # Register bulk status callbacks at group 0
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_bulk_callback,
+            pattern=r"^bs:",
+        ),
         group=0,
     )
 

@@ -13,7 +13,7 @@ from src.models.order import Order
 logger = logging.getLogger(__name__)
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
-DIVIDER = "──────────────"  # 14 chars per D-19 (chống vỡ màn hình nhỏ)
+DIVIDER = "••••••••••••••"  # 14 bullet dots divider per UI spec
 
 
 def _format_time_vn(val: Any, is_utc: bool = False) -> str:

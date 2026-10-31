@@ -62,7 +62,7 @@ def test_build_main_menu_reply_keyboard_structure():
     assert rows == [
         ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
         ["📋 Xem theo ngày", "✏️ Sửa đơn"],
-        ["🔍 Tra cứu đơn", "❓ Trợ giúp"],
+        ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"],
     ]
     assert "📝 Nhập đơn mới" not in [text for row in rows for text in row]
 
@@ -160,13 +160,21 @@ def test_build_order_detail_keyboard_copy_buttons_and_callbacks():
         tracking_code="SPX11223344",
         photo_file_ids=["file_xyz"],
     )
+    # Default collapsed mode: essential buttons only
     kb = build_order_detail_keyboard(order, date_str="2026-10-24", page=1)
     assert isinstance(kb, InlineKeyboardMarkup)
+    flat_collapsed = [btn.callback_data for row in kb.inline_keyboard for btn in row if btn.callback_data]
+    assert "ord_st:101:DANG_LAM" in flat_collapsed
+    assert "ord_act:view_photo:101" in flat_collapsed
+    assert "ord_act:ship_helper:101" in flat_collapsed
+    assert "ord_act:more:101" in flat_collapsed
+    assert "ord_bk:2026-10-24:1" in flat_collapsed
 
-    # Flatten buttons and inspect
-    flat_buttons = [btn for row in kb.inline_keyboard for btn in row]
+    # Expanded mode: contains CopyTextButtons and full actions
+    kb_exp = build_order_detail_keyboard(order, date_str="2026-10-24", page=1, expanded=True)
+    flat_buttons = [btn for row in kb_exp.inline_keyboard for btn in row]
 
-    # Verify CopyTextButtons exist for phone and address
+    # Verify CopyTextButtons exist for phone, address, tracking
     copy_btns = [btn for btn in flat_buttons if btn.copy_text is not None]
     assert len(copy_btns) >= 2
     copy_texts = [btn.copy_text.text for btn in copy_btns]
@@ -235,11 +243,11 @@ def test_render_order_list_card_empty_and_populated():
     card = render_order_list_card(orders, "2026-10-24", page=1, total_pages=2, total_orders=6)
     assert "24/10/2026" in card
     assert "Tổng cộng: <b>6 đơn</b> (Trang 1/2)" in card
-    assert "ĐƠN #1 — Khách 1" in card
+    assert "#1 — Khách 1" in card
     assert "Khách 1" in card
     assert "150.000 đ" in card
     assert "⏳ Chờ làm" in card
-    assert "ĐƠN #2 — Khách 2" in card
+    assert "#2 — Khách 2" in card
     assert "Khách 2" in card
     assert "250.000 đ" in card
     assert "✅ Đã giao thành công" in card
@@ -250,12 +258,12 @@ def test_render_order_list_card_empty_and_populated():
 
 def test_build_order_list_keyboard_empty_and_pagination():
     """List keyboard supports empty state actions and pagination prev/next logic."""
-    # Empty state
+    # Empty state: only pick_date, no new_order or filter chips per elderly UI simplification
     empty_kb = build_order_list_keyboard([], "2026-10-24", page=1, total_pages=1)
     flat_empty = [btn for row in empty_kb.inline_keyboard for btn in row]
     empty_cbs = [btn.callback_data for btn in flat_empty]
-    assert "ord_act:new" in empty_cbs
     assert "ord_act:pick_date" in empty_cbs
+    assert "ord_act:new" not in empty_cbs
 
     orders = [
         Order(
@@ -377,22 +385,23 @@ def test_build_status_order_list_keyboard_callbacks_and_chips():
     assert "ord_vls:DANG_LAM:42:2" in callbacks
     assert "ord_ls:DANG_LAM:1" in callbacks
     assert "ord_ls:DANG_LAM:3" in callbacks
-    assert "ord_ls:CHO_LAM:1" in callbacks
-    assert "ord_ls:DANG_LAM:2" in callbacks  # active chip keeps page
-    assert "ord_ls:DA_DONG_GOI:1" in callbacks
     assert "ord_noop" in callbacks
+    # Filter chips removed per user spec
+    assert "ord_ls:CHO_LAM:1" not in callbacks
+    assert "ord_ls:DA_DONG_GOI:1" not in callbacks
 
     for cb in callbacks:
         assert len(cb.encode("utf-8")) <= 64
 
     empty_kb = build_status_order_list_keyboard([], OrderStatus.CHO_LAM, page=1, total_pages=1)
     empty_cbs = [btn.callback_data for row in empty_kb.inline_keyboard for btn in row]
-    assert "ord_ls:CHO_LAM:1" in empty_cbs
-    assert "ord_act:new" in empty_cbs
+    # Redundant bottom buttons removed
+    assert "ord_ls:CHO_LAM:1" not in empty_cbs
+    assert "ord_act:new" not in empty_cbs
 
 
-def test_build_order_list_keyboard_has_filter_chips():
-    """Both date-list branches (populated + empty) expose the 3 status chips."""
+def test_build_order_list_keyboard_has_no_filter_chips():
+    """Both date-list branches (populated + empty) no longer clutter with status chips."""
     orders = [
         Order(
             id=10,
@@ -405,15 +414,15 @@ def test_build_order_list_keyboard_has_filter_chips():
     ]
     populated = build_order_list_keyboard(orders, "2026-10-24", page=1, total_pages=1)
     populated_cbs = [btn.callback_data for row in populated.inline_keyboard for btn in row]
-    assert "ord_ls:CHO_LAM:1" in populated_cbs
-    assert "ord_ls:DANG_LAM:1" in populated_cbs
-    assert "ord_ls:DA_DONG_GOI:1" in populated_cbs
+    assert "ord_ls:CHO_LAM:1" not in populated_cbs
+    assert "ord_ls:DANG_LAM:1" not in populated_cbs
+    assert "ord_ls:DA_DONG_GOI:1" not in populated_cbs
 
     empty = build_order_list_keyboard([], "2026-10-24", page=1, total_pages=1)
     empty_cbs = [btn.callback_data for row in empty.inline_keyboard for btn in row]
-    assert "ord_ls:CHO_LAM:1" in empty_cbs
-    assert "ord_ls:DANG_LAM:1" in empty_cbs
-    assert "ord_ls:DA_DONG_GOI:1" in empty_cbs
+    assert "ord_ls:CHO_LAM:1" not in empty_cbs
+    assert "ord_ls:DANG_LAM:1" not in empty_cbs
+    assert "ord_ls:DA_DONG_GOI:1" not in empty_cbs
 
 
 def test_app_registers_pending_orders_wiring():
@@ -480,7 +489,7 @@ async def test_start_command_sends_reply_keyboard():
     assert rows == [
         ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
         ["📋 Xem theo ngày", "✏️ Sửa đơn"],
-        ["🔍 Tra cứu đơn", "❓ Trợ giúp"],
+        ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"],
     ]
 
 
@@ -519,7 +528,7 @@ async def test_handle_menu_reply_today_orders(test_db):
     markup = kwargs.get("reply_markup")
 
     assert "ĐƠN HÀNG NGÀY" in card_text
-    assert f"ĐƠN #{order_id} — Khách Hôm Nay" in card_text
+    assert f"#{order_id} — Khách Hôm Nay" in card_text
     assert "Khách Hôm Nay" in card_text
     assert isinstance(markup, InlineKeyboardMarkup)
 
@@ -748,7 +757,10 @@ async def test_handle_order_nav_callback_flow(test_db):
     v_text = query.edit_message_text.call_args[1]["text"]
     v_kb = query.edit_message_text.call_args[1]["reply_markup"]
     assert f"CHI TIẾT ĐƠN HÀNG #{first_oid}" in v_text
-    assert any(btn.copy_text is not None for row in v_kb.inline_keyboard for btn in row)
+    v_cbs = [btn.callback_data for row in v_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert f"ord_act:more:{first_oid}" in v_cbs
+    assert f"ord_act:ship_helper:{first_oid}" in v_cbs
+    assert f"ord_bk:{today_str}:1" in v_cbs
 
     # 4. Back navigation callback ord_bk:DATE:PAGE
     query.answer.reset_mock()
@@ -884,8 +896,8 @@ async def test_static_edit_menu_and_flow(test_db):
     oid = await create_order(test_db, order)
     saved_order = await get_order_by_id(test_db, oid)
 
-    # 1. Check edit button exists on detail keyboard
-    detail_kb = build_order_detail_keyboard(saved_order, "2026-10-27", 1)
+    # 1. Check edit button exists on expanded detail keyboard
+    detail_kb = build_order_detail_keyboard(saved_order, "2026-10-27", 1, expanded=True)
     flat_detail = [btn.callback_data for row in detail_kb.inline_keyboard for btn in row]
     assert f"ord_act:edit_menu:{oid}" in flat_detail
 
@@ -1261,6 +1273,70 @@ async def test_handle_action_state_photo_appends_photos(test_db):
     assert db_order.photo_file_ids == ["photo_old", "high_res_id"]
     message.reply_text.assert_awaited_once()
     assert "ĐÃ THÊM ẢNH THÀNH CÔNG" in message.reply_text.call_args[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_order_detail_expand_and_collapse_callbacks(test_db):
+    """ord_act:more expands detail keyboard, ord_act:less collapses it, preserving back button."""
+    from src.bot.handlers.order_actions import handle_order_action_callback
+    from src.db.orders import create_order
+
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_name="Bác Tư",
+            customer_phone="0912345678",
+            shipping_address="Hà Nội",
+            items_text="Băng 1",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        ),
+    )
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = f"ord_act:more:{oid}"
+    # Simulate message having a back button
+    mock_back_btn = MagicMock()
+    mock_back_btn.text = "⬅️ Quay lại"
+    mock_back_btn.callback_data = "ord_bk:2026-10-31:1"
+    query.message.reply_markup.inline_keyboard = [[mock_back_btn]]
+
+    update = MagicMock(spec=Update)
+    update.callback_query = query
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    context.user_data = {}
+
+    # 1. Expand action
+    await handle_order_action_callback(update, context)
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+
+    exp_kb = query.edit_message_text.call_args[1]["reply_markup"]
+    exp_cbs = [btn.callback_data for row in exp_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert f"ord_act:less:{oid}" in exp_cbs
+    assert f"ord_act:del_prompt:{oid}" in exp_cbs
+    assert "ord_bk:2026-10-31:1" in exp_cbs
+
+    # 2. Collapse action
+    query.answer.reset_mock()
+    query.edit_message_text.reset_mock()
+    query.data = f"ord_act:less:{oid}"
+    # Keep the reply_markup with back button
+    query.message.reply_markup = exp_kb
+
+    await handle_order_action_callback(update, context)
+    query.answer.assert_awaited_once()
+    query.edit_message_text.assert_awaited_once()
+
+    col_kb = query.edit_message_text.call_args[1]["reply_markup"]
+    col_cbs = [btn.callback_data for row in col_kb.inline_keyboard for btn in row if btn.callback_data]
+    assert f"ord_act:more:{oid}" in col_cbs
+    assert f"ord_act:less:{oid}" not in col_cbs
+    assert f"ord_act:del_prompt:{oid}" not in col_cbs
+    assert "ord_bk:2026-10-31:1" in col_cbs
 
 
 def test_render_order_detail_card_shows_tape_breakdown():

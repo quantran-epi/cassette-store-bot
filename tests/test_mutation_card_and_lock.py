@@ -13,7 +13,7 @@ from src.models.order import Order, OrderStatus
 def test_divider_length_is_14():
     """Verify section divider is exactly 14 characters per D-19."""
     assert len(DIVIDER) == 14
-    assert DIVIDER == "──────────────"
+    assert DIVIDER == "••••••••••••••"
 
 
 def test_render_order_list_card_spacing():
@@ -40,10 +40,10 @@ def test_render_order_list_card_spacing():
     ]
     card = render_order_list_card(orders, "2026-10-25", 1, 1, 2)
     # Consecutive orders should be separated by \n\n (empty line)
-    assert "📦 <b>ĐƠN #1 — Khách A</b>" in card
-    assert "📦 <b>ĐƠN #2 — Khách B</b>" in card
-    # Double newline check between end of order 1 block and order 2 header
-    assert "\n\n📦 <b>ĐƠN #2 — Khách B</b>" in card
+    assert "📦 <b>#1 — Khách A</b>" in card
+    assert "📦 <b>#2 — Khách B</b>" in card
+    # Separator check between end of order 1 block and order 2 header
+    assert "\n────────\n📦 <b>#2 — Khách B</b>" in card
 
 
 def test_render_mutation_disambiguation_card():
@@ -71,15 +71,15 @@ def test_render_mutation_disambiguation_card():
     card = render_mutation_disambiguation_card(orders, keyword="Bác Tuấn")
     assert "CHỌN ĐƠN HÀNG CẦN SỬA" in card
     assert "Bác Tuấn" in card
-    assert "ĐƠN #12 — Bác Tuấn" in card
+    assert "#12 — Bác Tuấn" in card
     assert "0912345678" in card
     assert "123 Lê Duẩn, Hà Nội" in card
     assert "350.000 đ" in card
-    assert "ĐƠN #15 — Bác Tuấn" in card
+    assert "#15 — Bác Tuấn" in card
     assert "0988776655" in card
     assert "Cầu Giấy, Hà Nội" in card
     assert "500.000 đ" in card
-    assert "\n\n📦 <b>ĐƠN #15 — Bác Tuấn</b>" in card
+    assert "\n────────\n📦 <b>#15 — Bác Tuấn</b>" in card
 
 
 def test_render_order_detail_card_with_creator():
