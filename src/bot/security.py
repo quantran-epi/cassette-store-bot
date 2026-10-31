@@ -1,4 +1,5 @@
 import functools
+import time
 from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
@@ -103,6 +104,33 @@ async def whitelist_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
 
         raise ApplicationHandlerStop()
+
+    # Track super admin activity timestamp
+    settings = context.bot_data.get("settings")
+    super_admin_id = getattr(settings, "telegram_super_admin_id", None)
+    if super_admin_id is not None and user.id == super_admin_id:
+        now_ts = time.time()
+        last_ts = context.bot_data.get("_sa_last_active_ts", 0)
+        if now_ts - last_ts >= 60:
+            context.bot_data["_sa_last_active_ts"] = now_ts
+            db = context.bot_data.get("db")
+            if db is not None:
+                try:
+                    from src.db.admin import update_admin_last_active
+
+                    await update_admin_last_active(db, user.id)
+                except Exception:
+                    pass
+            elif settings:
+                from src.db.connection import get_db_connection
+
+                try:
+                    async with get_db_connection(settings.sqlite_db_path) as conn:
+                        from src.db.admin import update_admin_last_active
+
+                        await update_admin_last_active(conn, user.id)
+                except Exception:
+                    pass
 
     # Enforce maintenance mode right after whitelist check
     await maintenance_gate(update, context)

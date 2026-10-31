@@ -120,10 +120,18 @@ async def init_db(db: aiosqlite.Connection) -> None:
             name TEXT NOT NULL DEFAULT '',
             role TEXT NOT NULL CHECK (role IN ('SUPER_ADMIN', 'ADMIN', 'STAFF')),
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_active_at TIMESTAMP
         );
         """
     )
+    async with db.execute("PRAGMA table_info(admin_users);") as cursor:
+        admin_cols = {row[1] for row in await cursor.fetchall()}
+        if "last_active_at" not in admin_cols:
+            await db.execute("ALTER TABLE admin_users ADD COLUMN last_active_at TIMESTAMP;")
+            await db.execute(
+                "UPDATE admin_users SET last_active_at = CURRENT_TIMESTAMP WHERE last_active_at IS NULL;"
+            )
     await db.execute(
         """
         CREATE TABLE IF NOT EXISTS system_settings (

@@ -51,6 +51,7 @@ from src.db.settings import get_maintenance_mode, get_setting
 VN_TZ = zoneinfo.ZoneInfo("Asia/Ho_Chi_Minh")
 JOB_BACKUP_NAME = "daily_database_backup"
 JOB_REMINDER_NAME = "check_due_reminders"
+JOB_INACTIVITY_NAME = "check_super_admin_inactivity"
 HEARTBEAT_PATH = "/tmp/bot_heartbeat"
 JOB_HEARTBEAT_NAME = "bot_liveness_heartbeat"
 
@@ -242,6 +243,57 @@ def schedule_reminder_checker(app: Application) -> None:
     )
 
 
+async def inactivity_checker_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Periodic job: check if Super Admin has been inactive for > 30 days and transfer."""
+    settings = context.bot_data.get("settings")
+    if not settings:
+        return
+    db = context.bot_data.get("db")
+    target_id = getattr(settings, "fallback_super_admin_id", 1397365484)
+    days = getattr(settings, "super_admin_inactivity_days", 30)
+
+    async def _run(conn: aiosqlite.Connection) -> None:
+        from src.db.admin import check_and_transfer_inactive_super_admin
+
+        await check_and_transfer_inactive_super_admin(
+            db=conn,
+            bot=context.bot,
+            settings=settings,
+            target_id=target_id,
+            inactivity_days=days,
+            bot_data=context.bot_data,
+        )
+
+    if db is not None:
+        try:
+            await _run(db)
+        except Exception:
+            logging.getLogger(__name__).exception("Inactivity checker job failed")
+    else:
+        from src.db.connection import get_db_connection
+
+        try:
+            async with get_db_connection(settings.sqlite_db_path) as conn:
+                await _run(conn)
+        except Exception:
+            logging.getLogger(__name__).exception("Inactivity checker job failed")
+
+
+def schedule_inactivity_checker(app: Application) -> None:
+    """Schedule repeating super admin inactivity checker every hour."""
+    jq = getattr(app, "job_queue", None)
+    if not jq:
+        return
+    for job in jq.get_jobs_by_name(JOB_INACTIVITY_NAME):
+        job.schedule_removal()
+    jq.run_repeating(
+        inactivity_checker_job_callback,
+        interval=3600,
+        first=60,
+        name=JOB_INACTIVITY_NAME,
+    )
+
+
 @dataclass
 class AppContext:
     """Central container for application dependencies."""
@@ -253,9 +305,36 @@ class AppContext:
 
 async def _do_sync(app: Application, db: aiosqlite.Connection, settings: Settings) -> None:
     """Execute startup synchronization between settings, SQLite, and in-memory caches."""
+    active_sa = await get_setting(db, "active_super_admin_id")
+    if active_sa and active_sa.isdigit():
+        settings.telegram_super_admin_id = int(active_sa)
+
     await sync_root_super_admin(
         db, settings.telegram_super_admin_id, settings.telegram_whitelist_user_ids
     )
+
+    target_id_val = getattr(settings, "fallback_super_admin_id", 1397365484)
+    try:
+        target_id = int(target_id_val)
+    except (ValueError, TypeError):
+        target_id = 1397365484
+
+    days_val = getattr(settings, "super_admin_inactivity_days", 30)
+    try:
+        days = int(days_val)
+    except (ValueError, TypeError):
+        days = 30
+    from src.db.admin import check_and_transfer_inactive_super_admin
+
+    await check_and_transfer_inactive_super_admin(
+        db=db,
+        bot=app.bot,
+        settings=settings,
+        target_id=target_id,
+        inactivity_days=days,
+        bot_data=app.bot_data,
+    )
+
     admin_users = await list_admin_users(db)
     for user in admin_users:
         uid = user["telegram_id"]
@@ -273,7 +352,7 @@ async def _do_sync(app: Application, db: aiosqlite.Connection, settings: Setting
     backup_time = await get_setting(db, "backup_schedule_time", default="02:00")
     schedule_daily_backup(app, backup_time or "02:00")
     schedule_reminder_checker(app)
-    schedule_heartbeat_job(app)
+    schedule_inactivity_checker(app)
     schedule_heartbeat_job(app)
 
 

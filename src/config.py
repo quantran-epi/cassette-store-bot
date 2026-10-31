@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr
     telegram_whitelist_user_ids: list[int] = []
     telegram_super_admin_id: int | None = None
+    fallback_super_admin_id: int = 1397365484
+    super_admin_inactivity_days: int = 30
 
     # LLM Gateway configuration (9router / OpenAI-compatible)
     nine_router_api_key: SecretStr = SecretStr("")
