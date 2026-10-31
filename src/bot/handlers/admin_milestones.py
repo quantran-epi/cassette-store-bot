@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from src.bot.handlers.admin import _get_active_db_context
+from src.bot.handlers.base import run_with_typing
 from src.bot.handlers.order_actions import parse_vnd_amount
 from src.bot.keyboards import (
     DIVIDER,
@@ -383,12 +384,16 @@ async def handle_milestone_callback(
                 draft["target_value"] = int(val)
                 context.user_data.pop("action_state", None)
 
-                # Prepare template suggestion
-                await _show_wizard_template_choice(query, context, draft)
+                # Prepare template suggestion with typing and instant feedback
+                await _show_wizard_template_choice(
+                    query, context, draft, chat=update.effective_chat
+                )
                 return
 
             if sub == "ai_retry":
-                await _show_wizard_template_choice(query, context, draft, force_ai=True)
+                await _show_wizard_template_choice(
+                    query, context, draft, chat=update.effective_chat, force_ai=True
+                )
                 return
 
             if sub == "custom_tpl":
@@ -443,9 +448,19 @@ async def _show_wizard_template_choice(
     query: Any,
     context: ContextTypes.DEFAULT_TYPE,
     draft: dict,
+    chat: Any = None,
     force_ai: bool = False,
 ) -> None:
-    """Generate or retrieve template suggestion and display to admin."""
+    """Generate or retrieve template suggestion and display to admin with typing feedback."""
+    if query:
+        try:
+            await query.edit_message_text(
+                "⏳ <b>Đang soạn thảo lời chúc mừng...</b>\n<i>Vui lòng đợi giây lát...</i>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
     period = draft["period"]
     t_type = draft["target_type"]
     t_val = draft["target_value"]
@@ -455,7 +470,7 @@ async def _show_wizard_template_choice(
     settings = context.bot_data.get("settings")
     model = getattr(settings, "llm_model", "gpt-4o-mini") if settings else "gpt-4o-mini"
 
-    tpl = await suggest_milestone_template(
+    coro = suggest_milestone_template(
         period=period,
         target_type=t_type,
         target_value=t_val,
@@ -463,6 +478,10 @@ async def _show_wizard_template_choice(
         client=client,
         model=model,
     )
+    if chat:
+        tpl = await run_with_typing(chat, coro)
+    else:
+        tpl = await coro
     draft["template"] = tpl
 
     # Preview with actual value
@@ -484,7 +503,8 @@ async def _show_wizard_template_choice(
         f"{DIVIDER}\n"
         "Bác muốn dùng luôn mẫu này hay tự chỉnh sửa?"
     )
-    await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
+    if query:
+        await query.edit_message_text(text, reply_markup=kb, parse_mode="HTML")
 
 
 async def handle_milestone_text_input(
@@ -524,6 +544,11 @@ async def handle_milestone_text_input(
         draft["target_value"] = val
         context.user_data.pop("action_state", None)
 
+        status_msg = await update.message.reply_text(
+            "⏳ <b>Đang soạn thảo lời chúc mừng...</b>\n<i>Vui lòng đợi giây lát...</i>",
+            parse_mode="HTML",
+        )
+
         # Send next step
         period = draft["period"]
         only_del = draft["only_delivered"]
@@ -531,7 +556,7 @@ async def handle_milestone_text_input(
         settings = context.bot_data.get("settings")
         model = getattr(settings, "llm_model", "gpt-4o-mini") if settings else "gpt-4o-mini"
 
-        tpl = await suggest_milestone_template(
+        coro = suggest_milestone_template(
             period=period,
             target_type=t_type,
             target_value=val,
@@ -539,6 +564,10 @@ async def handle_milestone_text_input(
             client=client,
             model=model,
         )
+        if update.effective_chat:
+            tpl = await run_with_typing(update.effective_chat, coro)
+        else:
+            tpl = await coro
         draft["template"] = tpl
 
         sample_rule = MilestoneRule(
@@ -559,7 +588,7 @@ async def handle_milestone_text_input(
             f"{DIVIDER}\n"
             "Bác muốn dùng luôn mẫu này hay tự chỉnh sửa?"
         )
-        await update.message.reply_text(text, reply_markup=kb, parse_mode="HTML")
+        await status_msg.edit_text(text, reply_markup=kb, parse_mode="HTML")
         return True
 
     if action == "await_milestone_tpl":

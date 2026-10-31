@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 import logging
 from collections.abc import Iterable
@@ -149,14 +150,17 @@ async def suggest_milestone_template(
     )
 
     try:
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Bạn là trợ lý nội dung cho shop băng cassette."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            max_tokens=250,
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "Bạn là trợ lý nội dung cho shop băng cassette."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=250,
+            ),
+            timeout=5.0,
         )
         content = (response.choices[0].message.content or "").strip()
         if content and "{current_value}" in content:
