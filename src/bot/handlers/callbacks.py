@@ -358,7 +358,7 @@ async def handle_mutation_callback(
 
     if draft_id not in pending_mutations:
         await query.edit_message_text(
-            "⏰ <b>YÊU CẦU SỬA ĐƠN ĐÃ HẾT HẠN (120s)</b>\n"
+            "⏰ <b>YÊU CẦU SỬA ĐƠN ĐÃ HẾT HẠN (5 phút)</b>\n"
             "<i>Thao tác sửa đơn đã tự động huỷ bỏ để đảm bảo an toàn. Bác vui lòng nhắn lại câu lệnh nhé!</i>",
             reply_markup=None,
             parse_mode="HTML",
@@ -367,12 +367,12 @@ async def handle_mutation_callback(
 
     draft = pending_mutations[draft_id]
 
-    # Check TTL expiry (120s) per D-12
+    # Check TTL expiry (300s) per D-12
     if time.time() > draft.get("expires_at", 0):
         oid = draft.get("order_id", "")
         pending_mutations.pop(draft_id, None)
         await query.edit_message_text(
-            f"⏰ <b>YÊU CẦU SỬA ĐƠN ĐÃ HẾT HẠN (120s)</b>\n"
+            f"⏰ <b>YÊU CẦU SỬA ĐƠN ĐÃ HẾT HẠN (5 phút)</b>\n"
             f"<i>Thao tác sửa đơn #{oid} đã tự động huỷ bỏ để đảm bảo an toàn. Bác vui lòng nhắn lại câu lệnh nhé!</i>",
             reply_markup=None,
             parse_mode="HTML",

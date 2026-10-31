@@ -133,7 +133,7 @@ def test_render_mutation_diff_card_only_changed_fields():
     assert "XÁC NHẬN SỬA ĐƠN HÀNG #12" in card
     assert "Nguyễn Văn Nam" in card
     assert DIVIDER in card
-    assert "hết hạn sau 120s" in card
+    assert "hết hạn sau 5 phút" in card
 
     # Changed fields
     assert "TRẠNG THÁI:" in card or "Trạng thái:" in card

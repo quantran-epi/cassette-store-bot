@@ -152,8 +152,8 @@ def _render_list_view(
 
 
 async def handle_search_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle '[🔍 Tra cứu đơn]' button click by setting 120s search state and sending guide per D-01, D-03."""
-    context.user_data["search_state"] = {"expires_at": time.time() + 120}
+    """Handle '[🔍 Tra cứu đơn]' button click by setting 300s search state and sending guide per D-01, D-03."""
+    context.user_data["search_state"] = {"expires_at": time.time() + 300}
     text = (
         "🔍 <b>TRA CỨU ĐƠN HÀNG TỰ NHIÊN</b>\n\n"
         "Bác muốn tìm đơn nào cứ gõ tự nhiên vào đây nhé (ví dụ: 'tìm đơn anh Tuấn hôm qua' "
@@ -649,7 +649,7 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     if data == "sch_new":
-        context.user_data["search_state"] = {"expires_at": time.time() + 120}
+        context.user_data["search_state"] = {"expires_at": time.time() + 300}
         prompt_text = (
             "🔍 <b>TRA CỨU ĐƠN HÀNG TỰ NHIÊN</b>\n\n"
             "Bác hãy gõ câu hỏi tìm kiếm mới vào ô chat bên dưới nhé!"

@@ -84,7 +84,7 @@ async def handle_mutation_flow(
                 "order_id": target_order.id,
                 "expected_updated_at": str(target_order.updated_at),
                 "delta": delta_dict,
-                "expires_at": time.time() + 180,
+                "expires_at": time.time() + 300,
             }
             card_text = render_mutation_diff_card(target_order, delta_dict)
             kb = build_mutation_confirm_keyboard(draft_id)
@@ -231,7 +231,7 @@ async def handle_mutation_flow(
             "draft_id": draft_id,
             "original_text": text,
             "matched_order_ids": [o.id for o in matches],
-            "expires_at": time.time() + 180,
+            "expires_at": time.time() + 300,
         }
         kw_for_card = delta_pre.target_customer_keyword if delta_pre else None
         dis_text = render_mutation_disambiguation_card(matches, kw_for_card)
@@ -275,7 +275,7 @@ async def handle_mutation_flow(
         "order_id": target_order.id,
         "expected_updated_at": str(target_order.updated_at),
         "delta": delta_dict,
-        "expires_at": time.time() + 180,
+        "expires_at": time.time() + 300,
     }
 
     # If status disambiguation is explicitly needed (MUT-05, D-13)
@@ -361,7 +361,7 @@ async def handle_mutation_selection(
     draft["order_id"] = target_order.id
     draft["delta"] = delta_dict
     draft["expected_updated_at"] = str(target_order.updated_at)
-    draft["expires_at"] = time.time() + 180
+    draft["expires_at"] = time.time() + 300
 
     # If status disambiguation needed
     if delta_dict.get("status_disambiguation_needed"):
@@ -412,7 +412,7 @@ async def handle_status_suggestion_selection(
     draft["delta"]["status"] = new_st
     draft["delta"].pop("status_disambiguation_needed", None)
     draft["expected_updated_at"] = str(target_order.updated_at)
-    draft["expires_at"] = time.time() + 120
+    draft["expires_at"] = time.time() + 300
 
     diff_card_text = render_mutation_diff_card(target_order, draft["delta"])
     kb = build_mutation_confirm_keyboard(draft_id)

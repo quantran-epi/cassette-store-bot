@@ -146,7 +146,7 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     if text == "✏️ Sửa đơn":
-        context.user_data["mutation_state"] = {"expires_at": time.time() + 120}
+        context.user_data["mutation_state"] = {"expires_at": time.time() + 300}
         await update.message.reply_text(
             "✏️ <b>SỬA ĐƠN HÀNG</b>\n\n"
             "Bác nhập nội dung cần sửa, kèm mã đơn hoặc thông tin khách nhé.\n"

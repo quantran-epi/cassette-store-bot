@@ -1483,7 +1483,7 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
         f"<b>Các nội dung thay đổi:</b>\n\n"
         f"{diff_text}\n"
         f"{DIVIDER}\n"
-        f"Bác kiểm tra lại thông tin rồi bấm nút bên dưới nhé (hết hạn sau 120s):"
+        f"Bác kiểm tra lại thông tin rồi bấm nút bên dưới nhé (hết hạn sau 5 phút):"
     )
 
 
@@ -1753,7 +1753,7 @@ def render_bulk_paste_prompt_card() -> str:
         "Ví dụ:\n"
         "<code>GHN123456</code>\n"
         "<code>VN987654321</code>\n\n"
-        "<i>(Hết hạn sau 120 giây)</i>"
+        "<i>(Hết hạn sau 5 phút)</i>"
     )
 
 

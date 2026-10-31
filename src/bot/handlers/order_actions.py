@@ -394,7 +394,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         context.user_data["action_state"] = {
             "action": "await_tracking",
             "order_id": order_id,
-            "expires_at": time.time() + 120,
+            "expires_at": time.time() + 300,
         }
         cancel_kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("❌ Huỷ bỏ thao tác", callback_data="ord_act:cancel")]]
@@ -403,7 +403,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             await query.edit_message_text(
                 text=f"🚚 <b>NHẬP MÃ VẬN ĐƠN CHO ĐƠN #{order_id}</b>\n\n"
                 f"Bác gõ hoặc dán mã vận đơn vào ô chat cho đơn này nhé.\n\n"
-                f"<i>(Thời gian chờ là 2 phút)</i>",
+                f"<i>(Thời gian chờ là 5 phút)</i>",
                 reply_markup=cancel_kb,
                 parse_mode="HTML",
             )
@@ -418,7 +418,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         context.user_data["action_state"] = {
             "action": "await_photo",
             "order_id": order_id,
-            "expires_at": time.time() + 120,
+            "expires_at": time.time() + 300,
         }
         cancel_kb = InlineKeyboardMarkup(
             [[InlineKeyboardButton("❌ Huỷ bỏ thao tác", callback_data="ord_act:cancel")]]
@@ -427,7 +427,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
             await query.edit_message_text(
                 text=f"📷 <b>GỬI THÊM ẢNH CHO ĐƠN #{order_id}</b>\n\n"
                 f"Bác gửi 1 hoặc nhiều ảnh cho đơn này nhé.\n\n"
-                f"<i>(Thời gian chờ là 2 phút)</i>",
+                f"<i>(Thời gian chờ là 5 phút)</i>",
                 reply_markup=cancel_kb,
                 parse_mode="HTML",
             )
@@ -488,7 +488,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
         context.user_data["action_state"] = {
             "action": "await_reminder",
             "order_id": order_id,
-            "expires_at": time.time() + 180,
+            "expires_at": time.time() + 300,
         }
 
         db_ctx = _get_active_db_context(context)
@@ -744,7 +744,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                 "action": "await_edit_field",
                 "order_id": order_id,
                 "field": field,
-                "expires_at": time.time() + 180,
+                "expires_at": time.time() + 300,
             }
 
             field_label = FIELD_LABELS[field]
@@ -771,7 +771,7 @@ async def handle_order_action_callback(update: Update, context: ContextTypes.DEF
                         f"• <b>Hiện tại:</b> {val_disp}\n"
                         f"{DIVIDER}\n"
                         f"Bác hãy gõ nội dung mới vào ô chat cho đơn này nhé.\n\n"
-                        f"<i>(Thời gian chờ là 3 phút)</i>"
+                        f"<i>(Thời gian chờ là 5 phút)</i>"
                     ),
                     reply_markup=cancel_kb,
                     parse_mode="HTML",
