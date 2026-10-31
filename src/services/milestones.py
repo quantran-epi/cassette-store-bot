@@ -1,6 +1,8 @@
+import calendar
 import logging
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import aiosqlite
 from openai import AsyncOpenAI
@@ -33,6 +35,55 @@ PERIOD_LABELS: dict[MilestonePeriod, str] = {
 def format_amount_vnd(amount: int) -> str:
     """Format currency in Vietnamese standard (100.000 đ)."""
     return f"{amount:,} đ".replace(",", ".")
+
+
+def compute_milestone_pace_and_deadline(
+    period: MilestonePeriod,
+    target_type: MilestoneTargetType,
+    target_value: int,
+    current_value: int,
+    dt: datetime | None = None,
+) -> dict[str, Any]:
+    """Compute remaining target, deadline date, remaining days, and required daily pace."""
+    now_vn = dt if dt is not None else datetime.now(timezone(timedelta(hours=7)))
+    today = now_vn.date()
+    remaining = max(0, target_value - current_value)
+
+    if period == MilestonePeriod.ALL_TIME:
+        return {
+            "remaining": remaining,
+            "days_left": None,
+            "deadline_date": None,
+            "pace": None,
+        }
+
+    if period == MilestonePeriod.WEEK:
+        days_until_sunday = 6 - today.weekday()
+        deadline = today + timedelta(days=days_until_sunday)
+        days_left = max(1, days_until_sunday + 1)
+    elif period == MilestonePeriod.MONTH:
+        _, last_day = calendar.monthrange(today.year, today.month)
+        deadline = today.replace(day=last_day)
+        days_left = max(1, (deadline - today).days + 1)
+    elif period == MilestonePeriod.YEAR:
+        deadline = today.replace(month=12, day=31)
+        days_left = max(1, (deadline - today).days + 1)
+    else:
+        return {
+            "remaining": remaining,
+            "days_left": None,
+            "deadline_date": None,
+            "pace": None,
+        }
+
+    pace = 0.0 if remaining <= 0 else (remaining / days_left)
+
+    return {
+        "remaining": remaining,
+        "days_left": days_left,
+        "deadline_date": deadline,
+        "pace": pace,
+    }
 
 
 def get_default_milestone_template(

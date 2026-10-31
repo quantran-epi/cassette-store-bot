@@ -7,6 +7,7 @@ from telegram import InlineKeyboardMarkup
 
 from src.bot.handlers.admin_milestones import (
     handle_milestone_text_input,
+    render_milestone_detail_card,
 )
 from src.bot.keyboards import (
     build_milestone_confirm_delete_keyboard,
@@ -30,6 +31,7 @@ from src.models.order import Order, OrderStatus
 from src.services.milestones import (
     FIREWORKS_EFFECT_ID,
     check_and_trigger_milestones,
+    compute_milestone_pace_and_deadline,
 )
 
 TZ_VN = timezone(timedelta(hours=7))
@@ -352,3 +354,69 @@ async def test_milestone_wizard_and_text_input(db):
     assert context.user_data["milestone_draft"]["target_value"] == 20000000
     assert "template" in context.user_data["milestone_draft"]
     update.message.reply_text.assert_called_once()
+
+
+def test_compute_milestone_pace_and_deadline():
+    # Saturday Oct 31, 2026
+    dt = datetime(2026, 10, 31, 10, 0, tzinfo=TZ_VN)
+
+    # Week: Saturday + Sunday = 2 days left
+    res_week = compute_milestone_pace_and_deadline(
+        MilestonePeriod.WEEK,
+        MilestoneTargetType.ORDER_COUNT,
+        target_value=10,
+        current_value=6,
+        dt=dt,
+    )
+    assert res_week["remaining"] == 4
+    assert res_week["days_left"] == 2
+    assert res_week["deadline_date"] == datetime(2026, 11, 1).date()
+    assert res_week["pace"] == 2.0  # 4 / 2 = 2.0 orders/day
+
+    # Month: Oct 31 is the last day of month -> 1 day left
+    res_month = compute_milestone_pace_and_deadline(
+        MilestonePeriod.MONTH,
+        MilestoneTargetType.REVENUE,
+        target_value=10000000,
+        current_value=8000000,
+        dt=dt,
+    )
+    assert res_month["remaining"] == 2000000
+    assert res_month["days_left"] == 1
+    assert res_month["deadline_date"] == datetime(2026, 10, 31).date()
+    assert res_month["pace"] == 2000000.0
+
+    # All-time has no deadline
+    res_all = compute_milestone_pace_and_deadline(
+        MilestonePeriod.ALL_TIME,
+        MilestoneTargetType.ORDER_COUNT,
+        target_value=100,
+        current_value=50,
+        dt=dt,
+    )
+    assert res_all["remaining"] == 50
+    assert res_all["days_left"] is None
+    assert res_all["pace"] is None
+
+
+@pytest.mark.asyncio
+async def test_render_milestone_detail_card_with_pace(db):
+    rule = MilestoneRule(
+        id=99,
+        period=MilestonePeriod.WEEK,
+        target_type=MilestoneTargetType.ORDER_COUNT,
+        target_value=10,
+        only_delivered=False,
+        message_template="🎉 Chúc mừng!",
+        effect_enabled=True,
+        is_active=True,
+    )
+    await create_milestone_rule(db, rule)
+
+    card = await render_milestone_detail_card(db, rule)
+    assert "CHI TIẾT MỐC #99" in card
+    assert "Tiến độ:" in card
+    assert "Còn thiếu:" in card
+    assert "Thời hạn:" in card
+    assert "Tốc độ cần đạt:" in card
+

@@ -32,6 +32,7 @@ from src.db.milestones import (
 )
 from src.models.milestone import MilestonePeriod, MilestoneRule, MilestoneTargetType
 from src.services.milestones import (
+    compute_milestone_pace_and_deadline,
     format_amount_vnd,
     format_milestone_broadcast_message,
     get_default_milestone_template,
@@ -111,6 +112,18 @@ async def render_milestone_detail_card(
 
     preview_msg = format_milestone_broadcast_message(rule, curr_val or rule.target_value)
 
+    pct = (
+        min(100, int((curr_val / rule.target_value) * 100))
+        if rule.target_value > 0
+        else 100
+    )
+    filled_blocks = pct // 10
+    progress_bar = f"[{'■' * filled_blocks}{'□' * (10 - filled_blocks)}] {pct}%"
+
+    pace_info = compute_milestone_pace_and_deadline(
+        rule.period, rule.target_type, rule.target_value, curr_val
+    )
+
     lines = [
         f"🎯 <b>CHI TIẾT MỐC #{rule.id}</b>",
         f"{DIVIDER}",
@@ -119,12 +132,44 @@ async def render_milestone_detail_card(
         f"• <b>Điều kiện:</b> {cond_str}",
         f"• <b>Trạng thái:</b> {st_str}",
         f"• <b>Hiệu ứng:</b> {effect_str}",
-        f"• <b>Tiến độ hiện tại:</b> <b>{curr_str}</b> / {val_str}",
+        f"• <b>Tiến độ:</b> {progress_bar} (<b>{curr_str}</b> / {val_str})",
+    ]
+
+    if pace_info["remaining"] > 0:
+        rem_str = (
+            f"{pace_info['remaining']:,} đơn".replace(",", ".")
+            if rule.target_type == MilestoneTargetType.ORDER_COUNT
+            else format_amount_vnd(pace_info["remaining"])
+        )
+        lines.append(f"• <b>Còn thiếu:</b> <b>{rem_str}</b>")
+
+        if pace_info["days_left"] is not None and pace_info["deadline_date"] is not None:
+            deadline_fmt = pace_info["deadline_date"].strftime("%d/%m/%Y")
+            days_cnt = pace_info["days_left"]
+            day_word = "hôm nay là ngày cuối" if days_cnt == 1 else f"còn {days_cnt} ngày"
+            lines.append(f"• <b>Thời hạn:</b> {day_word} (hết ngày {deadline_fmt})")
+
+            if rule.target_type == MilestoneTargetType.ORDER_COUNT:
+                pace_val = pace_info["pace"]
+                pace_fmt = f"{pace_val:.1f}".rstrip("0").rstrip(".")
+                lines.append(
+                    f"• <b>Tốc độ cần đạt:</b> Cần trung bình <b>~{pace_fmt} đơn/ngày</b> để kịp mốc!"
+                )
+            else:
+                pace_val = int(pace_info["pace"])
+                pace_fmt = format_amount_vnd(pace_val)
+                lines.append(
+                    f"• <b>Tốc độ cần đạt:</b> Cần trung bình <b>~{pace_fmt}/ngày</b> để kịp mốc!"
+                )
+    else:
+        lines.append("• <b>Mục tiêu:</b> 🏆 <b>ĐÃ HOÀN THÀNH MỐC NÀY!</b>")
+
+    lines.extend([
         f"• <b>Kỳ này:</b> {fired_str}",
         f"{DIVIDER}",
         "📜 <b>Nội dung thông báo (Xem trước):</b>",
         preview_msg,
-    ]
+    ])
     return "\n".join(lines)
 
 
