@@ -370,7 +370,7 @@ async def test_order_detail_card_and_reminder_prompt():
         cod_amount=100000,
         notes="Giao trước 12h",
     )
-    kb = build_order_detail_keyboard(order, "2026-10-25", 1)
+    kb = build_order_detail_keyboard(order, "2026-10-25", 1, expanded=True)
     # Check that reminder button exists
     all_buttons = [btn for row in kb.inline_keyboard for btn in row]
     reminder_btn = next((b for b in all_buttons if "ord_act:remind:42" in (b.callback_data or "")), None)
@@ -591,7 +591,7 @@ def test_format_reminder_broadcast_with_times_and_relative_note():
     # Verify dividers use consistent 14-char DIVIDER
     assert DIVIDER in msg
     assert "────────────────────" not in msg
-    assert DIVIDER == "──────────────"
+    assert DIVIDER == "••••••••••••••"
 
     # Case 2: Reminder without created_at (only remind_at)
     msg_no_created = format_reminder_broadcast({
@@ -691,7 +691,7 @@ def test_cards_render_high_contrast_uppercase_labels():
 
     # 2. Summary item
     summary = format_order_item_summary(order)
-    assert "📦 <b>ĐƠN #99 — Bác Tư</b>\n" in summary
+    assert "📦 <b>#99 — Bác Tư</b>\n" in summary
     assert "📞 <b>SĐT:</b>" in summary
     assert "📍 <b>Đ/C:</b>" in summary
     assert "💰 <b>TIỀN:</b>" in summary
@@ -731,7 +731,7 @@ def test_format_order_item_summary_bold_line_and_html_escape():
     )
     summary = format_order_item_summary(order)
     first_line = summary.splitlines()[0]
-    assert first_line == "📦 <b>ĐƠN #77 — &lt;Bác&gt; An &amp; Em</b>"
+    assert first_line == "📦 <b>#77 — &lt;Bác&gt; An &amp; Em</b>"
 
 
 

@@ -832,11 +832,14 @@ async def handle_search_callback(update: Update, context: ContextTypes.DEFAULT_T
                 return
 
             card_text = render_order_detail_card(order)
+            back_cb = f"sch_bk:{search_id}"
+            if context.user_data is not None:
+                context.user_data[f"ord_back_{order_id}"] = back_cb
             detail_kb = build_order_detail_keyboard(
                 order=order,
                 date_str="search",
                 page=1,
-                back_callback_data=f"sch_bk:{search_id}",
+                back_callback_data=back_cb,
             )
             try:
                 await query.edit_message_text(

@@ -25,7 +25,8 @@ from src.services.tape_parser import (
 # Timezone Vietnam UTC+7
 TZ_VN = timezone(timedelta(hours=7))
 
-DIVIDER = "──────────────"  # 14 chars per D-19 (chống vỡ màn hình nhỏ)
+DIVIDER = "••••••••••••••"  # 14 bullet dots divider per UI spec
+ITEM_DIVIDER = "────────"  # Short divider between order list items
 
 STATUS_NAMES: dict[OrderStatus, str] = {
     OrderStatus.CHO_LAM: "⏳ Chờ làm",
@@ -212,13 +213,19 @@ def render_order_detail_card(
 
 def build_order_detail_keyboard(
     order: Order,
-    date_str: str,
-    page: int,
+    date_str: str = "",
+    page: int = 1,
     back_callback_data: str | None = None,
     has_reminder: bool = False,
+    expanded: bool = False,
+    show_back: bool | None = None,
 ) -> InlineKeyboardMarkup:
     """Build multi-row inline keyboard with 1-tap CopyTextButtons and actions."""
     buttons: list[list[InlineKeyboardButton]] = []
+
+    back_cb = back_callback_data or (f"ord_bk:{date_str}:{page}" if date_str else None)
+    if show_back is None:
+        show_back = bool(back_callback_data or date_str)
 
     # 1. Natural next status suggestion row (D-06)
     if order.status in NEXT_STATUS_MAP:
@@ -231,6 +238,54 @@ def build_order_detail_keyboard(
                 )
             ]
         )
+
+    if not expanded:
+        # Collapsed mode: only essential buttons
+        # 2. Photos row (ONLY if order has photos)
+        if order.photo_file_ids:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        f"🖼️ Xem {len(order.photo_file_ids)} ảnh",
+                        callback_data=f"ord_act:view_photo:{order.id}",
+                    )
+                ]
+            )
+
+        # 3. Shipping helper row (1-tap dispatch copy for carrier apps)
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    "🚚 Tạo đơn vận chuyển",
+                    callback_data=f"ord_act:ship_helper:{order.id}",
+                )
+            ]
+        )
+
+        # 4. Expand / more actions button
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    "⚙️ Thao tác khác ▾",
+                    callback_data=f"ord_act:more:{order.id}",
+                )
+            ]
+        )
+
+        # 5. Back navigation (only if from list)
+        if show_back and back_cb:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        "⬅️ Quay lại",
+                        callback_data=back_cb,
+                    )
+                ]
+            )
+
+        return InlineKeyboardMarkup(buttons)
+
+    # Expanded mode: full actions
 
     # 2. 1-Tap Copy buttons for Phone & Address (D-05, UI-04)
     safe_phone = (order.customer_phone or "").strip()[:256] or "Chưa có SĐT"
@@ -329,16 +384,26 @@ def build_order_detail_keyboard(
         ]
     )
 
-    # 9. Back navigation
-    back_cb = back_callback_data or f"ord_bk:{date_str}:{page}"
+    # 9. Collapse button
     buttons.append(
         [
             InlineKeyboardButton(
-                "⬅️ Quay lại",
-                callback_data=back_cb,
-            ),
+                "🔼 Thu gọn",
+                callback_data=f"ord_act:less:{order.id}",
+            )
         ]
     )
+
+    # 10. Back navigation (only if from list)
+    if show_back and back_cb:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    "⬅️ Quay lại",
+                    callback_data=back_cb,
+                )
+            ]
+        )
 
     return InlineKeyboardMarkup(buttons)
 
@@ -539,12 +604,20 @@ def format_order_item_summary(order: Order) -> str:
     items_line = f"\n   📼 <b>BĂNG:</b> {html.escape(order.items_text)}" if order.items_text else ""
     classification = _order_classification(order)
     classification_line = f"   {classification.replace(chr(10), chr(10) + '   ')}\n" if classification else ""
+    vn_created_at = (
+        to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
+    )
+    created_str = (
+        vn_created_at.strftime("%d/%m/%Y %H:%M") if vn_created_at else str(order.created_at or "")
+    )
+    time_line = f"\n   🕒 <b>TẠO:</b> {created_str}" if created_str else ""
     return (
-        f"📦 <b>ĐƠN #{order.id} — {cust_name}{_returning_marker(order)}</b>\n"
+        f"📦 <b>#{order.id} — {cust_name}{_returning_marker(order)}</b>\n"
         f"{classification_line}"
         f"   📞 <b>SĐT:</b> {phone}\n"
         f"   📍 <b>Đ/C:</b> {addr}"
-        f"{items_line}\n"
+        f"{items_line}"
+        f"{time_line}\n"
         f"   💰 <b>TIỀN:</b> <b>{total_fmt}</b> (<i>{status_label}</i>)"
     )
 
@@ -575,7 +648,7 @@ def render_order_list_card(
 
     order_blocks = [format_order_item_summary(order) for order in orders]
     if order_blocks:
-        lines.append("\n\n".join(order_blocks))
+        lines.append(f"\n{ITEM_DIVIDER}\n".join(order_blocks))
 
     lines.append(DIVIDER)
     lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
@@ -705,11 +778,6 @@ def build_status_order_list_keyboard(
             )
         buttons.append(nav_row)
 
-    buttons.append(_build_status_filter_row(status, page))
-
-    if not orders:
-        buttons.append([InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new")])
-
     return InlineKeyboardMarkup(buttons)
 
 
@@ -724,10 +792,8 @@ def build_order_list_keyboard(
 
     if not orders:
         # Empty state per D-04
-        buttons.append(_build_status_filter_row())
         buttons.append(
             [
-                InlineKeyboardButton("📝 Nhập đơn mới", callback_data="ord_act:new"),
                 InlineKeyboardButton("📋 Chọn ngày khác", callback_data="ord_act:pick_date"),
             ]
         )
@@ -758,9 +824,6 @@ def build_order_list_keyboard(
     if page < total_pages:
         nav_row.append(InlineKeyboardButton("Sau ➡️", callback_data=f"ord_pg:{date_str}:{page + 1}"))
     buttons.append(nav_row)
-
-    # Status filter chips above the date picker bottom button (D-3)
-    buttons.append(_build_status_filter_row())
 
     # Pick another date bottom button per D-03
     buttons.append([InlineKeyboardButton("📋 Chọn ngày khác", callback_data="ord_act:pick_date")])
@@ -926,7 +989,7 @@ def render_search_multi_card(
 
     order_blocks = [format_order_item_summary(order) for order in orders]
     if order_blocks:
-        lines.append("\n\n".join(order_blocks))
+        lines.append(f"\n{ITEM_DIVIDER}\n".join(order_blocks))
 
     lines.append(DIVIDER)
     lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
@@ -1446,7 +1509,7 @@ def render_mutation_disambiguation_card(orders: Sequence[Order], keyword: str | 
     ]
     order_blocks = [format_order_item_summary(order) for order in orders]
     if order_blocks:
-        lines.append("\n\n".join(order_blocks))
+        lines.append(f"\n{ITEM_DIVIDER}\n".join(order_blocks))
 
     lines.append(DIVIDER)
     lines.append("Bác bấm chọn đúng đơn cần sửa bên dưới nhé:")

@@ -77,7 +77,12 @@ def test_order_detail_keyboard_has_shipping_and_delete_buttons():
     kb = build_order_detail_keyboard(order, date_str="2026-10-27", page=1)
     callbacks = [btn.callback_data for row in kb.inline_keyboard for btn in row if btn.callback_data]
     assert "ord_act:ship_helper:99" in callbacks
-    assert "ord_act:del_prompt:99" in callbacks
+    assert "ord_act:more:99" in callbacks
+
+    # Delete button is available in expanded mode
+    kb_exp = build_order_detail_keyboard(order, date_str="2026-10-27", page=1, expanded=True)
+    callbacks_exp = [btn.callback_data for row in kb_exp.inline_keyboard for btn in row if btn.callback_data]
+    assert "ord_act:del_prompt:99" in callbacks_exp
 
 
 def test_shipping_helper_card_and_keyboard_cod():
