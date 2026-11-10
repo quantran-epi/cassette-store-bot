@@ -300,6 +300,87 @@ async def test_milestone_trigger_filter_by_delivery(db):
     assert bot.send_message.call_args.kwargs.get("message_effect_id") is None
 
 
+@pytest.mark.asyncio
+async def test_milestone_broadcast_admin_only(db):
+    from src.db.admin import create_or_update_admin_user
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+
+    # Seed admin_users: 1 SUPER_ADMIN, 1 ADMIN, 1 STAFF
+    await create_or_update_admin_user(db, telegram_id=101, name="Super User", role="SUPER_ADMIN")
+    await create_or_update_admin_user(db, telegram_id=102, name="Admin User", role="ADMIN")
+    await create_or_update_admin_user(db, telegram_id=103, name="Staff User", role="STAFF")
+
+    rule = MilestoneRule(
+        period=MilestonePeriod.ALL_TIME,
+        target_type=MilestoneTargetType.ORDER_COUNT,
+        target_value=1,
+        only_delivered=False,
+        message_template="Đạt mốc {target_value} đơn!",
+        effect_enabled=True,
+        is_active=True,
+    )
+    await create_milestone_rule(db, rule)
+
+    o = Order(
+        customer_name="Test",
+        customer_phone="0901234567",
+        shipping_address="Hanoi",
+        items_text="Bang 1",
+        total_amount=100000,
+        status=OrderStatus.CHO_LAM,
+    )
+    await create_order(db, o)
+
+    # Trigger with whitelist_ids containing all users including staff
+    triggered = await check_and_trigger_milestones(
+        bot=bot,
+        db=db,
+        whitelist_ids=[101, 102, 103],
+        trigger_point="order_created",
+    )
+    assert len(triggered) == 1
+
+    # Verify: ONLY super_admin (101) and admin (102) received broadcast, staff (103) did NOT
+    assert bot.send_message.call_count == 2
+    sent_chats = {call.kwargs["chat_id"] for call in bot.send_message.call_args_list}
+    assert sent_chats == {101, 102}
+    assert 103 not in sent_chats
+
+    # Test explicit admin_ids override
+    bot.send_message.reset_mock()
+    rule2 = MilestoneRule(
+        period=MilestonePeriod.ALL_TIME,
+        target_type=MilestoneTargetType.ORDER_COUNT,
+        target_value=2,
+        only_delivered=False,
+        message_template="Đạt mốc 2 đơn!",
+        effect_enabled=False,
+        is_active=True,
+    )
+    await create_milestone_rule(db, rule2)
+    o2 = Order(
+        customer_name="Test 2",
+        customer_phone="0901234568",
+        shipping_address="Hanoi",
+        items_text="Bang 2",
+        total_amount=100000,
+        status=OrderStatus.CHO_LAM,
+    )
+    await create_order(db, o2)
+
+    triggered2 = await check_and_trigger_milestones(
+        bot=bot,
+        db=db,
+        admin_ids=[101],
+        trigger_point="order_created",
+    )
+    assert len(triggered2) == 1
+    assert bot.send_message.call_count == 1
+    assert bot.send_message.call_args.kwargs["chat_id"] == 101
+
+
 def test_milestone_keyboards_structure():
     rule = MilestoneRule(
         id=1,

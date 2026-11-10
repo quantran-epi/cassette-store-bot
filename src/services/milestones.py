@@ -248,9 +248,10 @@ def format_milestone_broadcast_message(
 async def check_and_trigger_milestones(
     bot: Bot,
     db: aiosqlite.Connection,
-    whitelist_ids: Iterable[int],
-    trigger_point: str,  # "order_created" or "order_delivered"
+    whitelist_ids: Iterable[int] | None = None,
+    trigger_point: str = "order_created",  # "order_created" or "order_delivered"
     dt: datetime | None = None,
+    admin_ids: Iterable[int] | None = None,
 ) -> list[tuple[MilestoneRule, int]]:
     """Scan active rules matching trigger point, broadcast celebration if threshold reached."""
     active_rules = await list_milestone_rules(db, active_only=True)
@@ -266,8 +267,22 @@ async def check_and_trigger_milestones(
     if not candidate_rules:
         return []
 
+    # Resolve target admin IDs: only ADMIN and SUPER_ADMIN users receive milestone celebrations
+    if admin_ids is not None:
+        target_ids = list(set(admin_ids))
+    else:
+        from src.db.admin import get_admin_user_ids
+
+        db_admin_ids = await get_admin_user_ids(db)
+        if db_admin_ids:
+            target_ids = db_admin_ids
+        elif whitelist_ids is not None:
+            # ponytail: fallback to whitelist_ids for unseeded test DBs
+            target_ids = list(set(whitelist_ids))
+        else:
+            target_ids = []
+
     triggered_results: list[tuple[MilestoneRule, int]] = []
-    unique_whitelist = list(set(whitelist_ids))
 
     for rule in candidate_rules:
         if not rule.id:
@@ -294,12 +309,13 @@ async def check_and_trigger_milestones(
             effect_id = FIREWORKS_EFFECT_ID if rule.effect_enabled else None
 
             try:
-                await broadcast_to_whitelist(
-                    bot=bot,
-                    whitelist_ids=unique_whitelist,
-                    text=msg_text,
-                    message_effect_id=effect_id,
-                )
+                if target_ids:
+                    await broadcast_to_whitelist(
+                        bot=bot,
+                        whitelist_ids=target_ids,
+                        text=msg_text,
+                        message_effect_id=effect_id,
+                    )
             except Exception as e:
                 logger.error("Failed to broadcast milestone celebration: %s", e)
 

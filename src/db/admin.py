@@ -44,6 +44,15 @@ async def list_admin_users(db: aiosqlite.Connection) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+async def get_admin_user_ids(db: aiosqlite.Connection) -> list[int]:
+    """Retrieve telegram IDs of users with ADMIN or SUPER_ADMIN role."""
+    async with db.execute(
+        "SELECT telegram_id FROM admin_users WHERE role IN ('SUPER_ADMIN', 'ADMIN')"
+    ) as cursor:
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
 async def delete_admin_user(
     db: aiosqlite.Connection,
     target_id: int,

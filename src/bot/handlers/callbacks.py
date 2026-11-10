@@ -299,7 +299,6 @@ async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await check_and_trigger_milestones(
                     bot=context.bot,
                     db=active_db,
-                    whitelist_ids=whitelist_ids,
                     trigger_point="order_created",
                 )
             except Exception as e:
@@ -526,12 +525,10 @@ async def handle_mutation_callback(
             if new_st == OrderStatus.DA_GIAO:
                 from src.services.milestones import check_and_trigger_milestones
 
-                whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
                 try:
                     await check_and_trigger_milestones(
                         bot=context.bot,
                         db=active_db,
-                        whitelist_ids=whitelist_ids,
                         trigger_point="order_delivered",
                     )
                 except Exception as e:

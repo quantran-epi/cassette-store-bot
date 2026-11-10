@@ -111,3 +111,4 @@ Recent decisions affecting current work:
 | 2026-10-31 | `261031-f38-bulk-status-change-returning-customer-ic` | Icon khách quay lại `🔂` (≥2 đơn bất kỳ trạng thái); menu chính thêm `🔄 Đổi trạng thái` (bỏ `❓ Trợ giúp`); flow đổi trạng thái hàng loạt 3 bước (checkbox + dán mã VĐN + xem chi tiết riêng) | Complete ✓ |
 | 2026-10-31 | `261031-order-detail-collapse-mode` | Chi tiết đơn thu gọn mặc định kèm nút mở rộng; bỏ chip lọc và nút nhập đơn ở chân list; gạch nối giữa các item; thêm ngày giờ tạo đơn; divider dạng bullet | Complete ✓ |
 | 2026-10-31 | `261031-shop-milestone-broadcast` | Mốc chúc mừng broadcast tự động kèm pháo hoa Telegram; cấu hình tuần/tháng/năm/toàn bộ, số đơn/doanh thu, lọc đơn DA_GIAO hoặc mọi đơn; admin wizard & AI gợi ý lời chúc | Complete ✓ |
+| 2026-11-04 | `261104-bv9-milestone-broadcast-admin-only` | Sửa broadcast chúc mừng mốc kỷ lục chỉ gửi cho ADMIN và SUPER_ADMIN thay vì toàn bộ whitelist | Complete ✓ |
