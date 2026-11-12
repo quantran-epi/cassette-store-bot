@@ -1450,6 +1450,15 @@ def render_mutation_diff_card(order: Order, delta_dict: dict) -> str:
         old_tr = html.escape(order.tracking_code or "(Chưa có)")
         new_tr = html.escape(str(new_track))
         diff_lines.append(f"🚚 <b>MÃ VẬN ĐƠN:</b> <code>{old_tr}</code> ➡️ <code>{new_tr}</code>")
+        # Setting a tracking code auto-advances early-stage orders to DA_TAO_DON.
+        if (
+            order.status in (OrderStatus.CHO_LAM, OrderStatus.DANG_LAM, OrderStatus.DA_DONG_GOI)
+            and not (delta_dict.get("status") or delta_dict.get("new_status"))
+        ):
+            diff_lines.append(
+                f"🔄 <b>TRẠNG THÁI:</b> {STATUS_NAMES.get(order.status, order.status.value)}"
+                f" ➡️ <b>{STATUS_NAMES.get(OrderStatus.DA_TAO_DON)}</b>"
+            )
 
     # 7. Items Text
     new_items = delta_dict.get("items_text") or delta_dict.get("new_items_text")

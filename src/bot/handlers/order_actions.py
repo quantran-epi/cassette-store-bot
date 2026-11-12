@@ -950,6 +950,23 @@ async def handle_action_state_text(
 
             if success:
                 order = await get_order_by_id(active_db, order_id)
+                if order:
+                    from src.services.notifications import (
+                        broadcast_to_whitelist,
+                        build_order_view_button,
+                        format_order_shipping_label_broadcast,
+                    )
+
+                    whitelist_ids = context.bot_data.get("whitelist_user_ids", set())
+                    await broadcast_to_whitelist(
+                        context.bot,
+                        whitelist_ids,
+                        format_order_shipping_label_broadcast(
+                            order, operator_name=user.full_name if user else None
+                        ),
+                        reply_markup=build_order_view_button(order.id) if order.id else None,
+                        exclude_user_id=user.id if user else None,
+                    )
                 escaped_code = html.escape(tracking_code)
                 card_text = (
                     f"✅ <b>ĐÃ CẬP NHẬT MÃ VẬN ĐƠN</b>\n\n"

@@ -497,7 +497,8 @@ async def handle_mutation_callback(
 
         # Success: edit message in-place to Updated Order Card per D-14
         if fresh_order:
-            new_st = delta_dict.get("status")
+            new_st_val = (changes or {}).get("status", {}).get("new") if changes else None
+            new_st = OrderStatus(new_st_val) if new_st_val else delta_dict.get("status")
             if new_st in (OrderStatus.DA_DONG_GOI, OrderStatus.DA_TAO_DON):
                 from src.services.notifications import (
                     broadcast_to_whitelist,

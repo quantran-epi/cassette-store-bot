@@ -674,6 +674,16 @@ async def mutate_order_with_lock(
                 params.append(val_to_save)
                 changes[target_col] = {"old": current_val, "new": val_to_save}
 
+    # Setting a tracking code auto-advances early-stage orders to DA_TAO_DON,
+    # mirroring update_order_tracking, unless an explicit status was given.
+    if "tracking_code" in changes and "status" not in changes:
+        old_status_val = row["status"]
+        if old_status_val in ("CHO_LAM", "DANG_LAM", "DA_DONG_GOI"):
+            new_status = OrderStatus.DA_TAO_DON
+            fields.append("status = ?")
+            params.append(new_status.value)
+            changes["status"] = {"old": old_status_val, "new": new_status.value}
+
     if not fields:
         # No actual fields changed
         return True, {}, _row_to_order(row)

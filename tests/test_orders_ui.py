@@ -1135,6 +1135,58 @@ async def test_handle_action_state_text_tracking_updates_db(test_db):
 
 
 @pytest.mark.asyncio
+async def test_handle_action_state_text_tracking_broadcasts_to_others(test_db):
+    """Entering a tracking code broadcasts the DA_TAO_DON notice to other whitelisted users."""
+    import time
+    from unittest.mock import patch
+
+    from src.db.orders import create_order
+
+    oid = await create_order(
+        test_db,
+        Order(
+            customer_name="Cô Hoa",
+            customer_phone="0911223344",
+            shipping_address="Hà Nội",
+            items_text="Băng",
+            total_amount=120000,
+        ),
+    )
+
+    message = MagicMock(spec=Message)
+    message.text = "GHN555666"
+    message.reply_text = AsyncMock()
+
+    update = MagicMock(spec=Update)
+    update.message = message
+    update.effective_user = User(id=111, first_name="Operator", is_bot=False)
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application.bot_data = {"db": test_db}
+    context.bot_data = {"db": test_db, "whitelist_user_ids": {111, 222}}
+    context.bot = MagicMock()
+    state = {
+        "action": "await_tracking",
+        "order_id": oid,
+        "expires_at": time.time() + 120,
+    }
+    context.user_data = {"action_state": state}
+
+    with patch(
+        "src.services.notifications.broadcast_to_whitelist", new=AsyncMock(return_value=1)
+    ) as mock_bc:
+        handled = await handle_action_state_text(update, context, state)
+
+    assert handled is True
+    mock_bc.assert_awaited_once()
+    _bot, ids = mock_bc.await_args.args[0], mock_bc.await_args.args[1]
+    assert ids == {111, 222}
+    assert mock_bc.await_args.kwargs["exclude_user_id"] == 111
+    assert "ĐÃ TẠO ĐƠN VẬN CHUYỂN" in mock_bc.await_args.args[2]
+
+
+
+@pytest.mark.asyncio
 async def test_handle_text_order_bypasses_llm_when_action_state_active(test_db):
     """handle_text_order intercepts text when action_state is active without calling LLM."""
     import time

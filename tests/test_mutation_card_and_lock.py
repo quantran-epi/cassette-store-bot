@@ -644,3 +644,61 @@ async def test_find_orders_for_mutation_strips_honorifics_and_fillers():
 
 
 
+
+@pytest.mark.asyncio
+async def test_mutate_order_tracking_auto_advances_status():
+    """Setting tracking_code via mutation auto-advances early-stage order to DA_TAO_DON."""
+    from src.db.connection import get_db_connection
+    from src.db.orders import create_order, get_order_by_id, mutate_order_with_lock
+    from src.db.schema import init_db
+
+    async with get_db_connection(":memory:") as db:
+        await init_db(db)
+
+        order = Order(
+            customer_name="Chị Lan",
+            customer_phone="0901234567",
+            shipping_address="12 Hàng Bài, Hà Nội",
+            items_text="1 băng",
+            total_amount=100000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order_id = await create_order(db, order)
+        original_order = await get_order_by_id(db, order_id)
+
+        success, changes, updated_order = await mutate_order_with_lock(
+            db,
+            order_id=order_id,
+            expected_updated_at=original_order.updated_at,
+            delta_dict={"tracking_code": "GHN998877"},
+            user_id=1,
+            user_name="Admin",
+        )
+
+        assert success is True
+        assert changes["status"]["new"] == "DA_TAO_DON"
+        assert updated_order.status == OrderStatus.DA_TAO_DON
+        assert updated_order.tracking_code == "GHN998877"
+
+        # Explicit status wins over auto-advance
+        order2 = Order(
+            customer_name="Anh Tú",
+            customer_phone="0907654321",
+            shipping_address="34 Lê Lợi, HCM",
+            items_text="2 băng",
+            total_amount=250000,
+            status=OrderStatus.CHO_LAM,
+        )
+        order2_id = await create_order(db, order2)
+        original2 = await get_order_by_id(db, order2_id)
+
+        ok2, changes2, updated2 = await mutate_order_with_lock(
+            db,
+            order_id=order2_id,
+            expected_updated_at=original2.updated_at,
+            delta_dict={"tracking_code": "VTP111", "status": OrderStatus.DANG_LAM},
+            user_id=1,
+            user_name="Admin",
+        )
+        assert ok2 is True
+        assert updated2.status == OrderStatus.DANG_LAM
