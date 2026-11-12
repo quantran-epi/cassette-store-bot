@@ -60,7 +60,7 @@ def test_build_main_menu_reply_keyboard_structure():
 
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows == [
-        ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
+        ["📦 Đơn hôm nay", "📦 Đơn đã đóng gói"],
         ["📋 Xem theo ngày", "✏️ Sửa đơn"],
         ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"],
     ]
@@ -425,12 +425,12 @@ def test_build_order_list_keyboard_has_no_filter_chips():
     assert "ord_ls:DA_DONG_GOI:1" not in empty_cbs
 
 
-def test_app_registers_pending_orders_wiring():
+def test_app_registers_packed_orders_wiring():
     """Source-level guard: app.py must wire the button text and both callbacks."""
     from pathlib import Path
 
     source = Path("src/bot/app.py").read_text(encoding="utf-8")
-    assert "⏳ Đơn chờ làm" in source
+    assert "📦 Đơn đã đóng gói" in source
     assert "ord_(dt|pg|v|bk|ls|vls):" in source
 
 
@@ -487,7 +487,7 @@ async def test_start_command_sends_reply_keyboard():
     assert markup.is_persistent is True
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows == [
-        ["📦 Đơn hôm nay", "⏳ Đơn chờ làm"],
+        ["📦 Đơn hôm nay", "📦 Đơn đã đóng gói"],
         ["📋 Xem theo ngày", "✏️ Sửa đơn"],
         ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"],
     ]
@@ -534,8 +534,8 @@ async def test_handle_menu_reply_today_orders(test_db):
 
 
 @pytest.mark.asyncio
-async def test_handle_menu_reply_pending_orders(test_db):
-    """'⏳ Đơn chờ làm' renders paginated CHO_LAM list with status chips."""
+async def test_handle_menu_reply_packed_orders(test_db):
+    """'📦 Đơn đã đóng gói' renders paginated DA_DONG_GOI list with status chips."""
     from src.db.orders import create_order
 
     for i in range(12):
@@ -547,7 +547,7 @@ async def test_handle_menu_reply_pending_orders(test_db):
                 shipping_address="HCM",
                 items_text="Băng",
                 total_amount=100000,
-                status=OrderStatus.CHO_LAM,
+                status=OrderStatus.DA_DONG_GOI,
             ),
         )
     await create_order(
@@ -563,7 +563,7 @@ async def test_handle_menu_reply_pending_orders(test_db):
     )
 
     message = MagicMock(spec=Message)
-    message.text = "⏳ Đơn chờ làm"
+    message.text = "📦 Đơn đã đóng gói"
     message.reply_text = AsyncMock()
     update = MagicMock(spec=Update)
     update.message = message
@@ -577,12 +577,12 @@ async def test_handle_menu_reply_pending_orders(test_db):
     card_text = kwargs.get("text", "")
     markup = kwargs.get("reply_markup")
 
-    assert "⏳ Chờ làm — <b>DANH SÁCH ĐƠN</b>" in card_text
+    assert "📦 Đã đóng gói — <b>DANH SÁCH ĐƠN</b>" in card_text
     assert "Tổng cộng: <b>12 đơn</b> (Trang 1/2)" in card_text
     assert "Khách Đang Làm" not in card_text
     flat_cbs = [btn.callback_data for row in markup.inline_keyboard for btn in row]
-    assert "ord_ls:CHO_LAM:2" in flat_cbs
-    assert any(cb.startswith("ord_vls:CHO_LAM:") for cb in flat_cbs)
+    assert "ord_ls:DA_DONG_GOI:2" in flat_cbs
+    assert any(cb.startswith("ord_vls:DA_DONG_GOI:") for cb in flat_cbs)
 
 
 @pytest.mark.asyncio

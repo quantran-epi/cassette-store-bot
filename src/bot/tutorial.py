@@ -13,7 +13,7 @@ TUTORIAL_PAGES: list[dict] = [
         "body": (
             "Bác chỉ cần chạm vào các nút to trên màn hình.\n"
             "1. 📦 Đơn hôm nay - xem đơn trong ngày.\n"
-            "2. ⏳ Đơn chờ làm - xem đơn đang chờ làm.\n"
+            "2. 📦 Đơn đã đóng gói - xem đơn đã đóng gói xong.\n"
             "3. 📋 Xem theo ngày - xem đơn ngày trước.\n"
             "4. ✏️ Sửa đơn - sửa đơn bằng câu nói thường.\n"
             "5. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường.\n"
@@ -22,13 +22,13 @@ TUTORIAL_PAGES: list[dict] = [
         "try_kind": None,
     },
     {
-        "title": "⏳ <b>ĐƠN CHỜ LÀM</b>",
+        "title": "📦 <b>ĐƠN ĐÃ ĐÓNG GÓI</b>",
         "body": (
-            "1. Bấm nút ⏳ Đơn chờ làm.\n"
-            "2. Bot hiện danh sách đơn chờ làm, gom theo ngày tạo.\n"
+            "1. Bấm nút 📦 Đơn đã đóng gói.\n"
+            "2. Bot hiện danh sách đơn đã đóng gói, gom theo ngày tạo.\n"
             "3. Chạm chip ⏳/🛠️/📦 ở cuối để lọc trạng thái khác."
         ),
-        "try_kind": "pending_orders",
+        "try_kind": "packed_orders",
     },
     {
         "title": "📦 <b>XEM ĐƠN HÔM NAY</b>",

@@ -118,7 +118,7 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             )
         return
 
-    if text == "⏳ Đơn chờ làm":
+    if text == "📦 Đơn đã đóng gói":
         db_ctx = _get_active_db_context(context)
         async with db_ctx as active_db:
             if not active_db:
@@ -127,7 +127,7 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 return
 
             card_text, keyboard = await _render_status_list_page(
-                active_db, OrderStatus.CHO_LAM, 1
+                active_db, OrderStatus.DA_DONG_GOI, 1
             )
             await update.message.reply_text(
                 text=card_text,

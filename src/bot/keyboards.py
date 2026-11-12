@@ -76,7 +76,7 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [
             KeyboardButton("📦 Đơn hôm nay"),
-            KeyboardButton("⏳ Đơn chờ làm"),
+            KeyboardButton("📦 Đơn đã đóng gói"),
         ],
         [
             KeyboardButton("📋 Xem theo ngày"),

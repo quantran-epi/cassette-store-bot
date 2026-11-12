@@ -39,7 +39,7 @@ def test_render_first_page_keeps_legacy_strings():
     assert "HƯỚNG DẪN SỬ DỤNG BOT" in text
     assert f"Trang 1/{PAGE_COUNT}" in text
     assert "Tra cứu đơn" in text
-    assert "ĐƠN CHỜ LÀM" in render_tutorial_page(1)[0]
+    assert "ĐƠN ĐÃ ĐÓNG GÓI" in render_tutorial_page(1)[0]
     assert isinstance(kb, InlineKeyboardMarkup)
 
 
@@ -209,10 +209,10 @@ async def test_try_now_dispatches_to_existing_handlers():
 
         mock_nav.reset_mock()
         mock_search.reset_mock()
-        update, _ = _tutorial_query("help:try:pending_orders")
+        update, _ = _tutorial_query("help:try:packed_orders")
         await handle_tutorial_callback(update, MagicMock())
         mock_nav.assert_awaited_once()
-        assert mock_nav.await_args.args[0].callback_query.data == "ord_ls:CHO_LAM:1"
+        assert mock_nav.await_args.args[0].callback_query.data == "ord_ls:DA_DONG_GOI:1"
         mock_search.assert_not_awaited()
 
         mock_nav.reset_mock()
