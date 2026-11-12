@@ -49,6 +49,104 @@ def test_extracted_order_phone_normalization_variants():
     assert o5.customer_phone is None
 
 
+PHONE_CASES = [
+    ("0912345678", "0912345678"),
+    ("0912 345 678", "0912345678"),
+    ("0 9 1 2 3 4 5 6 7 8", "0912345678"),
+    ("0912\t345\t678", "0912345678"),
+    ("0912 345 678", "0912345678"),
+    ("0912.345.678", "0912345678"),
+    ("(0912) 345-678", "0912345678"),
+    ("+84 912 345 678", "0912345678"),
+    ("84-912-345-678", "0912345678"),
+    ("0084 912 345 678", "0912345678"),
+    ("", None),
+    ("091234567", None),
+    ("09123456789", None),
+    ("10912345678", None),
+    ("0912 345 67", None),
+    ("0912 345 6789", None),
+    ("0912 345 678 9", None),
+    ("0912345678.9", None),
+    ("0123456789", None),
+    ("+85 912 345 678", None),
+    ("+85 0912345678", None),
+    ("+84 0912345678", None),
+    ("0084 0912345678", None),
+    ("+84 (0) 912 345 678", None),
+    ("0084 912 345 6789", None),
+    ("abc0912345678xyz", None),
+    ("0912abc345678", None),
+]
+
+
+@pytest.mark.parametrize(("phone", "expected"), PHONE_CASES)
+def test_phone_format_validation(phone, expected):
+    assert ExtractedOrder(customer_phone=phone).customer_phone == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", ["partial", "json", "failed"])
+@pytest.mark.parametrize(("phone", "expected"), PHONE_CASES)
+async def test_phone_fallback_formats_and_boundaries(phone, expected, tier):
+    """Phone recovery validates whole candidates; mocks never contact gateway."""
+    client = MagicMock()
+    response = MagicMock()
+    response.choices[0].message.parsed = ExtractedOrder(
+        customer_name="Khách thử", items_text="2 băng", total_amount=250000
+    )
+    response.choices[0].message.content = response.choices[0].message.parsed.model_dump_json()
+    client.beta.chat.completions.parse = AsyncMock(
+        return_value=response, side_effect=RuntimeError("offline") if tier != "partial" else None
+    )
+    client.chat.completions.create = AsyncMock(
+        return_value=response, side_effect=RuntimeError("offline") if tier == "failed" else None
+    )
+    text = f"Khách thử ĐT {phone} lấy 2 băng thu 250k"
+
+    result = await extract_order_from_text(client, "offline-test", text)
+
+    if tier == "failed" and expected is None:
+        assert result is None
+    else:
+        assert result is not None
+        assert result.customer_phone == expected
+        assert result.cod_amount == 250000
+        if tier != "failed":
+            assert result.customer_name == "Khách thử"
+            assert result.items_text == "2 băng"
+    assert client.beta.chat.completions.parse.await_args.kwargs["messages"][1] == {
+        "role": "user", "content": f"<message>{text}</message>"
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix", ["ĐT", "Số 123"])
+@pytest.mark.parametrize("suffix", ["2 băng thu 250k", "123 Lê Lợi lấy 2 băng", "\n123 Lê Lợi"])
+async def test_phone_fallback_keeps_contiguous_phone_before_numeric_fields(prefix, suffix):
+    client = MagicMock()
+    client.beta.chat.completions.parse = AsyncMock(side_effect=RuntimeError("offline"))
+    client.chat.completions.create = AsyncMock(side_effect=RuntimeError("offline"))
+    result = await extract_order_from_text(client, "offline-test", f"{prefix} 0912345678 {suffix}")
+    assert result is not None
+    assert result.customer_phone == "0912345678"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phone", ["0912 345 67", "0912 345 678"])
+@pytest.mark.parametrize("suffix", ["2 băng thu 250k", "3 cuốn Chế Linh", "2 bang", "3 cuon", "2 phôi", "250k", "250000 đồng"])
+async def test_phone_fallback_does_not_borrow_digits_from_quantity(phone, suffix):
+    client = MagicMock()
+    client.beta.chat.completions.parse = AsyncMock(side_effect=RuntimeError("offline"))
+    client.chat.completions.create = AsyncMock(side_effect=RuntimeError("offline"))
+    result = await extract_order_from_text(client, "offline-test", f"ĐT {phone} {suffix}")
+    if phone == "0912 345 67":
+        assert result is None
+    else:
+        assert result is not None
+        assert result.customer_phone == "0912345678"
+
+
 def test_vietnamese_currency_normalization_model_defaults():
     """Ensure amounts cannot be negative and have proper defaults."""
     order = ExtractedOrder()

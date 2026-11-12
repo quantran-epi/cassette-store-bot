@@ -51,8 +51,10 @@ class ExtractedOrder(BaseModel):
         # Remove spaces, dots, dashes, parentheses
         cleaned = re.sub(r"[\s.\-()]", "", v)
 
-        # Convert +84 prefix to 0
-        if cleaned.startswith("+84"):
+        # Convert explicit Vietnamese country prefixes to 0
+        if cleaned.startswith("0084"):
+            cleaned = "0" + cleaned[4:]
+        elif cleaned.startswith("+84"):
             cleaned = "0" + cleaned[3:]
         elif cleaned.startswith("84") and len(cleaned) == 11:
             cleaned = "0" + cleaned[2:]

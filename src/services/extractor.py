@@ -152,8 +152,31 @@ def _clean_json_markdown(text: str) -> str:
 
 
 # Regex fallback safety net
-PHONE_FALLBACK_REGEX = re.compile(r"(?:(?:\+84|84|0)[35789]\d{8})")
+PHONE_FALLBACK_REGEX = re.compile(r"(?<![\w+])\+?\d(?:[^\S\r\n]|[\d.()\-])*\d(?!\w)")
 COD_FALLBACK_REGEX = re.compile(r"(?:thu|cod|còn thu)\s*[:=]?\s*(\d+(?:[.,]\d+)?\s*(?:k|tr|triệu|nghìn|đ)?)", re.IGNORECASE)
+
+
+def _find_phone_in_text(text: str) -> str | None:
+    """Validate whole numeric runs, never a valid-looking substring of a bad phone."""
+    for match in PHONE_FALLBACK_REGEX.finditer(text):
+        candidate = match.group(0)
+        if re.match(r"\s*(?:băng|bang|cuốn|cuon|phôi|phoi|k|tr|triệu|nghìn|đ|đồng|vnđ)\b", text[match.end():], re.IGNORECASE):
+            parts = candidate.rsplit(maxsplit=1)
+            if len(parts) == 2:
+                candidate = parts[0]  # Quantity/money digits do not belong to phone.
+        phone = ExtractedOrder(customer_phone=candidate).customer_phone
+        if phone:
+            return phone
+        # Preserve complete phone tokens beside house numbers or quantities.
+        # ponytail: ambiguous formatted runs stay missing; add explicit field parsing if needed.
+        for token in candidate.split():
+            if re.fullmatch(r"\+?\d+", token):
+                phone = ExtractedOrder(customer_phone=token).customer_phone
+                if phone:
+                    return phone
+            if token.startswith(("+", "84", "0084")):
+                break  # Never reinterpret an invalid international number as local.
+    return None
 
 
 def _parse_vietnamese_relative_time(
@@ -251,14 +274,7 @@ def _apply_deterministic_fallbacks(extracted: ExtractedOrder, raw_text: str) -> 
     """Deterministic regex post-processor to ensure critical fields are never dropped."""
     # 1. Fallback for phone number if LLM missed it
     if not extracted.customer_phone:
-        match = PHONE_FALLBACK_REGEX.search(raw_text)
-        if match:
-            raw_phone = match.group(0)
-            cleaned = re.sub(r"\D", "", raw_phone)
-            if cleaned.startswith("84") and len(cleaned) == 11:
-                cleaned = "0" + cleaned[2:]
-            if len(cleaned) == 10 and cleaned.startswith(("03", "05", "07", "08", "09")):
-                extracted.customer_phone = cleaned
+        extracted.customer_phone = _find_phone_in_text(raw_text)
 
     # 2. Fallback for COD amount if total is set but cod_amount is 0 and payment is COD
     if extracted.payment_method == "COD" and extracted.cod_amount == 0 and extracted.total_amount > 0:
@@ -386,16 +402,11 @@ async def extract_order_from_text(
         return _apply_deterministic_fallbacks(result, text)
 
     # If LLM completely failed (gateway timeout/error), try deterministic bare-minimum extraction
-    match_phone = PHONE_FALLBACK_REGEX.search(text)
-    if match_phone:
-        raw_phone = match_phone.group(0)
-        cleaned = re.sub(r"\D", "", raw_phone)
-        if cleaned.startswith("84") and len(cleaned) == 11:
-            cleaned = "0" + cleaned[2:]
-        if len(cleaned) == 10:
-            logger.warning("LLM failed completely, salvaged basic order with regex phone")
-            bare_order = ExtractedOrder(customer_phone=cleaned)
-            return _apply_deterministic_fallbacks(bare_order, text)
+    phone = _find_phone_in_text(text)
+    if phone:
+        logger.warning("LLM failed completely, salvaged basic order with regex phone")
+        bare_order = ExtractedOrder(customer_phone=phone)
+        return _apply_deterministic_fallbacks(bare_order, text)
 
     return None
 

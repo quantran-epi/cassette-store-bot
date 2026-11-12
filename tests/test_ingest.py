@@ -298,6 +298,82 @@ async def test_handle_text_order_missing_phone(test_db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("photo", [False, True])
+@pytest.mark.parametrize(
+    ("phone", "expected"),
+    [
+        ("0912 345 678", "0912345678"),
+        ("+84 (912) 345-678", "0912345678"),
+        ("0084 912 345 678", "0912345678"),
+        ("0912 345 67", None),
+        ("09123456789", None),
+    ],
+)
+async def test_formatted_phone_real_extractor_ingestion(test_db, photo, phone, expected):
+    """Real extractor, mocked LLM: valid phones preview; invalid phones ask resend."""
+    text = f"Khách thử ĐT {phone} lấy 2 băng thu 250k"
+    update = MagicMock(spec=Update)
+    update.message.text = text
+    update.message.caption = text
+    update.message.media_group_id = None
+    update.message.photo = [MagicMock(file_id="offline-photo")]
+    update.message.chat.send_action = AsyncMock()
+    update.message.reply_text = AsyncMock()
+    client = MagicMock()
+    response = MagicMock()
+    response.choices[0].message.parsed = ExtractedOrder(
+        customer_name="Khách thử", items_text="2 băng", total_amount=250000
+    )
+    client.beta.chat.completions.parse = AsyncMock(return_value=response)
+    client.chat.completions.create = AsyncMock(side_effect=RuntimeError("offline"))
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {}
+    app_context = MagicMock()
+    app_context.db = test_db
+    app_context.settings.nine_router_model_id = "offline-test"
+    app_context.openai_client = client
+    context.application.bot_data = {"app_context": app_context}
+
+    await (handle_photo_order if photo else handle_text_order)(update, context)
+
+    pending = context.user_data.get("pending_orders", {})
+    if expected:
+        assert len(pending) == 1
+        draft = next(iter(pending.values()))
+        assert draft["customer_phone"] == expected
+        assert draft["raw_text"] == text
+        assert draft["items_text"] == "2 băng"
+        assert draft["cod_amount"] == 250000
+        assert draft["photo_file_ids"] == (["offline-photo"] if photo else [])
+        buttons = update.message.reply_text.await_args.kwargs["reply_markup"].inline_keyboard
+        assert any(button.callback_data.startswith("ord:cf:") for row in buttons for button in row)
+    else:
+        assert not pending
+        assert "số điện thoại" in update.message.reply_text.await_args.args[0]
+    assert await list_orders_by_status(test_db, OrderStatus.CHO_LAM) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["tìm đơn 0912 345 678", "Nam"])
+async def test_phone_fix_preserves_explicit_search_mode(monkeypatch, text):
+    update = MagicMock(spec=Update)
+    update.message.text = text
+    context = MagicMock(spec=CallbackContext)
+    context.user_data = {"search_state": {"expires_at": float("inf")}}
+    search = AsyncMock()
+    extract = AsyncMock()
+    monkeypatch.setattr("src.bot.handlers.search.process_search_query", search)
+    monkeypatch.setattr("src.bot.handlers.ingest.extract_order_from_text", extract)
+
+    await handle_text_order(update, context)
+
+    search.assert_awaited_once()
+    assert search.await_args.args == (update, context, text)
+    extract.assert_not_awaited()
+    assert not context.user_data.get("pending_orders")
+
+
+@pytest.mark.asyncio
 async def test_photo_order_caption_extraction(test_db):
     """handle_photo_order extracts caption with LLM and stores highest-res photo_file_id in draft."""
     update = MagicMock(spec=Update)
