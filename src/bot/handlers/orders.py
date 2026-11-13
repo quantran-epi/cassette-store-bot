@@ -49,6 +49,8 @@ async def _render_status_list_page(
     active_db, status: OrderStatus, page: int, limit: int = 10
 ) -> tuple[str, InlineKeyboardMarkup]:
     """Render one page of a status-filtered list, clamping page into range."""
+    if status == OrderStatus.DA_DONG_GOI:
+        limit = 2  # Detailed packed-order previews need room within Telegram's 4096-character limit.
     total = await count_orders_by_status(active_db, status)
     total_pages = max(1, ceil(total / limit))
     page = min(max(page, 1), total_pages)

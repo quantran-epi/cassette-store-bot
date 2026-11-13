@@ -365,6 +365,72 @@ def test_render_status_order_list_card_grouping_and_empty():
     assert "Chưa có đơn nào ở trạng thái này bác nhé!" in empty
 
 
+def test_packed_order_list_separates_orders_and_shows_shipping_payment_details():
+    from src.bot.keyboards import ITEM_DIVIDER
+
+    orders = [
+        Order(
+            id=i,
+            customer_name=f"Khách <{i}>",
+            customer_phone="0901234567",
+            shipping_address="123 Đường A, Phường B, Hà Nội",
+            items_text="Băng A\nBăng B & C",
+            total_amount=350000,
+            cod_amount=250000,
+            payment_method="COD",
+            tracking_code="SHIP<123>",
+            tape_quantity=3,
+            notes="Gọi trước & giao buổi sáng",
+            status=OrderStatus.DA_DONG_GOI,
+            created_at=datetime(2026, 10, 26, 18, 30),
+        )
+        for i in (1, 2)
+    ]
+    card = render_status_order_list_card(orders, OrderStatus.DA_DONG_GOI, 1, 1, 2)
+    assert card.count(ITEM_DIVIDER) == 1
+    assert "📅 <b>27/10/2026</b> · 2 đơn" in card
+    for order in orders:
+        assert f"#{order.id} — Khách &lt;{order.id}&gt;" in card
+    assert card.count("<code>0901234567</code>") == 2
+    assert card.count("123 Đường A, Phường B, Hà Nội") == 2
+    assert card.count("Băng A\nBăng B &amp; C") == 2
+    assert card.count("350.000 đ") == 2
+    assert card.count("<b>COD THU:</b> <b>250.000 đ</b>") == 2
+    assert card.count("<b>THANH TOÁN:</b> COD") == 2
+    assert card.count("<code>SHIP&lt;123&gt;</code>") == 2
+    assert card.count("<b>SỐ BĂNG:</b> 3") == 2
+    assert card.count("Gọi trước &amp; giao buổi sáng") == 2
+    assert card.count("27/10/2026 01:30") == 2
+
+
+@pytest.mark.parametrize("text", ["<&😀", "😀"])
+def test_packed_order_list_bounds_previews_without_changing_order(text):
+    import html
+    import re
+
+    order = Order(
+        id=1,
+        customer_name=text * 1000,
+        customer_phone=text * 1000,
+        shipping_address=text * 1000,
+        items_text=text * 1000,
+        payment_method=text * 1000,
+        tracking_code=text * 1000,
+        notes=text * 1000,
+        status=OrderStatus.DA_DONG_GOI,
+        customer_completed_orders=5,
+        customer_completed_spend=10000000,
+        created_at=datetime(2026, 10, 26),
+    )
+    original = order.model_dump()
+    card = render_status_order_list_card([order, order], OrderStatus.DA_DONG_GOI, 1, 1, 2)
+    visible_text = html.unescape(re.sub(r"<[^>]+>", "", card))
+    assert len(visible_text.encode("utf-16-le")) // 2 <= 4096
+    assert "…" in card
+    assert order.model_dump() == original
+    assert "KHÁCH THÂN THIẾT" in card
+
+
 def test_build_status_order_list_keyboard_callbacks_and_chips():
     """Status list keyboard has detail/paging/chip callbacks, all <= 64 bytes."""
     orders = [
@@ -578,11 +644,34 @@ async def test_handle_menu_reply_packed_orders(test_db):
     markup = kwargs.get("reply_markup")
 
     assert "📦 Đã đóng gói — <b>DANH SÁCH ĐƠN</b>" in card_text
-    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/2)" in card_text
+    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/6)" in card_text
+    assert card_text.count("<b>SĐT:</b>") == 2
+    assert card_text.count("<b>COD THU:</b>") == 2
+    assert "────────" in card_text
     assert "Khách Đang Làm" not in card_text
     flat_cbs = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "ord_ls:DA_DONG_GOI:2" in flat_cbs
     assert any(cb.startswith("ord_vls:DA_DONG_GOI:") for cb in flat_cbs)
+
+    query = MagicMock()
+    query.answer = AsyncMock()
+    query.edit_message_text = AsyncMock()
+    query.data = "ord_ls:DA_DONG_GOI:999"
+    update.callback_query = query
+    await handle_order_nav_callback(update, context)
+    last_page = query.edit_message_text.call_args.kwargs
+    assert "Trang 6/6" in last_page["text"]
+    detail_callbacks = [
+        btn.callback_data for row in last_page["reply_markup"].inline_keyboard for btn in row
+        if btn.callback_data.startswith("ord_vls:")
+    ]
+    assert len(detail_callbacks) == 2
+    query.data = detail_callbacks[0]
+    await handle_order_nav_callback(update, context)
+    detail = query.edit_message_text.call_args.kwargs
+    assert "ord_ls:DA_DONG_GOI:6" in [
+        btn.callback_data for row in detail["reply_markup"].inline_keyboard for btn in row
+    ]
 
 
 @pytest.mark.asyncio

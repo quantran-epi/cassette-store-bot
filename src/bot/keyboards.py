@@ -588,8 +588,20 @@ def build_date_picker_keyboard(
     return InlineKeyboardMarkup(keyboard)
 
 
-def format_order_item_summary(order: Order) -> str:
-    """Format single order summary block for multi-order lists with high contrast and uppercase labels."""
+def format_order_item_summary(order: Order, *, detailed: bool = False) -> str:
+    """Format single order summary block with optional shipping/payment information."""
+    if detailed:
+        # ponytail: bound list previews for Telegram; full fields stay in order detail.
+        previews = {}
+        for field, limit in (
+            ("customer_name", 80), ("customer_phone", 32),
+            ("shipping_address", 200), ("items_text", 200),
+            ("payment_method", 32), ("tracking_code", 64), ("notes", 120),
+        ):
+            value = getattr(order, field)
+            if value and len(value) > limit:
+                previews[field] = value[:limit - 1] + "…"
+        order = order.model_copy(update=previews)
     status_label = STATUS_NAMES.get(
         order.status,
         order.status.value if hasattr(order.status, "value") else str(order.status),
@@ -612,6 +624,22 @@ def format_order_item_summary(order: Order) -> str:
         vn_created_at.strftime("%d/%m/%Y %H:%M") if vn_created_at else str(order.created_at or "")
     )
     time_line = f"\n   🕒 <b>TẠO:</b> {created_str}" if created_str else ""
+    extra_lines = ""
+    if detailed:
+        cod_fmt = f"{order.cod_amount:,} đ".replace(",", ".")
+        tracking = (
+            f"<code>{html.escape(order.tracking_code)}</code>"
+            if order.tracking_code else "<i>(Chưa có)</i>"
+        )
+        extra_lines = (
+            f"\n   💵 <b>COD THU:</b> <b>{cod_fmt}</b>"
+            f"\n   💳 <b>THANH TOÁN:</b> {html.escape(order.payment_method)}"
+            f"\n   🚚 <b>MÃ VẬN ĐƠN:</b> {tracking}"
+        )
+        if order.tape_quantity is not None:
+            extra_lines += f"\n   📼 <b>SỐ BĂNG:</b> {order.tape_quantity}"
+        if order.notes:
+            extra_lines += f"\n   📝 <b>GHI CHÚ:</b> {html.escape(order.notes)}"
     return (
         f"📦 <b>#{order.id} — {cust_name}{_returning_marker(order)}</b>\n"
         f"{classification_line}"
@@ -620,6 +648,7 @@ def format_order_item_summary(order: Order) -> str:
         f"{items_line}"
         f"{time_line}\n"
         f"   💰 <b>TIỀN:</b> <b>{total_fmt}</b> (<i>{status_label}</i>)"
+        f"{extra_lines}"
     )
 
 
@@ -703,7 +732,12 @@ def render_status_order_list_card(
     blocks: list[str] = []
     for date_label, day_orders in groups.items():
         day_lines = [f"📅 <b>{date_label}</b> · {len(day_orders)} đơn"]
-        day_lines.extend(format_order_compact_line(o) for o in day_orders)
+        if status == OrderStatus.DA_DONG_GOI:
+            day_lines.append("\n" + f"\n\n{ITEM_DIVIDER}\n\n".join(
+                format_order_item_summary(o, detailed=True) for o in day_orders
+            ))
+        else:
+            day_lines.extend(format_order_compact_line(o) for o in day_orders)
         blocks.append("\n".join(day_lines))
 
     return "\n".join(
