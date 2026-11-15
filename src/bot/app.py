@@ -7,7 +7,7 @@ from datetime import time as dt_time
 
 import aiosqlite
 from openai import AsyncOpenAI
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -51,6 +51,7 @@ from src.db.settings import get_maintenance_mode, get_setting
 VN_TZ = zoneinfo.ZoneInfo("Asia/Ho_Chi_Minh")
 JOB_BACKUP_NAME = "daily_database_backup"
 JOB_REMINDER_NAME = "check_due_reminders"
+JOB_PACKED_ORDERS_NAME = "check_packed_orders"
 JOB_INACTIVITY_NAME = "check_super_admin_inactivity"
 HEARTBEAT_PATH = "/tmp/bot_heartbeat"
 JOB_HEARTBEAT_NAME = "bot_liveness_heartbeat"
@@ -243,6 +244,58 @@ def schedule_reminder_checker(app: Application) -> None:
     )
 
 
+async def packed_orders_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remind the current Super Admin when packed orders still need shipping labels."""
+    settings = context.bot_data.get("settings")
+    if not settings or not settings.telegram_super_admin_id:
+        return
+
+    from src.bot.handlers.admin import _get_active_db_context
+    from src.db.orders import count_orders_by_status
+    from src.models.order import OrderStatus
+
+    try:
+        async with _get_active_db_context(context) as db:
+            count = await count_orders_by_status(db, OrderStatus.DA_DONG_GOI)
+        if not count:
+            return
+        await context.bot.send_message(
+            chat_id=settings.telegram_super_admin_id,
+            text=(
+                "⏰ <b>NHẮC TẠO ĐƠN VẬN CHUYỂN</b>\n"
+                f"Còn <b>{count} đơn đã đóng gói</b> đang chờ tạo đơn vận chuyển.\n"
+                "Bác tạo đơn vận chuyển cho các đơn này nhé!"
+            ),
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "📦 Xem đơn đã đóng gói", callback_data="ord_ls:DA_DONG_GOI:1"
+                        )
+                    ]
+                ]
+            ),
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Packed orders reminder failed")
+
+
+def schedule_packed_orders_checker(app: Application) -> None:
+    """Check packed orders every hour, starting one hour after startup."""
+    jq = getattr(app, "job_queue", None)
+    if not jq:
+        return
+    for job in jq.get_jobs_by_name(JOB_PACKED_ORDERS_NAME):
+        job.schedule_removal()
+    jq.run_repeating(
+        packed_orders_job_callback,
+        interval=3600,
+        first=3600,
+        name=JOB_PACKED_ORDERS_NAME,
+    )
+
+
 async def inactivity_checker_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Periodic job: check if Super Admin has been inactive for > 30 days and transfer."""
     settings = context.bot_data.get("settings")
@@ -352,6 +405,7 @@ async def _do_sync(app: Application, db: aiosqlite.Connection, settings: Setting
     backup_time = await get_setting(db, "backup_schedule_time", default="02:00")
     schedule_daily_backup(app, backup_time or "02:00")
     schedule_reminder_checker(app)
+    schedule_packed_orders_checker(app)
     schedule_inactivity_checker(app)
     schedule_heartbeat_job(app)
 
