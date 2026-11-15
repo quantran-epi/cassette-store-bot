@@ -3,6 +3,7 @@ import logging
 import time
 import zoneinfo
 from dataclasses import dataclass
+from datetime import datetime
 from datetime import time as dt_time
 
 import aiosqlite
@@ -245,9 +246,13 @@ def schedule_reminder_checker(app: Application) -> None:
 
 
 async def packed_orders_job_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Remind the current Super Admin when packed orders still need shipping labels."""
+    """Remind the current Super Admin outside Vietnamese sleeping hours."""
     settings = context.bot_data.get("settings")
     if not settings or not settings.telegram_super_admin_id:
+        return
+
+    now = datetime.now(VN_TZ).time()
+    if now >= dt_time(22) or now < dt_time(7) or dt_time(12, 45) <= now < dt_time(13, 30):
         return
 
     from src.bot.handlers.admin import _get_active_db_context

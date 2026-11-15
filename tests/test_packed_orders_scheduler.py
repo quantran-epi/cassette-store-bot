@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -6,12 +7,57 @@ from telegram.error import TelegramError
 
 from src.bot.app import (
     JOB_PACKED_ORDERS_NAME,
+    VN_TZ,
     packed_orders_job_callback,
     schedule_packed_orders_checker,
 )
 from src.db.connection import get_db_connection
 from src.db.schema import init_db
 from src.models.order import OrderStatus
+
+
+@pytest.fixture(autouse=True)
+def reminder_clock():
+    with patch("src.bot.app.datetime") as clock:
+        clock.now.return_value = datetime(2026, 11, 15, 10, tzinfo=VN_TZ)
+        yield clock
+
+
+@pytest.mark.parametrize(
+    ("local_time", "quiet"),
+    [
+        ((0, 0, 0), True),
+        ((6, 59, 59), True),
+        ((7, 0, 0), False),
+        ((12, 44, 59), False),
+        ((12, 45, 0), True),
+        ((13, 0, 0), True),
+        ((13, 29, 59), True),
+        ((13, 30, 0), False),
+        ((21, 59, 59), False),
+        ((22, 0, 0), True),
+        ((23, 59, 59), True),
+    ],
+)
+async def test_reminder_respects_vietnamese_quiet_hours(reminder_clock, local_time, quiet):
+    instant = datetime(2026, 11, 15, *local_time, tzinfo=VN_TZ).astimezone(timezone.utc)
+    reminder_clock.now.side_effect = lambda tz: instant.astimezone(tz)
+    context = SimpleNamespace(
+        bot_data={"settings": SimpleNamespace(telegram_super_admin_id=999)},
+        bot=SimpleNamespace(send_message=AsyncMock()),
+    )
+    with (
+        patch("src.bot.handlers.admin._get_active_db_context") as db_context,
+        patch("src.db.orders.count_orders_by_status", new_callable=AsyncMock, return_value=1),
+    ):
+        await packed_orders_job_callback(context)
+    reminder_clock.now.assert_called_once_with(VN_TZ)
+    if quiet:
+        db_context.assert_not_called()
+        context.bot.send_message.assert_not_awaited()
+    else:
+        db_context.assert_called_once_with(context)
+        context.bot.send_message.assert_awaited_once()
 
 
 def test_schedule_registers_hourly_job_and_replaces_previous():
