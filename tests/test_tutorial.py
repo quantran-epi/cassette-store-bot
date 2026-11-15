@@ -43,6 +43,14 @@ def test_render_first_page_keeps_legacy_strings():
     assert isinstance(kb, InlineKeyboardMarkup)
 
 
+def test_today_guide_uses_date_picker():
+    text, keyboard = render_tutorial_page(2)
+    assert "📋 Xem theo ngày" in text
+    assert "Hôm nay" in text
+    assert "help:try:date_picker" in _flat_callbacks(keyboard)
+    assert "⏳ Đơn chờ làm" in render_tutorial_page(0)[0]
+
+
 def test_navigation_bounds_and_indicator():
     """First page has no back, last has no next, indicator shows page count."""
     first_cbs = _flat_callbacks(build_tutorial_keyboard(0))

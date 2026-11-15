@@ -84,9 +84,8 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     text = update.message.text.strip()
     now_vn = datetime.now(TZ_VN)
-    today_vn = now_vn.strftime("%Y-%m-%d")
 
-    if text == "📦 Đơn hôm nay":
+    if text == "⏳ Đơn chờ làm":
         db_ctx = _get_active_db_context(context)
         async with db_ctx as active_db:
             if not active_db:
@@ -94,22 +93,8 @@ async def handle_menu_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 await update.message.reply_text("⚠️ Lỗi cơ sở dữ liệu. Bác vui lòng thử lại sau!")
                 return
 
-            orders = await list_orders_by_date(active_db, today_vn, limit=5, offset=0)
-            total = await count_orders_by_date(active_db, today_vn)
-            total_pages = max(1, ceil(total / 5))
-
-            card_text = render_order_list_card(
-                orders=orders,
-                date_str=today_vn,
-                page=1,
-                total_pages=total_pages,
-                total_orders=total,
-            )
-            keyboard = build_order_list_keyboard(
-                orders=orders,
-                date_str=today_vn,
-                page=1,
-                total_pages=total_pages,
+            card_text, keyboard = await _render_status_list_page(
+                active_db, OrderStatus.CHO_LAM, 1
             )
             await update.message.reply_text(
                 text=card_text,

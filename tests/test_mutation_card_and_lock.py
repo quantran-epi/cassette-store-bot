@@ -41,7 +41,7 @@ def test_render_order_list_card_spacing():
     card = render_order_list_card(orders, "2026-10-25", 1, 1, 2)
     assert "<b>#1 Khách A</b>" in card
     assert "<b>#2 Khách B</b>" in card
-    assert "\n\n------------------\n\n<b>#2 Khách B</b>" in card
+    assert "\n------------------\n📦 <b>#2 Khách B</b>" in card
 
 
 def test_render_mutation_disambiguation_card():
@@ -76,7 +76,7 @@ def test_render_mutation_disambiguation_card():
     assert "0988776655" in card
     assert "Cầu Giấy, Hà Nội" in card
     assert card.count("Thu: 0đ") == 2  # No COD amount recorded in these fixtures.
-    assert "\n------------------\n<b>#15 Bác Tuấn</b>" in card
+    assert "\n------------------\n📦 <b>#15 Bác Tuấn</b>" in card
 
 
 def test_render_order_detail_card_with_creator():

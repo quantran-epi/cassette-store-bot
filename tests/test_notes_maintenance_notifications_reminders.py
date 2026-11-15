@@ -691,7 +691,7 @@ def test_cards_render_high_contrast_uppercase_labels():
 
     # 2. Summary item
     summary = format_order_item_summary(order)
-    assert summary == "<b>#99 Bác Tư</b>\nHà Nội\n<code>0912345678</code>\nThu: 150.000đ"
+    assert summary == "📦 <b>#99 Bác Tư</b>\n📍 Hà Nội\n📞 <code>0912345678</code>\n💵 Thu: 150.000đ"
 
     # 3. Preview card
     draft = {
@@ -728,7 +728,7 @@ def test_format_order_item_summary_bold_line_and_html_escape():
     )
     summary = format_order_item_summary(order)
     first_line = summary.splitlines()[0]
-    assert first_line == "<b>#77 &lt;Bác&gt; An &amp; Em</b>"
+    assert first_line == "📦 <b>#77 &lt;Bác&gt; An &amp; Em</b>"
 
 
 

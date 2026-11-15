@@ -76,7 +76,7 @@ def build_main_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build persistent Reply Keyboard for elderly-friendly navigation."""
     keyboard = [
         [
-            KeyboardButton("📦 Đơn hôm nay"),
+            KeyboardButton("⏳ Đơn chờ làm"),
             KeyboardButton("📦 Đơn đã đóng gói"),
         ],
         [
@@ -600,17 +600,17 @@ def format_order_item_summary(order: Order) -> str:
     total = f"{order.total_amount:,}đ".replace(",", ".")
     cod = f"{order.cod_amount:,}đ".replace(",", ".")
     if order.cod_amount == 0 and order.payment_method.strip().upper() in {"CHUYEN_KHOAN", "BANK_TRANSFER"}:
-        payment = f"Đã chuyển khoản: {total}"
+        payment = f"💳 Đã chuyển khoản: {total}"
     elif 0 < order.cod_amount < order.total_amount:
         deposit = f"{order.total_amount - order.cod_amount:,}đ".replace(",", ".")
-        payment = f"Tổng: {total} · Cọc: {deposit}\nCòn thu: {cod}"
+        payment = f"💰 Tổng: {total} · Cọc: {deposit}\n💵 Còn thu: {cod}"
     else:
-        payment = f"Thu: {cod}"
+        payment = f"💵 Thu: {cod}"
 
     return (
-        f"<b>#{order.id} {fields['customer_name']}</b>\n"
-        f"{fields['shipping_address'] or 'Chưa có địa chỉ'}\n"
-        f"<code>{fields['customer_phone'] or 'Chưa có SĐT'}</code>\n"
+        f"📦 <b>#{order.id} {fields['customer_name']}</b>\n"
+        f"📍 {fields['shipping_address'] or 'Chưa có địa chỉ'}\n"
+        f"📞 <code>{fields['customer_phone'] or 'Chưa có SĐT'}</code>\n"
         f"{payment}"
     )
 
@@ -637,7 +637,7 @@ def render_order_list_card(
         "",
     ]
     lines.append(
-        f"\n\n{ITEM_DIVIDER}\n\n".join(format_order_item_summary(order) for order in orders)
+        f"\n{ITEM_DIVIDER}\n".join(format_order_item_summary(order) for order in orders)
         if orders else "Chưa có đơn."
     )
     return "\n".join(lines)
@@ -660,7 +660,7 @@ def render_status_order_list_card(
 ) -> str:
     """Render the same minimal items as date lists, with status only in the header."""
     status_label = STATUS_NAMES.get(status, status.value).split(" ", 1)[-1].upper()
-    blocks = f"\n\n{ITEM_DIVIDER}\n\n".join(format_order_item_summary(order) for order in orders)
+    blocks = f"\n{ITEM_DIVIDER}\n".join(format_order_item_summary(order) for order in orders)
     return (
         f"<b>ĐƠN {status_label}</b>\n"
         f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})\n"
@@ -926,7 +926,7 @@ def render_search_multi_card(
 ) -> str:
     """Render search results using the same minimal order list layout."""
     heading = html.escape(purpose) if purpose else "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG"
-    blocks = f"\n\n{ITEM_DIVIDER}\n\n".join(format_order_item_summary(order) for order in orders)
+    blocks = f"\n{ITEM_DIVIDER}\n".join(format_order_item_summary(order) for order in orders)
     return (
         f"<b>{heading}</b>\n"
         f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})\n"

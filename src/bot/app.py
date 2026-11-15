@@ -497,7 +497,7 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     app.add_handler(
         MessageHandler(
             filters.Regex(
-                r"^(📦 Đơn hôm nay|📦 Đơn đã đóng gói|📋 Xem theo ngày|✏️ Sửa đơn|🔍 Tra cứu đơn|🔄 Đổi trạng thái|❓ Trợ giúp)$"
+                r"^(⏳ Đơn chờ làm|📦 Đơn đã đóng gói|📋 Xem theo ngày|✏️ Sửa đơn|🔍 Tra cứu đơn|🔄 Đổi trạng thái|❓ Trợ giúp)$"
             ),
             handle_menu_reply,
         ),

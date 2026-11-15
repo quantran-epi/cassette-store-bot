@@ -60,7 +60,7 @@ def test_build_main_menu_reply_keyboard_structure():
 
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows == [
-        ["📦 Đơn hôm nay", "📦 Đơn đã đóng gói"],
+        ["⏳ Đơn chờ làm", "📦 Đơn đã đóng gói"],
         ["📋 Xem theo ngày", "✏️ Sửa đơn"],
         ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"],
     ]
@@ -251,23 +251,23 @@ def test_render_order_list_card_empty_and_populated():
     assert card == (
         "<b>ĐƠN HÀNG NGÀY 24/10/2026</b>\n"
         "Tổng cộng: <b>6 đơn</b> (Trang 1/2)\n==================\n\n"
-        "<b>#1 Khách 1</b>\nHCM\n<code>0901</code>\nThu: 150.000đ\n\n"
-        "------------------\n\n"
-        "<b>#2 Khách 2</b>\nHN\n<code>0902</code>\nThu: 250.000đ"
+        "📦 <b>#1 Khách 1</b>\n📍 HCM\n📞 <code>0901</code>\n💵 Thu: 150.000đ\n"
+        "------------------\n"
+        "📦 <b>#2 Khách 2</b>\n📍 HN\n📞 <code>0902</code>\n💵 Thu: 250.000đ"
     )
 
 
 @pytest.mark.parametrize(
     ("total", "cod", "method", "expected"),
     [
-        (350000, 350000, "COD", "Thu: 350.000đ"),
-        (200000, 0, "CHUYEN_KHOAN", "Đã chuyển khoản: 200.000đ"),
-        (200000, 0, "BANK_TRANSFER", "Đã chuyển khoản: 200.000đ"),
-        (500000, 400000, "COD", "Tổng: 500.000đ · Cọc: 100.000đ\nCòn thu: 400.000đ"),
-        (500000, 400000, "CHUYEN_KHOAN", "Tổng: 500.000đ · Cọc: 100.000đ\nCòn thu: 400.000đ"),
-        (100000, 120000, "COD", "Thu: 120.000đ"),
-        (100000, 0, "COD", "Thu: 0đ"),
-        (0, 0, "COD", "Thu: 0đ"),
+        (350000, 350000, "COD", "💵 Thu: 350.000đ"),
+        (200000, 0, "CHUYEN_KHOAN", "💳 Đã chuyển khoản: 200.000đ"),
+        (200000, 0, "BANK_TRANSFER", "💳 Đã chuyển khoản: 200.000đ"),
+        (500000, 400000, "COD", "💰 Tổng: 500.000đ · Cọc: 100.000đ\n💵 Còn thu: 400.000đ"),
+        (500000, 400000, "CHUYEN_KHOAN", "💰 Tổng: 500.000đ · Cọc: 100.000đ\n💵 Còn thu: 400.000đ"),
+        (100000, 120000, "COD", "💵 Thu: 120.000đ"),
+        (100000, 0, "COD", "💵 Thu: 0đ"),
+        (0, 0, "COD", "💵 Thu: 0đ"),
     ],
 )
 def test_order_list_payment_uses_recorded_cod(total, cod, method, expected):
@@ -279,8 +279,8 @@ def test_order_list_payment_uses_recorded_cod(total, cod, method, expected):
         total_amount=total, cod_amount=cod, payment_method=method,
     )
     assert format_order_item_summary(order) == (
-        "<b>#111 Cô &lt;Lan&gt;</b>\n12 A &amp; B Hà Nội\n"
-        f"<code>0901234567</code>\n{expected}"
+        "📦 <b>#111 Cô &lt;Lan&gt;</b>\n📍 12 A &amp; B Hà Nội\n"
+        f"📞 <code>0901234567</code>\n{expected}"
     )
 
 
@@ -380,7 +380,7 @@ def test_render_status_order_list_card_minimal_and_empty():
     card = render_status_order_list_card(orders, OrderStatus.CHO_LAM, 1, 2, 12)
     assert card.startswith("<b>ĐƠN CHỜ LÀM</b>\nTổng cộng: <b>12 đơn</b> (Trang 1/2)\n==================\n\n")
     assert card.count("------------------") == 2
-    assert "#1 Khách A</b>\nHCM\n<code>0901</code>\nThu: 0đ" in card
+    assert "#1 Khách A</b>\n📍 HCM\n📞 <code>0901</code>\n💵 Thu: 0đ" in card
     assert "#3 Khách C" in card
     for removed in ("📅", "26/10/2026", "25/10/2026", "TẦN SUẤT", "CHI TIÊU", "Băng"):
         assert removed not in card
@@ -417,7 +417,7 @@ def test_packed_order_list_separates_orders_and_shows_shipping_payment_details()
         assert f"#{order.id} Khách &lt;{order.id}&gt;" in card
     assert card.count("<code>0901234567</code>") == 2
     assert card.count("123 Đường A, Phường B, Hà Nội") == 2
-    assert card.count("Tổng: 350.000đ · Cọc: 100.000đ\nCòn thu: 250.000đ") == 2
+    assert card.count("💰 Tổng: 350.000đ · Cọc: 100.000đ\n💵 Còn thu: 250.000đ") == 2
     for removed in ("Băng A", "THANH TOÁN", "SHIP", "SỐ BĂNG", "Gọi trước", "27/10/2026"):
         assert removed not in card
 
@@ -516,6 +516,8 @@ def test_app_registers_packed_orders_wiring():
 
     source = Path("src/bot/app.py").read_text(encoding="utf-8")
     assert "📦 Đơn đã đóng gói" in source
+    assert "⏳ Đơn chờ làm" in source
+    assert "📦 Đơn hôm nay" not in source
     assert "ord_(dt|pg|v|bk|ls|vls):" in source
 
 
@@ -572,30 +574,43 @@ async def test_start_command_sends_reply_keyboard():
     assert markup.is_persistent is True
     rows = [[btn.text for btn in row] for row in markup.keyboard]
     assert rows == [
-        ["📦 Đơn hôm nay", "📦 Đơn đã đóng gói"],
+        ["⏳ Đơn chờ làm", "📦 Đơn đã đóng gói"],
         ["📋 Xem theo ngày", "✏️ Sửa đơn"],
         ["🔍 Tra cứu đơn", "🔄 Đổi trạng thái"],
     ]
 
 
 @pytest.mark.asyncio
-async def test_handle_menu_reply_today_orders(test_db):
-    """Clicking '📦 Đơn hôm nay' returns order list for today in Vietnam timezone."""
+async def test_handle_menu_reply_pending_orders(test_db):
+    """Pending menu filters by status, including orders from previous days."""
     from src.db.orders import create_order
 
     order = Order(
-        customer_name="Khách Hôm Nay",
+        customer_name="Khách Chờ Làm",
         customer_phone="0911223344",
         shipping_address="Hà Nội",
         items_text="Băng Nhạc Trẻ",
         total_amount=180000,
         cod_amount=180000,
+        status=OrderStatus.CHO_LAM,
     )
     order_id = await create_order(test_db, order)
+    await test_db.execute(
+        "UPDATE orders SET created_at = '2020-01-01 00:00:00' WHERE id = ?",
+        (order_id,),
+    )
+    await test_db.commit()
+    await create_order(
+        test_db,
+        order.model_copy(update={
+            "customer_name": "Khách Đóng Gói",
+            "status": OrderStatus.DA_DONG_GOI,
+        }),
+    )
 
     user = User(id=123, first_name="Bác Năm", is_bot=False)
     message = MagicMock(spec=Message)
-    message.text = "📦 Đơn hôm nay"
+    message.text = "⏳ Đơn chờ làm"
     message.reply_text = AsyncMock()
 
     update = MagicMock(spec=Update)
@@ -612,10 +627,12 @@ async def test_handle_menu_reply_today_orders(test_db):
     card_text = kwargs.get("text", "")
     markup = kwargs.get("reply_markup")
 
-    assert "ĐƠN HÀNG NGÀY" in card_text
-    assert f"#{order_id} Khách Hôm Nay" in card_text
-    assert "Khách Hôm Nay" in card_text
+    assert "<b>ĐƠN CHỜ LÀM</b>" in card_text
+    assert f"#{order_id} Khách Chờ Làm" in card_text
+    assert "Khách Đóng Gói" not in card_text
     assert isinstance(markup, InlineKeyboardMarkup)
+    callbacks = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert any(cb.startswith("ord_vls:CHO_LAM:") for cb in callbacks)
 
 
 @pytest.mark.asyncio

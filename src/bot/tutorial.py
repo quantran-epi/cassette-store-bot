@@ -12,9 +12,9 @@ TUTORIAL_PAGES: list[dict] = [
         "title": "❓ <b>HƯỚNG DẪN SỬ DỤNG BOT</b>",
         "body": (
             "Bác chỉ cần chạm vào các nút to trên màn hình.\n"
-            "1. 📦 Đơn hôm nay - xem đơn trong ngày.\n"
+            "1. ⏳ Đơn chờ làm - xem đơn chưa làm.\n"
             "2. 📦 Đơn đã đóng gói - xem đơn đã đóng gói xong.\n"
-            "3. 📋 Xem theo ngày - xem đơn ngày trước.\n"
+            "3. 📋 Xem theo ngày - xem đơn hôm nay hoặc ngày trước.\n"
             "4. ✏️ Sửa đơn - sửa đơn bằng câu nói thường.\n"
             "5. 🔍 Tra cứu đơn - tìm đơn bằng câu nói thường.\n"
             "6. Gửi tin nhắn đặt hàng bất kỳ - bot tự nhận là đơn mới."
@@ -33,11 +33,11 @@ TUTORIAL_PAGES: list[dict] = [
     {
         "title": "📦 <b>XEM ĐƠN HÔM NAY</b>",
         "body": (
-            "1. Bấm nút 📦 Đơn hôm nay.\n"
-            "2. Bot hiện danh sách đơn trong ngày.\n"
+            "1. Bấm nút 📋 Xem theo ngày.\n"
+            "2. Chạm nút Hôm nay để xem đơn trong ngày.\n"
             "3. Chạm nút 👁️ Xem đơn #... để xem chi tiết."
         ),
-        "try_kind": "today_orders",
+        "try_kind": "date_picker",
     },
     {
         "title": "📋 <b>XEM ĐƠN NGÀY KHÁC</b>",

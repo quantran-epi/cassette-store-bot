@@ -615,7 +615,7 @@ def test_render_search_multi_card():
     assert "0902" in card
     assert "HCM" in card
     assert "Thu: 250.000đ" in card
-    assert "\n\n------------------\n\n<b>#2 Khách B</b>" in card
+    assert "\n------------------\n📦 <b>#2 Khách B</b>" in card
 
     kb = build_search_multi_keyboard(orders=orders, search_id="s123", page=1, total_pages=2)
     flat_btns = [btn for row in kb.inline_keyboard for btn in row]
