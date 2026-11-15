@@ -84,10 +84,11 @@ def test_returning_marker_rendered_in_order_detail():
     assert "👤 <b>KHÁCH:</b> Nguyễn Văn Tuấn 🔂" in card
 
 
-def test_returning_marker_rendered_in_item_summary():
+def test_item_summary_omits_returning_marker():
     order = _make_dummy_order(oid=5, any_count=2)
     summary = format_order_item_summary(order)
-    assert "📦 <b>#5 — Nguyễn Văn Tuấn 🔂</b>" in summary
+    assert "<b>#5 Nguyễn Văn Tuấn</b>" in summary
+    assert "🔂" not in summary
 
 
 def test_returning_marker_rendered_in_compact_line():

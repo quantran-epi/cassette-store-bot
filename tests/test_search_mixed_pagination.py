@@ -531,7 +531,7 @@ def test_render_without_purpose_keeps_legacy_heading():
     assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in render_search_multi_card(
         orders=_sample_orders(2), query="băng", page=1, total_pages=1, total_orders=2
     )
-    assert "Tìm theo" in render_search_multi_card(
+    assert "Tìm theo" not in render_search_multi_card(
         orders=_sample_orders(2), query="băng", page=1, total_pages=1, total_orders=2
     )
     assert "Mẹo tìm kiếm" in render_search_empty_card("q")
@@ -643,7 +643,7 @@ async def test_legacy_snapshot_pagination_unchanged():
     assert "Trang 2/2" in text
     assert "#6" in text
     assert "#7" in text
-    assert "Tìm theo" in text
+    assert "Tìm theo" not in text
 
 
 @pytest.mark.asyncio

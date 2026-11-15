@@ -215,7 +215,10 @@ def test_render_order_list_card_empty_and_populated():
     """List card handles empty state (D-04) and populated list (D-03)."""
     # Empty state
     empty_card = render_order_list_card([], "2026-10-24", page=1, total_pages=1, total_orders=0)
-    assert "Ngày này chưa có đơn hàng nào bác nhé!" in empty_card
+    assert empty_card == (
+        "<b>ĐƠN HÀNG NGÀY 24/10/2026</b>\n"
+        "Tổng cộng: <b>0 đơn</b> (Trang 1/1)\n==================\n\nChưa có đơn."
+    )
 
     # Populated state
     orders = [
@@ -226,6 +229,7 @@ def test_render_order_list_card_empty_and_populated():
             shipping_address="HCM",
             items_text="Băng 1",
             total_amount=150000,
+            cod_amount=150000,
             status=OrderStatus.CHO_LAM,
             customer_completed_orders=2,
             customer_completed_spend=1500000,
@@ -237,23 +241,47 @@ def test_render_order_list_card_empty_and_populated():
             shipping_address="HN",
             items_text="Băng 2",
             total_amount=250000,
+            cod_amount=250000,
             status=OrderStatus.DA_GIAO,
         ),
     ]
     card = render_order_list_card(orders, "2026-10-24", page=1, total_pages=2, total_orders=6)
     assert "24/10/2026" in card
     assert "Tổng cộng: <b>6 đơn</b> (Trang 1/2)" in card
-    assert "#1 — Khách 1" in card
-    assert "Khách 1" in card
-    assert "150.000 đ" in card
-    assert "⏳ Chờ làm" in card
-    assert "#2 — Khách 2" in card
-    assert "Khách 2" in card
-    assert "250.000 đ" in card
-    assert "✅ Đã giao thành công" in card
-    assert "TẦN SUẤT:</b> <b>KHÁCH QUEN</b>" in card
-    assert "🥉 <b>CHI TIÊU:</b> <b>1.500.000 đ</b>" in card
-    assert card.count("TẦN SUẤT:") == 1  # Order without hydrated stats is not mislabeled as zero.
+    assert card == (
+        "<b>ĐƠN HÀNG NGÀY 24/10/2026</b>\n"
+        "Tổng cộng: <b>6 đơn</b> (Trang 1/2)\n==================\n\n"
+        "<b>#1 Khách 1</b>\nHCM\n<code>0901</code>\nThu: 150.000đ\n\n"
+        "------------------\n\n"
+        "<b>#2 Khách 2</b>\nHN\n<code>0902</code>\nThu: 250.000đ"
+    )
+
+
+@pytest.mark.parametrize(
+    ("total", "cod", "method", "expected"),
+    [
+        (350000, 350000, "COD", "Thu: 350.000đ"),
+        (200000, 0, "CHUYEN_KHOAN", "Đã chuyển khoản: 200.000đ"),
+        (200000, 0, "BANK_TRANSFER", "Đã chuyển khoản: 200.000đ"),
+        (500000, 400000, "COD", "Tổng: 500.000đ · Cọc: 100.000đ\nCòn thu: 400.000đ"),
+        (500000, 400000, "CHUYEN_KHOAN", "Tổng: 500.000đ · Cọc: 100.000đ\nCòn thu: 400.000đ"),
+        (100000, 120000, "COD", "Thu: 120.000đ"),
+        (100000, 0, "COD", "Thu: 0đ"),
+        (0, 0, "COD", "Thu: 0đ"),
+    ],
+)
+def test_order_list_payment_uses_recorded_cod(total, cod, method, expected):
+    from src.bot.keyboards import format_order_item_summary
+
+    order = Order(
+        id=111, customer_name="Cô <Lan>", shipping_address="12 A & B\nHà Nội",
+        customer_phone="0901234567", items_text="Không hiển thị",
+        total_amount=total, cod_amount=cod, payment_method=method,
+    )
+    assert format_order_item_summary(order) == (
+        "<b>#111 Cô &lt;Lan&gt;</b>\n12 A &amp; B Hà Nội\n"
+        f"<code>0901234567</code>\n{expected}"
+    )
 
 
 def test_build_order_list_keyboard_empty_and_pagination():
@@ -313,8 +341,8 @@ def test_format_order_compact_line():
     assert "1.250.000 đ" in line
 
 
-def test_render_status_order_list_card_grouping_and_empty():
-    """Status list card groups by VN date, paginates, and handles the empty state."""
+def test_render_status_order_list_card_minimal_and_empty():
+    """Status appears only in header; items use the date-list layout without date groups."""
     orders = [
         Order(
             id=1,
@@ -350,19 +378,15 @@ def test_render_status_order_list_card_grouping_and_empty():
         ),
     ]
     card = render_status_order_list_card(orders, OrderStatus.CHO_LAM, 1, 2, 12)
-    assert "⏳ Chờ làm — <b>DANH SÁCH ĐƠN</b>" in card
-    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/2)" in card
-    assert card.count("📅") == 2
-    assert "📅 <b>26/10/2026</b> · 2 đơn" in card
-    assert "📅 <b>25/10/2026</b> · 1 đơn" in card
-    assert "#1" in card and "Khách A" in card and "100.000 đ" in card
-    assert "#3" in card and "Khách C" in card and "300.000 đ" in card
-    assert "TẦN SUẤT:</b> <b>KHÁCH MUA 1 LẦN</b>" in card
-    assert "🥉 <b>CHI TIÊU:</b> <b>1.000.000 đ</b>" in card
-    assert card.count("TẦN SUẤT:") == 1
+    assert card.startswith("<b>ĐƠN CHỜ LÀM</b>\nTổng cộng: <b>12 đơn</b> (Trang 1/2)\n==================\n\n")
+    assert card.count("------------------") == 2
+    assert "#1 Khách A</b>\nHCM\n<code>0901</code>\nThu: 0đ" in card
+    assert "#3 Khách C" in card
+    for removed in ("📅", "26/10/2026", "25/10/2026", "TẦN SUẤT", "CHI TIÊU", "Băng"):
+        assert removed not in card
 
     empty = render_status_order_list_card([], OrderStatus.DANG_LAM, 1, 1, 0)
-    assert "Chưa có đơn nào ở trạng thái này bác nhé!" in empty
+    assert empty.endswith("==================\n\nChưa có đơn.")
 
 
 def test_packed_order_list_separates_orders_and_shows_shipping_payment_details():
@@ -388,19 +412,14 @@ def test_packed_order_list_separates_orders_and_shows_shipping_payment_details()
     ]
     card = render_status_order_list_card(orders, OrderStatus.DA_DONG_GOI, 1, 1, 2)
     assert card.count(ITEM_DIVIDER) == 1
-    assert "📅 <b>27/10/2026</b> · 2 đơn" in card
+    assert card.startswith("<b>ĐƠN ĐÃ ĐÓNG GÓI</b>\n")
     for order in orders:
-        assert f"#{order.id} — Khách &lt;{order.id}&gt;" in card
+        assert f"#{order.id} Khách &lt;{order.id}&gt;" in card
     assert card.count("<code>0901234567</code>") == 2
     assert card.count("123 Đường A, Phường B, Hà Nội") == 2
-    assert card.count("Băng A\nBăng B &amp; C") == 2
-    assert card.count("350.000 đ") == 2
-    assert card.count("<b>COD THU:</b> <b>250.000 đ</b>") == 2
-    assert card.count("<b>THANH TOÁN:</b> COD") == 2
-    assert card.count("<code>SHIP&lt;123&gt;</code>") == 2
-    assert card.count("<b>SỐ BĂNG:</b> 3") == 2
-    assert card.count("Gọi trước &amp; giao buổi sáng") == 2
-    assert card.count("27/10/2026 01:30") == 2
+    assert card.count("Tổng: 350.000đ · Cọc: 100.000đ\nCòn thu: 250.000đ") == 2
+    for removed in ("Băng A", "THANH TOÁN", "SHIP", "SỐ BĂNG", "Gọi trước", "27/10/2026"):
+        assert removed not in card
 
 
 @pytest.mark.parametrize("text", ["<&😀", "😀"])
@@ -423,12 +442,12 @@ def test_packed_order_list_bounds_previews_without_changing_order(text):
         created_at=datetime(2026, 10, 26),
     )
     original = order.model_dump()
-    card = render_status_order_list_card([order, order], OrderStatus.DA_DONG_GOI, 1, 1, 2)
+    card = render_status_order_list_card([order] * 5, OrderStatus.DA_DONG_GOI, 1, 1, 5)
     visible_text = html.unescape(re.sub(r"<[^>]+>", "", card))
     assert len(visible_text.encode("utf-16-le")) // 2 <= 4096
     assert "…" in card
     assert order.model_dump() == original
-    assert "KHÁCH THÂN THIẾT" in card
+    assert "KHÁCH THÂN THIẾT" not in card
 
 
 def test_build_status_order_list_keyboard_callbacks_and_chips():
@@ -594,7 +613,7 @@ async def test_handle_menu_reply_today_orders(test_db):
     markup = kwargs.get("reply_markup")
 
     assert "ĐƠN HÀNG NGÀY" in card_text
-    assert f"#{order_id} — Khách Hôm Nay" in card_text
+    assert f"#{order_id} Khách Hôm Nay" in card_text
     assert "Khách Hôm Nay" in card_text
     assert isinstance(markup, InlineKeyboardMarkup)
 
@@ -643,11 +662,11 @@ async def test_handle_menu_reply_packed_orders(test_db):
     card_text = kwargs.get("text", "")
     markup = kwargs.get("reply_markup")
 
-    assert "📦 Đã đóng gói — <b>DANH SÁCH ĐƠN</b>" in card_text
-    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/6)" in card_text
-    assert card_text.count("<b>SĐT:</b>") == 2
-    assert card_text.count("<b>COD THU:</b>") == 2
-    assert "────────" in card_text
+    assert "<b>ĐƠN ĐÃ ĐÓNG GÓI</b>" in card_text
+    assert "Tổng cộng: <b>12 đơn</b> (Trang 1/3)" in card_text
+    assert card_text.count("<code>") == 5
+    assert card_text.count("Thu: 0đ") == 5
+    assert card_text.count("------------------") == 4
     assert "Khách Đang Làm" not in card_text
     flat_cbs = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "ord_ls:DA_DONG_GOI:2" in flat_cbs
@@ -660,7 +679,7 @@ async def test_handle_menu_reply_packed_orders(test_db):
     update.callback_query = query
     await handle_order_nav_callback(update, context)
     last_page = query.edit_message_text.call_args.kwargs
-    assert "Trang 6/6" in last_page["text"]
+    assert "Trang 3/3" in last_page["text"]
     detail_callbacks = [
         btn.callback_data for row in last_page["reply_markup"].inline_keyboard for btn in row
         if btn.callback_data.startswith("ord_vls:")
@@ -669,7 +688,7 @@ async def test_handle_menu_reply_packed_orders(test_db):
     query.data = detail_callbacks[0]
     await handle_order_nav_callback(update, context)
     detail = query.edit_message_text.call_args.kwargs
-    assert "ord_ls:DA_DONG_GOI:6" in [
+    assert "ord_ls:DA_DONG_GOI:3" in [
         btn.callback_data for row in detail["reply_markup"].inline_keyboard for btn in row
     ]
 
@@ -703,7 +722,7 @@ async def test_handle_order_nav_callback_status_list(test_db):
     await handle_order_nav_callback(update, context)
     ls_text = query.edit_message_text.call_args[1]["text"]
     ls_kb = query.edit_message_text.call_args[1]["reply_markup"]
-    assert "🛠️ Đang làm — <b>DANH SÁCH ĐƠN</b>" in ls_text
+    assert "<b>ĐƠN ĐANG LÀM</b>" in ls_text
     assert "Khách Đang Làm" in ls_text
     ls_cbs = [btn.callback_data for row in ls_kb.inline_keyboard for btn in row]
     assert f"ord_vls:DANG_LAM:{oid}:1" in ls_cbs

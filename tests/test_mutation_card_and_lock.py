@@ -39,11 +39,9 @@ def test_render_order_list_card_spacing():
         ),
     ]
     card = render_order_list_card(orders, "2026-10-25", 1, 1, 2)
-    # Consecutive orders should be separated by \n\n (empty line)
-    assert "📦 <b>#1 — Khách A</b>" in card
-    assert "📦 <b>#2 — Khách B</b>" in card
-    # Separator check between end of order 1 block and order 2 header
-    assert "\n────────\n📦 <b>#2 — Khách B</b>" in card
+    assert "<b>#1 Khách A</b>" in card
+    assert "<b>#2 Khách B</b>" in card
+    assert "\n\n------------------\n\n<b>#2 Khách B</b>" in card
 
 
 def test_render_mutation_disambiguation_card():
@@ -71,15 +69,14 @@ def test_render_mutation_disambiguation_card():
     card = render_mutation_disambiguation_card(orders, keyword="Bác Tuấn")
     assert "CHỌN ĐƠN HÀNG CẦN SỬA" in card
     assert "Bác Tuấn" in card
-    assert "#12 — Bác Tuấn" in card
+    assert "#12 Bác Tuấn" in card
     assert "0912345678" in card
     assert "123 Lê Duẩn, Hà Nội" in card
-    assert "350.000 đ" in card
-    assert "#15 — Bác Tuấn" in card
+    assert "#15 Bác Tuấn" in card
     assert "0988776655" in card
     assert "Cầu Giấy, Hà Nội" in card
-    assert "500.000 đ" in card
-    assert "\n────────\n📦 <b>#15 — Bác Tuấn</b>" in card
+    assert card.count("Thu: 0đ") == 2  # No COD amount recorded in these fixtures.
+    assert "\n------------------\n<b>#15 Bác Tuấn</b>" in card
 
 
 def test_render_order_detail_card_with_creator():

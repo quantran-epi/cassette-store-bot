@@ -128,8 +128,12 @@ async def test_classification_through_dispatcher(tmp_path):
 
             for callback in ("ord_ls:CHO_LAM:1", "ord_vls:CHO_LAM:6:1", f"cus_v:{regular}:offline", "sch_bk:offline"):
                 body = await dispatch(data=callback)
-                assert "⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b>" in body
-                assert "🥇 <b>CHI TIÊU:</b> <b>10.000.000 đ</b>" in body
+                if callback in ("ord_ls:CHO_LAM:1", "sch_bk:offline"):
+                    assert "TẦN SUẤT" not in body
+                    assert "CHI TIÊU" not in body
+                else:
+                    assert "⭐ <b>TẦN SUẤT:</b> <b>KHÁCH THÂN THIẾT</b>" in body
+                    assert "🥇 <b>CHI TIÊU:</b> <b>10.000.000 đ</b>" in body
             body = await dispatch(data=f"cus_pg:{regular}:2")
             assert "Trang 2/2" in body
             for body in (await dispatch(data=f"cus_v:{bom}:offline"), await dispatch(text="preview")):
@@ -139,7 +143,9 @@ async def test_classification_through_dispatcher(tmp_path):
             with patch("src.bot.handlers.mutation.search_target_orders_for_mutation", AsyncMock(return_value=orders[:2])):
                 body = await dispatch(text="sửa đơn khách quen")
                 assert "CHỌN ĐƠN HÀNG CẦN SỬA" in body
-                assert body.count("KHÁCH THÂN THIẾT") == 2
+                assert "KHÁCH THÂN THIẾT" not in body
+                assert "#1 Khách Quen" in body
+                assert "#2 Khách Quen" in body
         assert any(endpoint == "editMessageText" for endpoint, _ in request.calls)
         assert any(endpoint == "sendMessage" for endpoint, _ in request.calls)
         print(json.dumps({"transport": "offline BaseRequest", "dispatcher": "Application.process_update", "outgoing": [{"method": endpoint, "text": params["text"]} for endpoint, params in request.calls if endpoint in ("sendMessage", "editMessageText")]}, ensure_ascii=True))

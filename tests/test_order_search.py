@@ -579,6 +579,7 @@ def test_render_search_multi_card():
             shipping_address="HN",
             items_text="Băng A",
             total_amount=150000,
+            cod_amount=150000,
             status=OrderStatus.CHO_LAM,
         ),
         Order(
@@ -588,6 +589,7 @@ def test_render_search_multi_card():
             shipping_address="HCM",
             items_text="Băng B",
             total_amount=250000,
+            cod_amount=250000,
             status=OrderStatus.DA_GIAO,
         ),
     ]
@@ -601,19 +603,19 @@ def test_render_search_multi_card():
     )
 
     assert "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG" in card
-    assert "7 đơn hàng" in card
+    assert "Tổng cộng: <b>7 đơn</b>" in card
     assert "Trang 1/2" in card
     assert "#1" in card
     assert "Khách A" in card
     assert "0901" in card
     assert "HN" in card
-    assert "150.000 đ" in card
+    assert "Thu: 150.000đ" in card
     assert "#2" in card
     assert "Khách B" in card
     assert "0902" in card
     assert "HCM" in card
-    assert "250.000 đ" in card
-    assert "\n────────\n📦 <b>#2 — Khách B</b>" in card
+    assert "Thu: 250.000đ" in card
+    assert "\n\n------------------\n\n<b>#2 Khách B</b>" in card
 
     kb = build_search_multi_keyboard(orders=orders, search_id="s123", page=1, total_pages=2)
     flat_btns = [btn for row in kb.inline_keyboard for btn in row]

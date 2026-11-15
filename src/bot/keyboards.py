@@ -27,7 +27,8 @@ from src.services.tape_parser import (
 TZ_VN = timezone(timedelta(hours=7))
 
 DIVIDER = "••••••••••••••••"  # 16 bullet dots divider
-ITEM_DIVIDER = "────────"  # Short divider between order list items
+LIST_DIVIDER = "=================="
+ITEM_DIVIDER = "------------------"
 
 STATUS_NAMES: dict[OrderStatus, str] = {
     OrderStatus.CHO_LAM: "⏳ Chờ làm",
@@ -588,67 +589,29 @@ def build_date_picker_keyboard(
     return InlineKeyboardMarkup(keyboard)
 
 
-def format_order_item_summary(order: Order, *, detailed: bool = False) -> str:
-    """Format single order summary block with optional shipping/payment information."""
-    if detailed:
-        # ponytail: bound list previews for Telegram; full fields stay in order detail.
-        previews = {}
-        for field, limit in (
-            ("customer_name", 80), ("customer_phone", 32),
-            ("shipping_address", 200), ("items_text", 200),
-            ("payment_method", 32), ("tracking_code", 64), ("notes", 120),
-        ):
-            value = getattr(order, field)
-            if value and len(value) > limit:
-                previews[field] = value[:limit - 1] + "…"
-        order = order.model_copy(update=previews)
-    status_label = STATUS_NAMES.get(
-        order.status,
-        order.status.value if hasattr(order.status, "value") else str(order.status),
-    )
-    total_fmt = f"{order.total_amount:,} đ".replace(",", ".")
-    cust_name = html.escape(order.customer_name)
-    phone = (
-        f"<code>{html.escape(order.customer_phone)}</code>"
-        if order.customer_phone
-        else "<i>(Chưa có SĐT)</i>"
-    )
-    addr = html.escape(order.shipping_address) if order.shipping_address else "<i>(Chưa có Đ/C)</i>"
-    items_line = f"\n   📼 <b>BĂNG:</b> {html.escape(order.items_text)}" if order.items_text else ""
-    classification = _order_classification(order)
-    classification_line = f"   {classification.replace(chr(10), chr(10) + '   ')}\n" if classification else ""
-    vn_created_at = (
-        to_vn_datetime(order.created_at) if isinstance(order.created_at, datetime) else None
-    )
-    created_str = (
-        vn_created_at.strftime("%d/%m/%Y %H:%M") if vn_created_at else str(order.created_at or "")
-    )
-    time_line = f"\n   🕒 <b>TẠO:</b> {created_str}" if created_str else ""
-    extra_lines = ""
-    if detailed:
-        cod_fmt = f"{order.cod_amount:,} đ".replace(",", ".")
-        tracking = (
-            f"<code>{html.escape(order.tracking_code)}</code>"
-            if order.tracking_code else "<i>(Chưa có)</i>"
-        )
-        extra_lines = (
-            f"\n   💵 <b>COD THU:</b> <b>{cod_fmt}</b>"
-            f"\n   💳 <b>THANH TOÁN:</b> {html.escape(order.payment_method)}"
-            f"\n   🚚 <b>MÃ VẬN ĐƠN:</b> {tracking}"
-        )
-        if order.tape_quantity is not None:
-            extra_lines += f"\n   📼 <b>SỐ BĂNG:</b> {order.tape_quantity}"
-        if order.notes:
-            extra_lines += f"\n   📝 <b>GHI CHÚ:</b> {html.escape(order.notes)}"
+def format_order_item_summary(order: Order) -> str:
+    """Minimal list item: customer, address, phone, and payment due."""
+    # ponytail: cap previews for 5 orders within Telegram's limit; full fields stay in detail.
+    fields = {}
+    for field, limit in (("customer_name", 80), ("shipping_address", 200), ("customer_phone", 32)):
+        value = " ".join(getattr(order, field).split())
+        fields[field] = html.escape(value if len(value) <= limit else value[:limit - 1] + "…")
+
+    total = f"{order.total_amount:,}đ".replace(",", ".")
+    cod = f"{order.cod_amount:,}đ".replace(",", ".")
+    if order.cod_amount == 0 and order.payment_method.strip().upper() in {"CHUYEN_KHOAN", "BANK_TRANSFER"}:
+        payment = f"Đã chuyển khoản: {total}"
+    elif 0 < order.cod_amount < order.total_amount:
+        deposit = f"{order.total_amount - order.cod_amount:,}đ".replace(",", ".")
+        payment = f"Tổng: {total} · Cọc: {deposit}\nCòn thu: {cod}"
+    else:
+        payment = f"Thu: {cod}"
+
     return (
-        f"📦 <b>#{order.id} — {cust_name}{_returning_marker(order)}</b>\n"
-        f"{classification_line}"
-        f"   📞 <b>SĐT:</b> {phone}\n"
-        f"   📍 <b>Đ/C:</b> {addr}"
-        f"{items_line}"
-        f"{time_line}\n"
-        f"   💰 <b>TIỀN:</b> <b>{total_fmt}</b> (<i>{status_label}</i>)"
-        f"{extra_lines}"
+        f"<b>#{order.id} {fields['customer_name']}</b>\n"
+        f"{fields['shipping_address'] or 'Chưa có địa chỉ'}\n"
+        f"<code>{fields['customer_phone'] or 'Chưa có SĐT'}</code>\n"
+        f"{payment}"
     )
 
 
@@ -660,9 +623,6 @@ def render_order_list_card(
     total_orders: int,
 ) -> str:
     """Render paginated order list card (5 orders/page) or empty notice."""
-    if total_orders == 0:
-        return f"📅 <b>ĐƠN HÀNG NGÀY {date_str}</b>\n\nNgày này chưa có đơn hàng nào bác nhé!"
-
     # Convert YYYY-MM-DD to DD/MM/YYYY for friendly Vietnamese display
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
@@ -671,17 +631,15 @@ def render_order_list_card(
         display_date = date_str
 
     lines = [
-        f"📅 <b>ĐƠN HÀNG NGÀY {display_date}</b>",
+        f"<b>ĐƠN HÀNG NGÀY {display_date}</b>",
         f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})",
-        DIVIDER,
+        LIST_DIVIDER,
+        "",
     ]
-
-    order_blocks = [format_order_item_summary(order) for order in orders]
-    if order_blocks:
-        lines.append(f"\n{ITEM_DIVIDER}\n".join(order_blocks))
-
-    lines.append(DIVIDER)
-    lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
+    lines.append(
+        f"\n\n{ITEM_DIVIDER}\n\n".join(format_order_item_summary(order) for order in orders)
+        if orders else "Chưa có đơn."
+    )
     return "\n".join(lines)
 
 
@@ -693,20 +651,6 @@ def format_order_compact_line(order: Order) -> str:
     return f"{line}\n   {classification.replace(chr(10), chr(10) + '   ')}" if classification else line
 
 
-def _vn_date_label(created_at: Any) -> str:
-    """Vietnam-time DD/MM/YYYY label, or a friendly fallback when unparseable."""
-    dt: datetime | None = None
-    if isinstance(created_at, datetime):
-        dt = created_at
-    elif isinstance(created_at, str) and created_at.strip():
-        try:
-            dt = datetime.fromisoformat(created_at.strip().replace("Z", "+00:00"))
-        except ValueError:
-            dt = None
-    vn_dt = to_vn_datetime(dt)
-    return vn_dt.strftime("%d/%m/%Y") if vn_dt else "Không rõ ngày"
-
-
 def render_status_order_list_card(
     orders: Sequence[Order],
     status: OrderStatus,
@@ -714,40 +658,14 @@ def render_status_order_list_card(
     total_pages: int,
     total_orders: int,
 ) -> str:
-    """Render status-filtered order list grouped by Vietnam creation date (D-4)."""
-    status_label = STATUS_NAMES.get(status, status.value)
-    header = (
-        f"{status_label} — <b>DANH SÁCH ĐƠN</b>\n"
-        f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})"
-    )
-
-    if total_orders == 0:
-        return f"{header}\n\nChưa có đơn nào ở trạng thái này bác nhé!"
-
-    # Group by VN date, preserving query order (created_at DESC). Never SQL GROUP BY.
-    groups: dict[str, list[Order]] = {}
-    for order in orders:
-        groups.setdefault(_vn_date_label(order.created_at), []).append(order)
-
-    blocks: list[str] = []
-    for date_label, day_orders in groups.items():
-        day_lines = [f"📅 <b>{date_label}</b> · {len(day_orders)} đơn"]
-        if status == OrderStatus.DA_DONG_GOI:
-            day_lines.append("\n" + f"\n\n{ITEM_DIVIDER}\n\n".join(
-                format_order_item_summary(o, detailed=True) for o in day_orders
-            ))
-        else:
-            day_lines.extend(format_order_compact_line(o) for o in day_orders)
-        blocks.append("\n".join(day_lines))
-
-    return "\n".join(
-        [
-            header,
-            DIVIDER,
-            "\n\n".join(blocks),
-            DIVIDER,
-            "Bác chạm vào nút xem đơn bên dưới nhé:",
-        ]
+    """Render the same minimal items as date lists, with status only in the header."""
+    status_label = STATUS_NAMES.get(status, status.value).split(" ", 1)[-1].upper()
+    blocks = f"\n\n{ITEM_DIVIDER}\n\n".join(format_order_item_summary(order) for order in orders)
+    return (
+        f"<b>ĐƠN {status_label}</b>\n"
+        f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})\n"
+        f"{LIST_DIVIDER}\n\n"
+        f"{blocks or 'Chưa có đơn.'}"
     )
 
 
@@ -1006,29 +924,15 @@ def render_search_multi_card(
     total_orders: int,
     purpose: str | None = None,
 ) -> str:
-    """Render paginated multi-order search result preview card per D-09."""
-    esc_query = html.escape(query.strip())
-    if purpose:
-        lines = [
-            f"🔍 <b>{html.escape(purpose)}</b>",
-            f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
-            DIVIDER,
-        ]
-    else:
-        lines = [
-            "🔍 <b>KẾT QUẢ TÌM KIẾM ĐƠN HÀNG</b>",
-            f"<i>(Tìm theo: '{esc_query}')</i>",
-            f"Dạ em tìm thấy <b>{total_orders} đơn hàng</b> phù hợp (Trang {page}/{total_pages}):",
-            DIVIDER,
-        ]
-
-    order_blocks = [format_order_item_summary(order) for order in orders]
-    if order_blocks:
-        lines.append(f"\n{ITEM_DIVIDER}\n".join(order_blocks))
-
-    lines.append(DIVIDER)
-    lines.append("Bác chạm vào nút xem đơn bên dưới nhé:")
-    return "\n".join(lines)
+    """Render search results using the same minimal order list layout."""
+    heading = html.escape(purpose) if purpose else "KẾT QUẢ TÌM KIẾM ĐƠN HÀNG"
+    blocks = f"\n\n{ITEM_DIVIDER}\n\n".join(format_order_item_summary(order) for order in orders)
+    return (
+        f"<b>{heading}</b>\n"
+        f"Tổng cộng: <b>{total_orders} đơn</b> (Trang {page}/{total_pages})\n"
+        f"{LIST_DIVIDER}\n\n"
+        f"{blocks or 'Chưa có đơn.'}"
+    )
 
 
 def build_search_multi_keyboard(
