@@ -448,6 +448,10 @@ def build_application(settings: Settings, db: aiosqlite.Connection | None = None
     openai_client = AsyncOpenAI(
         base_url=settings.nine_router_base_url,
         api_key=api_key_str,
+        # extractor/mutation services implement their own Tier 1 -> Tier 2 ->
+        # regex fallback chain. SDK-level retries would multiply worst-case
+        # latency by 3 and delay the user-facing fallback unnecessarily.
+        max_retries=0,
     )
     app_context = AppContext(
         settings=settings,

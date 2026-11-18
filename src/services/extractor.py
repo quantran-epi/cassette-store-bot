@@ -140,6 +140,11 @@ JSON trích xuất:
 """
 
 
+def _redact_pii(text: str) -> str:
+    """Strip phone numbers from log payloads so customer PII never hits disk."""
+    return re.sub(r"\b0\d{9}\b", "<phone>", text)
+
+
 def _clean_json_markdown(text: str) -> str:
     cleaned = text.strip()
     if cleaned.startswith("```"):
@@ -368,7 +373,7 @@ async def extract_order_from_text(
             model=model_id,
             messages=messages,
             response_format=ExtractedOrder,
-            timeout=15.0,
+            timeout=10.0,
         )
         parsed = response.choices[0].message.parsed
         if parsed:
@@ -387,12 +392,12 @@ async def extract_order_from_text(
                 model=model_id,
                 messages=messages,
                 response_format={"type": "json_object"},
-                timeout=15.0,
+                timeout=10.0,
             )
             content = response.choices[0].message.content
             if content:
                 cleaned_json = _clean_json_markdown(content)
-                logger.info("Tier 2 extracted raw JSON: %s", cleaned_json)
+                logger.info("Tier 2 extracted raw JSON: %s", _redact_pii(cleaned_json))
                 result = ExtractedOrder.model_validate_json(cleaned_json)
         except Exception as e:
             logger.error("Tier 2 LLM extraction failed: %s", e)
